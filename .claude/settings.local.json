@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where git *)",
+      "Bash(git --version)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git ls-remote *)",
+      "Bash(npm --version)",
+      "Bash(uipro --version)",
+      "Bash(uipro --help)",
+      "Bash(uipro init *)",
+      "Bash(cd ~ && pwd && uipro init --ai claude 2>&1)",
+      "Bash(mkdir -p extracted)",
+      "Bash(tar -tzf webfetch-1781026576493-g4m1tl.bin)",
+      "Bash(tar -xzf webfetch-1781026576493-g4m1tl.bin -C extracted)",
+      "Bash(composer --version)",
+      "Bash(\"/c/xampp/mysql/bin/mysql.exe\" -u root -e \"CREATE DATABASE IF NOT EXISTS mms_auto CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\")",
+      "Bash(\"/c/xampp/mysql/bin/mysqld.exe\" --defaults-file=\"/c/xampp/mysql/bin/my.ini\")",
+      "Bash(\"/c/xampp/php/php.exe\" artisan *)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}
