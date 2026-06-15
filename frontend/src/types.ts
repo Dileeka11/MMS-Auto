@@ -1,4 +1,4 @@
-// Shared domain types for MMS-Auto
+// Shared domain types for NMS-Auto
 
 export type Stock = 'in' | 'low' | 'out'
 
@@ -43,12 +43,39 @@ export interface Rep {
   avatar: string
 }
 
-export interface POLine { item: string; code: string; qty: number; cost: number; total: number }
+export interface POLine {
+  id?: number; item: string; code: string; qty: number; cost: number; total: number;
+  balanceQty?: number; receivedQty?: number;
+}
 export interface PurchaseOrder {
-  id: string; supplier: string; date: string; lines: POLine[]; total: number; status: string
+  id: string; code?: string; supplier: string; supplierContact?: string;
+  date: string; lines: POLine[]; total: number; status: string;
+  piNumber?: string; piDate?: string; paymentTerms?: string; incoTerms?: string;
+  currency?: string; notes?: string; shipments?: Shipment[];
+}
+export interface ShipmentLine {
+  id?: number; code: string; item: string; qty: number; cost: number;
+  total: number; landedCost?: number; landedTotal?: number; shipmentLineId?: number;
+  purchaseOrderLineId?: number;
+}
+export interface ShipmentExtra { id?: number; label: string; amount: number }
+export interface Shipment {
+  id?: number; code: string; poCode: string; seq: number; date: string;
+  vessel?: string; blNumber?: string; eta?: string;
+  status: string; itemsTotal: number; extrasTotal: number; landedTotal: number;
+  lines?: ShipmentLine[]; extras?: ShipmentExtra[];
+  costFileName?: string; costFileData?: string;
 }
 export interface GRN {
-  id: string; po: string; supplier: string; date: string; items: number; total: number; status: string
+  id: string; po: string; shipmentCode?: string; supplier: string;
+  date: string; items: number; total: number; status: string;
+}
+export interface TrackingRow {
+  poCode: string; supplier: string; piNumber?: string; date: string;
+  currency?: string; total: number; orderedQty: number; receivedQty: number;
+  balanceQty: number; progress: number; status: string;
+  shipments: { code: string; seq: number; date: string; status: string;
+    itemsTotal: number; extrasTotal: number; landedTotal: number }[];
 }
 export interface Quotation {
   id: string; customer: string; rep: string; date: string; total: number; items: number; status: string; cost: string

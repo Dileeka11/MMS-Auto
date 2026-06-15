@@ -1,5 +1,5 @@
 /* ============================================================
-   MMS-Auto — mock data layer (ported from prototype data.jsx)
+   NMS-Auto — mock data layer (ported from prototype data.jsx)
    In production these arrays are replaced by API responses
    (see api.ts). Kept here so the UI runs standalone.
    ============================================================ */
@@ -189,7 +189,7 @@ export const categoryShare = categories.map((c) => ({ label: c, value: Math.roun
 export const dailyTrend = Array.from({ length: 30 }).map(() => Math.round(rnd(120, 420)))
 
 export const company: Company = {
-  name: 'MMS-Auto', tagline: 'Spare Parts Distribution', address: 'No. 142, Galle Road, Colombo 03',
+  name: 'NMS-Auto', tagline: 'Spare Parts Distribution', address: 'No. 142, Galle Road, Colombo 03',
   phone: '+94 11 234 5678', email: 'sales@mms-auto.lk',
 }
 

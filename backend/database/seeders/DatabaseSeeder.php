@@ -34,7 +34,7 @@ class DatabaseSeeder extends Seeder
     private function seedCompany()
     {
         CompanyProfile::updateOrCreate(['id' => 1], [
-            'name' => 'MMS-Auto',
+            'name' => 'NMS-Auto',
             'tagline' => 'Spare Parts Distribution',
             'address' => 'No. 142, Galle Road, Colombo 03',
             'phone' => '+94 11 234 5678',

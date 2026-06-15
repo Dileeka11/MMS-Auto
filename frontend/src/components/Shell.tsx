@@ -1,4 +1,4 @@
-/* MMS-Auto — app shell (sidebar, topbar), ported from shell.jsx */
+/* NMS-Auto — app shell (sidebar, topbar), ported from shell.jsx */
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Icon } from './Icon'
@@ -33,7 +33,9 @@ export const NAV: NavNode[] = [
   ] },
   { section: 'Data Capture', icon: 'doc', items: [
     { id: 'dc/po', label: 'Purchase Order', icon: 'cart' },
+    { id: 'dc/costing', label: 'Costing & Shipment', icon: 'box' },
     { id: 'dc/grn', label: 'GRN', icon: 'truck' },
+    { id: 'dc/tracking', label: 'PO Tracking', icon: 'chart' },
     { id: 'dc/quote', label: 'Quotation', icon: 'doc' },
     { id: 'dc/invoice', label: 'Sales Invoice', icon: 'receipt' },
     { id: 'dc/return', label: 'Sales Return', icon: 'refund' },

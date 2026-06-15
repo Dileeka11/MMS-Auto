@@ -1,4 +1,4 @@
-/* MMS-Auto — Master Files (generic CRUD engine + configs), ported from masters.jsx */
+/* NMS-Auto — Master Files (generic CRUD engine + configs), ported from masters.jsx */
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, statusTone, inputStyle } from '../components/ui'

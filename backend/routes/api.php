@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\MasterController;
 use App\Http\Controllers\Api\PurchaseOrderController;
+use App\Http\Controllers\Api\ShipmentController;
+use App\Http\Controllers\Api\TrackingController;
 use App\Http\Controllers\Api\QuotationController;
 use App\Http\Controllers\Api\ReceiptController;
 use App\Http\Controllers\Api\SalesRepController;
@@ -19,7 +21,7 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| MMS-Auto API routes
+| NMS-Auto API routes
 |--------------------------------------------------------------------------
 */
 
@@ -38,7 +40,9 @@ Route::delete('masters/{type}/{master}', [MasterController::class, 'destroy']);
 
 // Procurement
 Route::apiResource('purchase-orders', PurchaseOrderController::class);
+Route::apiResource('shipments', ShipmentController::class)->only(['index', 'show', 'store', 'destroy']);
 Route::apiResource('grns', GrnController::class)->only(['index', 'store', 'destroy']);
+Route::get('po-tracking', [TrackingController::class, 'index']);
 
 // Sales
 Route::apiResource('quotations', QuotationController::class);

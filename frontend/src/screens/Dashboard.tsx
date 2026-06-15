@@ -1,4 +1,4 @@
-/* MMS-Auto — Dashboard, ported from dashboard.jsx */
+/* NMS-Auto — Dashboard, ported from dashboard.jsx */
 import { Card, PageHead, Btn, Badge } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { AreaChart, Donut, Spark, ProgressRow } from '../components/charts'

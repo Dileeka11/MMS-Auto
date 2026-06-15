@@ -13,4 +13,24 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    target: 'es2020',
+    sourcemap: false,
+    cssCodeSplit: true,
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // Pin large vendor deps to their own long-cached chunks so app code
+        // changes don't bust the React bundle in the browser cache.
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          axios: ['axios'],
+        },
+      },
+    },
+  },
+  esbuild: {
+    // strip console + debugger calls from production bundle
+    drop: ['console', 'debugger'],
+  },
 })

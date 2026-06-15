@@ -1,5 +1,5 @@
 /* ===========================================================
-   MMS-Auto — "Garage Industrial" dark theme
+   NMS-Auto — "Garage Industrial" dark theme
    =========================================================== */
 @import url('https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
@@ -141,6 +141,7 @@ input,select,textarea{ font-family:inherit; }
   .mms-sb.open{ transform:none; }
   .mms-burger{ display:flex!important; }
   .topsearch{ display:none!important; }
+  .mms-modal-overlay{ padding-left:20px!important; }
 }
 @media (max-width: 560px){
   .kpi-grid{ grid-template-columns:1fr!important; }

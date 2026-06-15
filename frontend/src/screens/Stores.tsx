@@ -1,4 +1,4 @@
-/* MMS-Auto — Stores: Transfer, Adjustment, BIN Card, Live Stock, Price Control, ported from stores.jsx */
+/* NMS-Auto — Stores: Transfer, Adjustment, BIN Card, Live Stock, Price Control, ported from stores.jsx */
 import { useState, useMemo } from 'react'
 import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, inputStyle } from '../components/ui'
 import { Icon } from '../components/Icon'

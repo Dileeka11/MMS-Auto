@@ -1,4 +1,4 @@
-/* MMS-Auto — app router + screen registry (replaces window.SCREENS) */
+/* NMS-Auto — app router + screen registry (replaces window.SCREENS) */
 import { useEffect, useState } from 'react'
 import type { ComponentType } from 'react'
 import { Sidebar, Topbar } from './components/Shell'
@@ -8,7 +8,7 @@ import type { Go, ScreenProps } from './screens/types'
 import DashScreen from './screens/Dashboard'
 import { DataModule, MASTERS } from './screens/Masters'
 import { ItemMasterScreen, CustomerMasterScreen } from './screens/ItemMaster'
-import { POScreen, GRNScreen } from './screens/Procurement'
+import { POScreen, GRNScreen, CostingScreen, TrackingScreen } from './screens/Procurement'
 import { QuoteScreen, InvoiceScreen } from './screens/Sales'
 import { ReturnScreen, ReceiptScreen, ExpenseScreen } from './screens/Sales2'
 import { LiveStockScreen, TransferScreen, AdjustScreen, BinCardScreen, PriceScreen } from './screens/Stores'
@@ -22,7 +22,9 @@ const SCREENS: Record<string, ScreenComp> = {
   'm/item': ItemMasterScreen,
   'm/customer': CustomerMasterScreen,
   'dc/po': POScreen,
+  'dc/costing': CostingScreen,
   'dc/grn': GRNScreen,
+  'dc/tracking': TrackingScreen,
   'dc/quote': QuoteScreen,
   'dc/invoice': InvoiceScreen,
   'dc/return': ReturnScreen,

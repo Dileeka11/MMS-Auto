@@ -1,4 +1,4 @@
-/* MMS-Auto — Item Master (Excel export w/o Qty) + Customer Master, ported from itemMaster.jsx */
+/* NMS-Auto — Item Master (Excel export w/o Qty) + Customer Master, ported from itemMaster.jsx */
 import { useState } from 'react'
 import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, inputStyle } from '../components/ui'
 import { Icon } from '../components/Icon'
@@ -31,7 +31,7 @@ export function ItemMasterScreen({ go }: { go: Go }) {
     // NOTE: Quantity / stock columns intentionally EXCLUDED (price list export)
     const headers = ['Item Code', 'Item Name', 'Brand', 'Category', 'Group', 'Unit', 'Rack', 'Avg Cost (Rs)', 'FIFO Cost (Rs)', 'Selling Price (Rs)']
     const data = f.map((i) => [i.code, i.name, i.brand, i.category, i.group, i.unit, i.rack, i.avgCost, i.fifoCost, i.price])
-    downloadXls('MMS-Auto_Item_Master_PriceList.xls', headers, data)
+    downloadXls('NMS-Auto_Item_Master_PriceList.xls', headers, data)
     setToast('Exported ' + f.length + ' items to Excel (without quantity)'); setTimeout(() => setToast(''), 3200)
   }
 

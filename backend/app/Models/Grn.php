@@ -12,4 +12,14 @@ class Grn extends Model
     protected $guarded = [];
 
     protected $casts = ['total' => 'float', 'items' => 'integer', 'date' => 'date:Y-m-d'];
+
+    public function lines()
+    {
+        return $this->hasMany(GrnLine::class);
+    }
+
+    public function shipment()
+    {
+        return $this->belongsTo(Shipment::class);
+    }
 }

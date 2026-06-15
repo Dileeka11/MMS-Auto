@@ -1,4 +1,4 @@
-/* MMS-Auto — Administration, ported from admin.jsx */
+/* NMS-Auto — Administration, ported from admin.jsx */
 import { useState } from 'react'
 import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, inputStyle } from '../components/ui'
 import { Icon } from '../components/Icon'
@@ -105,7 +105,7 @@ export function CompanyScreen({ go: _go, setBrand }: { go: Go; setBrand?: (v: st
   const [accent, setAccent] = useState(document.documentElement.dataset.accent || 'blue')
   const swatches: [string, string, string][] = [['blue', 'Electric Blue', 'oklch(0.62 0.19 256)'], ['orange', 'Garage Orange', 'oklch(0.66 0.18 45)'], ['green', 'Service Green', 'oklch(0.66 0.15 158)'], ['violet', 'Performance Violet', 'oklch(0.6 0.2 290)'], ['red', 'Racing Red', 'oklch(0.6 0.21 22)']]
   const setTheme = (a: string) => { setAccent(a); document.documentElement.dataset.accent = a }
-  const applyName = (v: string) => { setName(v); setBrand?.(v || 'MMS-Auto') }
+  const applyName = (v: string) => { setName(v); setBrand?.(v || 'NMS-Auto') }
   return (
     <div>
       <PageHead crumbs="Administration" title="Company Profile" icon="building" sub="Branding, identity & system theme"
@@ -161,7 +161,7 @@ export function CompanyScreen({ go: _go, setBrand }: { go: Go; setBrand?: (v: st
             <div style={{ background: 'var(--bg-0)', border: '1px solid var(--line)', borderRadius: 'var(--r-m)', padding: 18 }}>
               <div className="row gap-3" style={{ marginBottom: 16 }}>
                 <div style={{ width: 40, height: 40, borderRadius: 9, background: 'var(--ac)', display: 'grid', placeItems: 'center', color: '#fff' }}><Icon n="wrench" s={21} /></div>
-                <div><div style={{ fontFamily: 'Saira', fontWeight: 800, fontSize: 18 }}>{name || 'MMS-Auto'}</div><div className="eyebrow" style={{ fontSize: 9 }}>{D.company.tagline}</div></div>
+                <div><div style={{ fontFamily: 'Saira', fontWeight: 800, fontSize: 18 }}>{name || 'NMS-Auto'}</div><div className="eyebrow" style={{ fontSize: 9 }}>{D.company.tagline}</div></div>
               </div>
               <Btn variant="primary" style={{ width: '100%', marginBottom: 8 }}>Primary Button</Btn>
               <div className="row gap-2"><Badge tone="blue" dot>Accent</Badge><Badge tone="green" dot>Success</Badge><Badge tone="amber" dot>Pending</Badge></div>

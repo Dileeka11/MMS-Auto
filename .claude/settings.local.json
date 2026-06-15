@@ -18,7 +18,12 @@
       "Bash(\"/c/xampp/mysql/bin/mysql.exe\" -u root -e \"CREATE DATABASE IF NOT EXISTS mms_auto CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\")",
       "Bash(\"/c/xampp/mysql/bin/mysqld.exe\" --defaults-file=\"/c/xampp/mysql/bin/my.ini\")",
       "Bash(\"/c/xampp/php/php.exe\" artisan *)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(echo \"exit:$?\")",
+      "Bash(grep -E \"CACHE_DRIVER|CACHE_STORE\" .env)",
+      "Bash(grep -l \"with\\(\" app/Http/Controllers/Api/ -r)",
+      "Bash(git checkout *)",
+      "PowerShell(Set-Location 'D:\\\\My Projects'; try { Rename-Item -LiteralPath 'MMS-Auto' -NewName 'NMS-Auto' -ErrorAction Stop; \"renamed\" } catch { \"FAILED: $_\" })"
     ]
   }
 }

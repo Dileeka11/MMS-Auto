@@ -11,10 +11,15 @@ class PurchaseOrder extends Model
 
     protected $guarded = [];
 
-    protected $casts = ['total' => 'float', 'date' => 'date:Y-m-d'];
+    protected $casts = ['total' => 'float', 'date' => 'date:Y-m-d', 'pi_date' => 'date:Y-m-d'];
 
     public function lines()
     {
         return $this->hasMany(PurchaseOrderLine::class);
+    }
+
+    public function shipments()
+    {
+        return $this->hasMany(Shipment::class);
     }
 }

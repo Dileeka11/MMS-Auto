@@ -1,4 +1,4 @@
-/* MMS-Auto — Sales Return (approval) + Payment Receipt + Expense, ported from sales2.jsx */
+/* NMS-Auto — Sales Return (approval) + Payment Receipt + Expense, ported from sales2.jsx */
 import { useState } from 'react'
 import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, statusTone, inputStyle } from '../components/ui'
 import { Icon } from '../components/Icon'

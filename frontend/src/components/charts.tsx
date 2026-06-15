@@ -1,4 +1,4 @@
-/* MMS-Auto — animated SVG charts, ported from charts.jsx */
+/* NMS-Auto — animated SVG charts, ported from charts.jsx */
 import { useEffect, useRef, useState, useMemo } from 'react'
 
 interface Series { data: number[]; color: string }

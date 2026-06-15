@@ -1,4 +1,4 @@
-/* MMS-Auto — Sales: Quotation + Sales Invoice (FIFO/Average per line), ported from sales.jsx */
+/* NMS-Auto — Sales: Quotation + Sales Invoice (FIFO/Average per line), ported from sales.jsx */
 import { useState } from 'react'
 import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, statusTone } from '../components/ui'
 import { Icon } from '../components/Icon'

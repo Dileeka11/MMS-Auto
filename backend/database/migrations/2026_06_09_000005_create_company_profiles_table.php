@@ -10,7 +10,7 @@ class CreateCompanyProfilesTable extends Migration
     {
         Schema::create('company_profiles', function (Blueprint $table) {
             $table->id();
-            $table->string('name')->default('MMS-Auto');
+            $table->string('name')->default('NMS-Auto');
             $table->string('tagline')->nullable();
             $table->text('address')->nullable();
             $table->string('phone', 32)->nullable();

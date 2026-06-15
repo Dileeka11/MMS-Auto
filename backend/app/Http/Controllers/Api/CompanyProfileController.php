@@ -11,7 +11,7 @@ class CompanyProfileController extends Controller
     public function show()
     {
         return CompanyProfile::firstOrCreate(['id' => 1], [
-            'name' => 'MMS-Auto',
+            'name' => 'NMS-Auto',
             'tagline' => 'Spare Parts Distribution',
             'address' => 'No. 142, Galle Road, Colombo 03',
             'phone' => '+94 11 234 5678',

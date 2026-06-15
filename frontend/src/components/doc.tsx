@@ -1,4 +1,4 @@
-/* MMS-Auto — shared document helpers (StatRow, LineEditor), from procurement.jsx */
+/* NMS-Auto — shared document helpers (StatRow, LineEditor), from procurement.jsx */
 import { useState } from 'react'
 import { Card, Badge, Select, inputStyle } from './ui'
 import { Icon } from './Icon'

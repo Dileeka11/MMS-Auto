@@ -1,5 +1,6 @@
-/* MMS-Auto — shared UI kit, ported from ui.jsx */
+/* NMS-Auto — shared UI kit, ported from ui.jsx */
 import type { CSSProperties, ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 
 /* ---------- primitives ---------- */
@@ -117,8 +118,8 @@ export function Select({ children, ...p }: React.SelectHTMLAttributes<HTMLSelect
 /* ---------- Modal ---------- */
 export function Modal({ open, onClose, title, sub, children, width = 560, footer }: { open?: boolean; onClose?: () => void; title?: ReactNode; sub?: ReactNode; children?: ReactNode; width?: number; footer?: ReactNode }) {
   if (!open) return null
-  return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'oklch(0 0 0 / 0.6)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', padding: 20, animation: 'fade .2s ease both' }}>
+  return createPortal(
+    <div onClick={onClose} className="mms-modal-overlay" style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'oklch(0 0 0 / 0.6)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', padding: 20, paddingLeft: 'calc(var(--sb-w) + 20px)', animation: 'fade .2s ease both' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(' + width + 'px,100%)', maxHeight: '90vh', overflow: 'auto', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 'var(--r-l)', boxShadow: 'var(--sh-3)', animation: 'slideIn .25s var(--ease) both' }}>
         <div className="row between" style={{ padding: '18px 22px', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, background: 'var(--bg-1)', zIndex: 1 }}>
           <div>
@@ -130,7 +131,8 @@ export function Modal({ open, onClose, title, sub, children, width = 560, footer
         <div style={{ padding: 22 }}>{children}</div>
         {footer && <div className="row between gap-2" style={{ padding: '14px 22px', borderTop: '1px solid var(--line)', position: 'sticky', bottom: 0, background: 'var(--bg-1)' }}>{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

@@ -1,4 +1,4 @@
-/* MMS-Auto — icon set (stroke line icons), ported from ui.jsx */
+/* NMS-Auto — icon set (stroke line icons), ported from ui.jsx */
 import type { CSSProperties, ReactNode } from 'react'
 
 interface IconProps {
@@ -66,6 +66,7 @@ export function Icon({ n, s = 18, c = 'currentColor', sw = 1.75, style }: IconPr
     upload: <><path d="M12 21V9m0 0 4 4m-4-4-4 4" /><path d="M4 3h16" /></>,
     car: <><path d="M5 13l1.5-4.5A2 2 0 0 1 8.4 7h7.2a2 2 0 0 1 1.9 1.5L19 13" /><path d="M3 17v-2a2 2 0 0 1 1.2-1.8L5 13h14l.8.2A2 2 0 0 1 21 15v2a1 1 0 0 1-1 1h-1v1a1 1 0 0 1-2 0v-1H7v1a1 1 0 0 1-2 0v-1H4a1 1 0 0 1-1-1z" /><circle cx="7.5" cy="15.5" r="1" /><circle cx="16.5" cy="15.5" r="1" /></>,
     wrench: <path d="M14.5 5.5a4 4 0 0 0 5 5L21 9l-2-2 1-3-3 1-2-2-1.5 1.5a4 4 0 0 0-1 1.5zM12.5 9.5 4 18a2 2 0 1 0 2 2l8.5-8.5" />,
+    alert: <><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 16v.5" /></>,
   }
   return <svg {...P}>{paths[n] || paths.box}</svg>
 }

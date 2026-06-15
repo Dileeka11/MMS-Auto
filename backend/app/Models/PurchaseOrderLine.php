@@ -11,7 +11,13 @@ class PurchaseOrderLine extends Model
 
     protected $guarded = [];
 
-    protected $casts = ['cost' => 'float', 'total' => 'float', 'qty' => 'integer'];
+    protected $casts = [
+        'cost' => 'float',
+        'total' => 'float',
+        'qty' => 'integer',
+        'balance_qty' => 'integer',
+        'received_qty' => 'integer',
+    ];
 
     public function purchaseOrder()
     {
