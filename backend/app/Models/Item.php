@@ -16,6 +16,8 @@ class Item extends Model
         'avg_cost' => 'float',
         'fifo_cost' => 'float',
         'price' => 'float',
+        'selling_price_wo_vat' => 'float',
+        'selling_price_with_vat' => 'float',
         'qty' => 'integer',
         'reorder' => 'integer',
     ];

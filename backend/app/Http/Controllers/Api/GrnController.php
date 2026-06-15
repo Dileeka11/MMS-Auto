@@ -22,10 +22,9 @@ class GrnController extends Controller
     /**
      * Post a GRN against a PO + Shipment. Each received line:
      *  - increases the matched item's stock
-     *  - recalculates weighted-average cost using the LANDED cost
+     *  - recalculates weighted-average cost using the landed (ex-VAT) cost
      *  - decrements the PO line's balance_qty / increments received_qty
-     * If every PO line is fully received the PO is marked Completed,
-     * otherwise it moves to Partial GRN.
+     *  - updates the item's selling prices to the latest entered values
      */
     public function store(Request $request)
     {
@@ -39,6 +38,10 @@ class GrnController extends Controller
             'lines.*.item' => 'required|string',
             'lines.*.qty' => 'required|integer|min:0',
             'lines.*.cost' => 'required|numeric',
+            'lines.*.unit_cost_wo_vat' => 'nullable|numeric',
+            'lines.*.unit_cost_with_vat' => 'nullable|numeric',
+            'lines.*.selling_price_wo_vat' => 'nullable|numeric',
+            'lines.*.selling_price_with_vat' => 'nullable|numeric',
         ]);
 
         return DB::transaction(function () use ($data) {
@@ -65,8 +68,12 @@ class GrnController extends Controller
                 if ($recv <= 0) {
                     continue;
                 }
-                $unit = (float) $l['cost'];
-                $total += $recv * $unit;
+                $unitWoVat = (float) ($l['unit_cost_wo_vat'] ?? $l['cost']);
+                $unitWithVat = (float) ($l['unit_cost_with_vat'] ?? $l['cost']);
+                $sellWoVat = (float) ($l['selling_price_wo_vat'] ?? 0);
+                $sellWithVat = (float) ($l['selling_price_with_vat'] ?? 0);
+
+                $total += $recv * $unitWithVat;
                 $linesPosted++;
 
                 $grn->lines()->create([
@@ -74,11 +81,15 @@ class GrnController extends Controller
                     'code' => $l['code'] ?? null,
                     'item' => $l['item'],
                     'qty' => $recv,
-                    'cost' => $unit,
-                    'total' => $recv * $unit,
+                    'cost' => $unitWithVat,
+                    'total' => round($recv * $unitWithVat, 2),
+                    'unit_cost_wo_vat' => $unitWoVat,
+                    'unit_cost_with_vat' => $unitWithVat,
+                    'selling_price_wo_vat' => $sellWoVat,
+                    'selling_price_with_vat' => $sellWithVat,
                 ]);
 
-                // Decrement PO line balance via the shipment line linkage
+                // Decrement PO line balance via the shipment line linkage.
                 if (! empty($l['shipment_line_id'])) {
                     $sl = ShipmentLine::find($l['shipment_line_id']);
                     if ($sl && $sl->purchase_order_line_id) {
@@ -92,23 +103,31 @@ class GrnController extends Controller
                     }
                 }
 
-                // Stock + weighted-average cost using landed cost
+                // Stock + weighted-average cost using landed ex-VAT cost,
+                // and persist latest selling prices on the item master.
                 if (! empty($l['code'])) {
                     $item = Item::where('code', $l['code'])->first();
                     if ($item) {
                         $oldQty = $item->qty;
                         $newQty = $oldQty + $recv;
                         $item->avg_cost = $newQty > 0
-                            ? round(($oldQty * $item->avg_cost + $recv * $unit) / $newQty, 2)
+                            ? round(($oldQty * $item->avg_cost + $recv * $unitWoVat) / $newQty, 2)
                             : $item->avg_cost;
                         $item->qty = $newQty;
                         $item->status = $newQty <= 0 ? 'out' : ($newQty <= $item->reorder ? 'low' : 'in');
+                        if ($sellWoVat > 0) {
+                            $item->selling_price_wo_vat = $sellWoVat;
+                            $item->price = $sellWoVat;
+                        }
+                        if ($sellWithVat > 0) {
+                            $item->selling_price_with_vat = $sellWithVat;
+                        }
                         $item->save();
                     }
                 }
             }
 
-            $grn->update(['items' => $linesPosted, 'total' => $total]);
+            $grn->update(['items' => $linesPosted, 'total' => round($total, 2)]);
 
             // Recompute PO status from balance
             $totalBalance = $po->lines()->sum('balance_qty');

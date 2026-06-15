@@ -44,7 +44,7 @@ export interface Rep {
 }
 
 export interface POLine {
-  id?: number; item: string; code: string; qty: number; cost: number; total: number;
+  id?: number; item: string; code: string; hsCode?: string; qty: number; cost: number; total: number;
   balanceQty?: number; receivedQty?: number;
 }
 export interface PurchaseOrder {
@@ -54,17 +54,40 @@ export interface PurchaseOrder {
   currency?: string; notes?: string; shipments?: Shipment[];
 }
 export interface ShipmentLine {
-  id?: number; code: string; item: string; qty: number; cost: number;
+  id?: number; code: string; hsCode?: string; item: string; qty: number; cost: number;
   total: number; landedCost?: number; landedTotal?: number; shipmentLineId?: number;
   purchaseOrderLineId?: number;
+  fobLkr?: number; freightLkr?: number; insuranceLkr?: number;
+  cid?: number; pal?: number; cess?: number; vat?: number; sscl?: number; duty?: number;
+  other1?: number; other2?: number; other3?: number;
+  bankingAlloc?: number; clearanceAlloc?: number; slpaAlloc?: number; demurrageAlloc?: number;
+  totalPriceWoVat?: number; totalPriceWithVat?: number;
+  unitCostWoVat?: number; unitCostWithVat?: number;
+  sellingPriceWoVat?: number; sellingPriceWithVat?: number;
 }
 export interface ShipmentExtra { id?: number; label: string; amount: number }
+export interface ComplexChargeShape {
+  amountUsd?: number; amountLkr?: number;
+  agent?: string; invoiceNo?: string; policyNo?: string; invoiceValue?: number;
+}
 export interface Shipment {
   id?: number; code: string; poCode: string; seq: number; date: string;
   vessel?: string; blNumber?: string; eta?: string;
   status: string; itemsTotal: number; extrasTotal: number; landedTotal: number;
   lines?: ShipmentLine[]; extras?: ShipmentExtra[];
   costFileName?: string; costFileData?: string;
+  invoiceNo?: string; noOfPackages?: number; grossWeight?: number; netWeight?: number;
+  shipmentType?: string; shipmentVolume?: string;
+  etd?: string; etaDate?: string;
+  cusdecNo?: string; cusdecDate?: string;
+  bankingRate?: number; customRate?: number; settlementRate?: number;
+  cidAmount?: number; palAmount?: number; dutyAmount?: number; dutyDate?: string;
+  cessAmount?: number; vatAmount?: number; ssclAmount?: number;
+  other1Amount?: number; other2Amount?: number; other3Amount?: number;
+  freight?: ComplexChargeShape; insurance?: ComplexChargeShape;
+  banking?: ComplexChargeShape; clearance?: ComplexChargeShape;
+  slpa?: ComplexChargeShape; demurrage?: ComplexChargeShape;
+  itemsTotalUsd?: number; itemsTotalLkr?: number; chargesTotalLkr?: number;
 }
 export interface GRN {
   id: string; po: string; shipmentCode?: string; supplier: string;
@@ -73,9 +96,10 @@ export interface GRN {
 export interface TrackingRow {
   poCode: string; supplier: string; piNumber?: string; date: string;
   currency?: string; total: number; orderedQty: number; receivedQty: number;
-  balanceQty: number; progress: number; status: string;
+  balanceQty: number; progress: number; status: string; stockValue?: number;
   shipments: { code: string; seq: number; date: string; status: string;
-    itemsTotal: number; extrasTotal: number; landedTotal: number }[];
+    itemsTotal: number; extrasTotal: number; landedTotal: number;
+    invoiceNo?: string; shipmentType?: string; shipmentVolume?: string }[];
 }
 export interface Quotation {
   id: string; customer: string; rep: string; date: string; total: number; items: number; status: string; cost: string

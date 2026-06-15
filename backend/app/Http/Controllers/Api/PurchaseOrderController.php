@@ -33,6 +33,7 @@ class PurchaseOrderController extends Controller
             'notes' => 'nullable|string',
             'lines' => 'required|array|min:1',
             'lines.*.code' => 'nullable|string',
+            'lines.*.hs_code' => 'nullable|string',
             'lines.*.item' => 'required|string',
             'lines.*.qty' => 'required|numeric|min:1',
             'lines.*.cost' => 'required|numeric',
@@ -58,6 +59,7 @@ class PurchaseOrderController extends Controller
                 $qty = (int) $l['qty'];
                 $po->lines()->create([
                     'code' => $l['code'] ?? null,
+                    'hs_code' => $l['hs_code'] ?? null,
                     'item' => $l['item'],
                     'qty' => $qty,
                     'balance_qty' => $qty,

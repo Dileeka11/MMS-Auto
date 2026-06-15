@@ -19,11 +19,20 @@ export function ItemMasterScreen({ go }: { go: Go }) {
   const [rows, setRows] = useState<Item[]>(D.items)
   const [q, setQ] = useState(''); const [cat, setCat] = useState(''); const [brand, setBrand] = useState(''); const [stat, setStat] = useState('')
   const [modal, setModal] = useState<null | 'add' | 'edit'>(null); const [form, setForm] = useState<any>({}); const [toast, setToast] = useState('')
-  const open = (r?: Item) => { setForm(r || { unit: 'Pcs', group: 'OEM', status: 'in', reorder: 12 }); setModal(r ? 'edit' : 'add') }
+  const [codeErr, setCodeErr] = useState('')
+  const open = (r?: Item) => { setForm(r || { unit: 'Pcs', group: 'OEM', status: 'in', reorder: 12 }); setCodeErr(''); setModal(r ? 'edit' : 'add') }
+  const codeTaken = (code: string) => {
+    const c = (code || '').trim().toLowerCase()
+    if (!c) return false
+    return rows.some((x) => x.code.trim().toLowerCase() === c && x.id !== form.id)
+  }
   const save = () => {
-    if (modal === 'add') setRows((r) => [{ ...form, id: 'IT' + (2000 + r.length), qty: Number(form.qty || 0) }, ...r])
-    else setRows((r) => r.map((x) => (x.id === form.id ? form : x)))
-    setModal(null)
+    const code = (form.code || '').trim()
+    if (!code) { setCodeErr('Item code is required.'); return }
+    if (codeTaken(code)) { setCodeErr(`Item code "${code}" already exists.`); return }
+    if (modal === 'add') setRows((r) => [{ ...form, code, id: 'IT' + (2000 + r.length), qty: Number(form.qty || 0) }, ...r])
+    else setRows((r) => r.map((x) => (x.id === form.id ? { ...form, code } : x)))
+    setModal(null); setCodeErr('')
   }
   const f = rows.filter((r) => (!q || (r.name + r.code).toLowerCase().includes(q.toLowerCase())) && (!cat || r.category === cat) && (!brand || r.brand === brand) && (!stat || r.status === stat))
 
@@ -92,7 +101,14 @@ export function ItemMasterScreen({ go }: { go: Go }) {
       <Modal open={!!modal} onClose={() => setModal(null)} width={680} title={(modal === 'add' ? 'Add ' : 'Edit ') + 'Item'} sub="Spare part master record"
         footer={<><Btn variant="plain" onClick={() => setModal(null)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save}>Save Item</Btn></>}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-          <Field label="Item Code"><Input value={form.code || ''} onChange={(e) => setForm((s: any) => ({ ...s, code: e.target.value }))} placeholder="BP-2201" /></Field>
+          <Field label="Item Code">
+            <Input value={form.code || ''}
+              onChange={(e) => { setForm((s: any) => ({ ...s, code: e.target.value })); if (codeErr) setCodeErr('') }}
+              onBlur={(e) => { if (codeTaken(e.target.value)) setCodeErr(`Item code "${e.target.value.trim()}" already exists.`) }}
+              placeholder="BP-2201"
+              style={codeErr ? { borderColor: 'var(--bad)' } : undefined} />
+            {codeErr && <span style={{ fontSize: 11.5, color: 'var(--bad)', marginTop: 4 }}>{codeErr}</span>}
+          </Field>
           <Field label="Item Name" style={{ gridColumn: 'span 2' }}><Input value={form.name || ''} onChange={(e) => setForm((s: any) => ({ ...s, name: e.target.value }))} /></Field>
           <Field label="Brand"><Select value={form.brand || ''} onChange={(e) => setForm((s: any) => ({ ...s, brand: e.target.value }))}><option value="">Select…</option>{D.brands.map((b) => <option key={b}>{b}</option>)}</Select></Field>
           <Field label="Category"><Select value={form.category || ''} onChange={(e) => setForm((s: any) => ({ ...s, category: e.target.value }))}><option value="">Select…</option>{D.categories.map((b) => <option key={b}>{b}</option>)}</Select></Field>
