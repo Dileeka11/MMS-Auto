@@ -1,8 +1,9 @@
-/* NMS-Auto — Master Files (generic CRUD engine + configs), ported from masters.jsx */
-import { useState } from 'react'
+/* NMS-Auto — Master Files (generic CRUD engine + configs), API-backed */
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, statusTone, inputStyle } from '../components/ui'
 import { Icon } from '../components/Icon'
+import { api } from '../api'
 import DB from '../data'
 import type { Go } from './types'
 
@@ -39,18 +40,43 @@ export interface MasterCfg {
   extraActions?: (rows: any[]) => ReactNode
 }
 
-export function DataModule({ cfg }: { cfg: MasterCfg; go?: Go }) {
-  const [rows, setRows] = useState<any[]>(cfg.seed)
+export function DataModule({ cfg, type }: { cfg: MasterCfg; go?: Go; type?: string }) {
+  const [rows, setRows] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [modal, setModal] = useState<null | 'add' | 'edit'>(null)
   const [form, setForm] = useState<any>({})
-  const open = (row?: any) => { setForm(row || cfg.blank()); setModal(row ? 'edit' : 'add') }
-  const save = () => {
-    if (modal === 'add') setRows((r) => [{ ...form, id: cfg.idGen(r.length) }, ...r])
-    else setRows((r) => r.map((x) => (x.id === form.id ? form : x)))
-    setModal(null)
+  const [saving, setSaving] = useState(false)
+  const apiResource = type ? api.master(type) : null
+
+  const refresh = () => {
+    if (!apiResource) { setRows(cfg.seed); setLoading(false); return }
+    setLoading(true)
+    apiResource.list().then((d: any[]) => setRows(d)).catch(() => setRows([])).finally(() => setLoading(false))
   }
-  const del = (id: any) => setRows((r) => r.filter((x) => x.id !== id))
+  useEffect(() => { refresh() // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type])
+
+  const open = (row?: any) => { setForm(row || cfg.blank()); setModal(row ? 'edit' : 'add') }
+  const save = async () => {
+    setSaving(true)
+    try {
+      if (apiResource) {
+        if (modal === 'add') await apiResource.create(form)
+        else await apiResource.update(form.id, form)
+        refresh()
+      } else {
+        if (modal === 'add') setRows((r) => [{ ...form, id: cfg.idGen(r.length) }, ...r])
+        else setRows((r) => r.map((x) => (x.id === form.id ? form : x)))
+      }
+      setModal(null)
+    } finally { setSaving(false) }
+  }
+  const del = async (id: any) => {
+    if (!confirm('Delete this record?')) return
+    if (apiResource) { await apiResource.remove(id); refresh() }
+    else setRows((r) => r.filter((x) => x.id !== id))
+  }
   const filtered = rows.filter((r) => !q || cfg.search.some((k) => String(r[k] || '').toLowerCase().includes(q.toLowerCase())))
   return (
     <div>
@@ -67,6 +93,7 @@ export function DataModule({ cfg }: { cfg: MasterCfg; go?: Go }) {
           </div>
           <div className="row gap-2"><Btn variant="ghost" size="sm" icon="filter">Filter</Btn>{cfg.extraActions && cfg.extraActions(rows)}</div>
         </div>
+        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
         <Table cols={[...cfg.cols, { label: '', align: 'right', w: 90 }]} rows={filtered}
           render={(r) => <>
             {cfg.cols.map((c, i) => (
@@ -82,10 +109,10 @@ export function DataModule({ cfg }: { cfg: MasterCfg; go?: Go }) {
                 <button className="mms-act danger" onClick={(e) => { e.stopPropagation(); del(r.id) }} title="Delete"><Icon n="trash" s={15} /></button>
               </div>
             </Td>
-          </>} />
+          </>} />}
       </Card>
       <Modal open={!!modal} onClose={() => setModal(null)} title={(modal === 'add' ? 'Add ' : 'Edit ') + cfg.singular} sub={cfg.formSub}
-        footer={<><Btn variant="plain" onClick={() => setModal(null)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save}>Save {cfg.singular}</Btn></>}>
+        footer={<><Btn variant="plain" onClick={() => setModal(null)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save ' + cfg.singular}</Btn></>}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           {cfg.fields.map((f) => (
             <Field key={f.k} label={f.label} full={f.full}>

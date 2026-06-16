@@ -43,7 +43,7 @@ const SCREENS: Record<string, ScreenComp> = {
 }
 // register the config-driven master files
 Object.keys(MASTERS).forEach((k) => {
-  SCREENS['m/' + k] = (({ go }: ScreenProps) => <DataModule cfg={MASTERS[k]} go={go} />) as ScreenComp
+  SCREENS['m/' + k] = (({ go }: ScreenProps) => <DataModule cfg={MASTERS[k]} go={go} type={k} />) as ScreenComp
 })
 
 export default function App() {
