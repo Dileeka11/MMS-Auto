@@ -1,0 +1,114 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy-frontend:
+    name: Build & Deploy Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          VITE_API_URL: /api
+        run: npm run build
+
+      - name: Deploy frontend via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./frontend/dist/
+          server-dir: /
+          exclude: |
+            **/.git*
+            **/.git*/**
+            api/**
+            laravel/**
+            .well-known/**
+            cgi-bin/**
+
+  deploy-backend:
+    name: Build & Deploy Backend (Laravel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, bcmath, pdo, pdo_mysql, tokenizer, xml, ctype, json, fileinfo, openssl
+          tools: composer:v2
+
+      - name: Install composer dependencies
+        working-directory: backend
+        run: composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction
+
+      - name: Create production .env
+        working-directory: backend
+        env:
+          ENV_CONTENT: ${{ secrets.PROD_ENV_FILE }}
+        run: printf '%s' "$ENV_CONTENT" > .env
+
+      - name: Cache config & routes
+        working-directory: backend
+        run: |
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+
+      - name: Prepare Laravel app folder (without public/)
+        run: |
+          mkdir -p deploy/laravel
+          rsync -a --exclude='public' --exclude='node_modules' --exclude='tests' --exclude='.git' backend/ deploy/laravel/
+
+      - name: Prepare Laravel public folder
+        run: |
+          mkdir -p deploy/api
+          cp -r backend/public/. deploy/api/
+          # Fix index.php paths to point one level up to /laravel
+          sed -i "s|__DIR__.'/../storage|__DIR__.'/../laravel/storage|g" deploy/api/index.php
+          sed -i "s|__DIR__.'/../vendor|__DIR__.'/../laravel/vendor|g" deploy/api/index.php
+          sed -i "s|__DIR__.'/../bootstrap|__DIR__.'/../laravel/bootstrap|g" deploy/api/index.php
+
+      - name: Deploy Laravel app (/laravel) via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./deploy/laravel/
+          server-dir: /laravel/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/tests/**
+            **/.env.example
+
+      - name: Deploy Laravel public (/api) via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./deploy/api/
+          server-dir: /api/
