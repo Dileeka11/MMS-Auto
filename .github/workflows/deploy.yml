@@ -78,7 +78,7 @@ jobs:
       - name: Prepare Laravel app folder (without public/)
         run: |
           mkdir -p deploy/laravel
-          rsync -a --exclude='public' --exclude='node_modules' --exclude='tests' --exclude='.git' backend/ deploy/laravel/
+          rsync -a --exclude='public' --exclude='node_modules' --exclude='tests' --exclude='.git' --exclude='.env.example' backend/ deploy/laravel/
 
       - name: Prepare Laravel public folder
         run: |
@@ -89,26 +89,39 @@ jobs:
           sed -i "s|__DIR__.'/../vendor|__DIR__.'/../laravel/vendor|g" deploy/api/index.php
           sed -i "s|__DIR__.'/../bootstrap|__DIR__.'/../laravel/bootstrap|g" deploy/api/index.php
 
-      - name: Deploy Laravel app (/laravel) via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./deploy/laravel/
-          server-dir: /laravel/
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            **/tests/**
-            **/.env.example
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
 
-      - name: Deploy Laravel public (/api) via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./deploy/api/
-          server-dir: /api/
+      - name: Deploy Laravel app (/laravel) via lftp
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USERNAME }}
+          FTP_PASS: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          lftp -c "
+          set ftp:ssl-allow no;
+          set net:timeout 30;
+          set net:max-retries 5;
+          set net:reconnect-interval-base 5;
+          set net:reconnect-interval-multiplier 1;
+          set ftp:passive-mode true;
+          set mirror:parallel-transfer-count 5;
+          set mirror:use-pget-n 3;
+          open -u \"$FTP_USER\",\"$FTP_PASS\" \"$FTP_HOST\";
+          mirror -R --parallel=5 --only-newer --no-perms --verbose=1 ./deploy/laravel/ /laravel/;
+          "
+
+      - name: Deploy Laravel public (/api) via lftp
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USERNAME }}
+          FTP_PASS: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          lftp -c "
+          set ftp:ssl-allow no;
+          set net:timeout 30;
+          set net:max-retries 5;
+          set ftp:passive-mode true;
+          open -u \"$FTP_USER\",\"$FTP_PASS\" \"$FTP_HOST\";
+          mirror -R --parallel=5 --only-newer --no-perms --verbose=1 ./deploy/api/ /api/;
+          "
