@@ -54,6 +54,7 @@ export function Icon({ n, s = 18, c = 'currentColor', sw = 1.75, style }: IconPr
     bolt: <path d="M13 2 4 14h7l-1 8 9-12h-7z" />,
     pkg: <><path d="M16 3.1 7.5 7.5 3 5.3 12 1z" /><path d="M3 5.3v8.4l9 4.3 9-4.3V5.3M12 9.6v8.4M3 5.3l9 4.3 9-4.3" /></>,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v4M16 3v4" /></>,
     arrowUp: <path d="M12 19V5m0 0-6 6m6-6 6 6" />,
     arrowDown: <path d="M12 5v14m0 0 6-6m-6 6-6-6" />,
     pin: <><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z" /><circle cx="12" cy="10" r="2.4" /></>,

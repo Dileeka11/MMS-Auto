@@ -49,7 +49,9 @@ export default function DashScreen({ go }: { go: Go }) {
   topItems.forEach((i: any) => { stockByCat[i.category] = (stockByCat[i.category] || 0) + (i.qty || 0) * (i.avgCost || 0) })
   const catData = Object.entries(stockByCat).map(([label, value]) => ({ label, value: value as number }))
 
-  const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+  const now = new Date()
+  const weekday = now.toLocaleDateString('en-GB', { weekday: 'long' })
+  const today = `${weekday}, ${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getFullYear()).slice(-2)}`
 
   return (
     <div>

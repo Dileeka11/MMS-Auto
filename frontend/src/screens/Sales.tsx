@@ -1,10 +1,10 @@
 /* NMS-Auto — Sales: Quotation + Sales Invoice (API-backed) */
 import { useEffect, useState } from 'react'
-import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, statusTone } from '../components/ui'
+import { Card, PageHead, Btn, Badge, Field, Input, DateInput, Select, Modal, Table, Td, statusTone } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { StatRow, LineEditor } from '../components/doc'
 import { api } from '../api'
-import { money, moneyK } from '../data'
+import { money, moneyK, fmtDate } from '../data'
 import type { EditorLine, Quotation, Invoice } from '../types'
 import type { Go } from './types'
 
@@ -49,7 +49,7 @@ export function QuoteScreen({ go }: { go: Go }) {
           render={(r) => <>
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.id}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.customer}</Td>
-            <Td>{r.rep}</Td><Td mono>{r.date}</Td>
+            <Td>{r.rep}</Td><Td mono>{fmtDate(r.date)}</Td>
             <Td align="right" mono>{r.items}</Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{money(r.total || 0)}</Td>
             <Td align="center"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></Td>
@@ -63,7 +63,7 @@ export function QuoteScreen({ go }: { go: Go }) {
         footer={<><Btn variant="plain" onClick={() => setModal(false)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={create} disabled={!cust || !lines.length || saving}>{saving ? 'Saving…' : 'Save Quotation'}</Btn></>}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 18 }}>
           <Field label="Customer"><Select value={cust} onChange={(e) => setCust(e.target.value)}><option value="">Select customer…</option>{customers.map((c) => <option key={c.id}>{c.name}</option>)}</Select></Field>
-          <Field label="Valid Until"><Input type="date" /></Field>
+          <Field label="Valid Until"><DateInput /></Field>
         </div>
         <div className="eyebrow" style={{ marginBottom: 10 }}>Quote Lines</div>
         <LineEditor lines={lines} setLines={setLines} mode="sell" />
@@ -82,7 +82,7 @@ function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, prof
         <Card>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 18 }}>
             <Field label="Customer"><Select value={cust} onChange={(e) => setCust(e.target.value)}><option value="">Select…</option>{customers.map((c) => <option key={c.id}>{c.name}</option>)}</Select></Field>
-            <Field label="Invoice Date"><Input type="date" defaultValue={new Date().toISOString().slice(0, 10)} /></Field>
+            <Field label="Invoice Date"><DateInput value={new Date().toISOString().slice(0, 10)} /></Field>
             <Field label="Payment"><Select defaultValue="Credit Sale">{['Cash', 'Credit Sale', 'Card', 'Bank Transfer'].map((p) => <option key={p}>{p}</option>)}</Select></Field>
           </div>
           <div className="row between" style={{ marginBottom: 10 }}>
@@ -173,7 +173,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
           render={(r) => <>
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.id}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.customer}</Td>
-            <Td>{r.rep}</Td><Td mono>{r.date}</Td>
+            <Td>{r.rep}</Td><Td mono>{fmtDate(r.date)}</Td>
             <Td align="center"><Badge tone="blue">{r.cost}</Badge></Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{money(r.total || 0)}</Td>
             <Td align="right" mono c={(r.due || 0) > 0 ? 'var(--warn)' : 'var(--tx-3)'}>{(r.due || 0) > 0 ? money(r.due) : '—'}</Td>
@@ -188,7 +188,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
             <button key={q.id} onClick={() => fromQuote(q)} className="row between mms-row" style={{ padding: '12px 14px', background: 'var(--bg-0)', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', textAlign: 'left', color: 'var(--tx-0)' }}>
               <div className="row gap-3">
                 <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--ac-dim)', display: 'grid', placeItems: 'center', color: 'var(--ac-bright)' }}><Icon n="doc" s={17} /></div>
-                <div><span className="mono" style={{ fontWeight: 600, color: 'var(--ac-bright)' }}>{q.id}</span><div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{q.customer} · {q.items} items · {q.date}</div></div>
+                <div><span className="mono" style={{ fontWeight: 600, color: 'var(--ac-bright)' }}>{q.id}</span><div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{q.customer} · {q.items} items · {fmtDate(q.date)}</div></div>
               </div>
               <div className="row gap-3"><span className="num" style={{ fontWeight: 600 }}>{money(q.total)}</span><Icon n="chev" s={16} c="var(--tx-3)" /></div>
             </button>

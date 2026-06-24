@@ -27,6 +27,7 @@ class PurchaseOrderController extends Controller
             'date' => 'nullable|date',
             'pi_number' => 'nullable|string',
             'pi_date' => 'nullable|date',
+            'order_required_month' => 'nullable|string',
             'payment_terms' => 'nullable|string',
             'inco_terms' => 'nullable|string',
             'currency' => 'nullable|string',
@@ -48,6 +49,7 @@ class PurchaseOrderController extends Controller
                 'date' => $data['date'] ?? now()->toDateString(),
                 'pi_number' => $data['pi_number'] ?? null,
                 'pi_date' => $data['pi_date'] ?? null,
+                'order_required_month' => $data['order_required_month'] ?? null,
                 'payment_terms' => $data['payment_terms'] ?? null,
                 'inco_terms' => $data['inco_terms'] ?? null,
                 'currency' => $data['currency'] ?? 'LKR',
@@ -76,7 +78,7 @@ class PurchaseOrderController extends Controller
     public function update(Request $request, PurchaseOrder $purchaseOrder)
     {
         $purchaseOrder->update($request->only([
-            'supplier', 'date', 'status', 'pi_number', 'pi_date',
+            'supplier', 'date', 'status', 'pi_number', 'pi_date', 'order_required_month',
             'payment_terms', 'inco_terms', 'currency', 'supplier_contact', 'notes',
         ]));
 

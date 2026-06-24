@@ -8,6 +8,7 @@ import type { Go, ScreenProps } from './screens/types'
 import DashScreen from './screens/Dashboard'
 import { DataModule, MASTERS } from './screens/Masters'
 import { ItemMasterScreen, CustomerMasterScreen } from './screens/ItemMaster'
+import { SupplierMasterScreen } from './screens/SupplierMaster'
 import { POScreen, GRNScreen, CostingScreen, TrackingScreen } from './screens/Procurement'
 import { QuoteScreen, InvoiceScreen } from './screens/Sales'
 import { ReturnScreen, ReceiptScreen, ExpenseScreen } from './screens/Sales2'
@@ -21,6 +22,7 @@ const SCREENS: Record<string, ScreenComp> = {
   dash: DashScreen,
   'm/item': ItemMasterScreen,
   'm/customer': CustomerMasterScreen,
+  'm/supplier': SupplierMasterScreen,
   'dc/po': POScreen,
   'dc/costing': CostingScreen,
   'dc/grn': GRNScreen,

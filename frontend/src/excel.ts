@@ -44,9 +44,11 @@ interface HeaderIdx {
 function detectHeader(rows: any[][]) {
   for (let i = 0; i < Math.min(rows.length, 25); i++) {
     const r = rows[i].map(lower)
-    const hasItem = r.some((c) => /item|description|particular|name/.test(c))
-    const hasQty = r.some((c) => /qty|quantity/.test(c))
-    if (hasItem && hasQty) {
+    const itemCol = r.findIndex((c) => /item|description|particular|name/.test(c))
+    const qtyCol = r.findIndex((c) => /qty|quantity/.test(c))
+    // Require the two keywords to live in distinct cells — otherwise a single
+    // long note row containing both words can be misread as the header.
+    if (itemCol >= 0 && qtyCol >= 0 && itemCol !== qtyCol) {
       const idx: HeaderIdx = {}
       r.forEach((c, j) => {
         if (idx.code == null && /(^|\b)(code|part\s*no|part\s*number|part)\b/.test(c)) idx.code = j
@@ -82,22 +84,30 @@ function parseRows(rows: any[][]) {
   const { headerRow, idx } = h
   const lines: ParsedCostingLine[] = []
   let end = rows.length
+  let skippedEmpty = 0
   for (let i = headerRow + 1; i < rows.length; i++) {
     const r = rows[i]
     const isBlank = !r || r.every((c) => String(c ?? '').trim() === '')
-    if (isBlank) { end = i; break }
-    const itemCell = idx.item != null ? r[idx.item] : ''
-    const qtyCell = idx.qty != null ? r[idx.qty] : ''
+    // "GRAND TOTAL" footer may live in any column (merged cells collapse to col A).
+    if (r && r.some((c) => /grand\s*total/i.test(String(c ?? '')))) { end = i; break }
+    const itemCell = idx.item != null ? r?.[idx.item] : ''
+    const qtyCell = idx.qty != null ? r?.[idx.qty] : ''
     const item = String(itemCell ?? '').trim()
-    if (!item) { end = i; break }
     const qty = num(qtyCell)
+    // Tolerate up to 3 leading non-data rows after the detected header
+    // (multi-line headers like "UNIT PRICE" / "FOB-USD" split across two rows).
+    if ((isBlank || !item || qty <= 0) && lines.length === 0 && skippedEmpty < 3) {
+      skippedEmpty++
+      continue
+    }
+    if (isBlank) { end = i; break }
+    if (!item) { end = i; break }
     const cost = idx.cost != null ? num(r[idx.cost]) : 0
     const total = idx.total != null ? num(r[idx.total]) : qty * cost
     const code = idx.code != null ? String(r[idx.code] ?? '').trim() : ''
-    // Skip "GRAND TOTAL" footer rows.
-    if (/grand\s*total/i.test(item) || /grand\s*total/i.test(code)) { end = i; break }
     lines.push({
       code,
+      // HS codes are codes, not numbers — preserve as text (Excel may have stripped leading zeros).
       hsCode: idx.hsCode != null ? String(r[idx.hsCode] ?? '').trim() : undefined,
       item,
       qty,
@@ -123,16 +133,52 @@ export async function fileToBase64(file: File): Promise<string> {
   return btoa(bin)
 }
 
+/** Pick the sheet whose name best matches `prefer` (e.g. "PO"), else first sheet. */
+function pickSheet(wb: XLSX.WorkBook, prefer: RegExp): XLSX.WorkSheet {
+  const match = wb.SheetNames.find((n) => prefer.test(n))
+  return wb.Sheets[match || wb.SheetNames[0]]
+}
+
+export interface ParsedItem {
+  code: string
+  hsCode?: string
+  name: string
+}
+
+/** Parse an Item Master sheet — picks up code + description + hs code from any
+ *  sheet that has those columns (handles the "PO" tab in the supplier template). */
+export async function parseItemMasterExcel(file: File): Promise<ParsedItem[]> {
+  const wb = await readWorkbook(file)
+  const sheet = pickSheet(wb, /^po\b|item|master/i)
+  const rows = rowsFromSheet(sheet)
+  const h = detectHeader(rows)
+  if (!h) return []
+  const { headerRow, idx } = h
+  if (idx.code == null || idx.item == null) return []
+  const items: ParsedItem[] = []
+  for (let i = headerRow + 1; i < rows.length; i++) {
+    const r = rows[i]
+    if (!r) continue
+    if (r.some((c) => /grand\s*total/i.test(String(c ?? '')))) break
+    const code = String(r[idx.code] ?? '').trim()
+    const name = String(r[idx.item] ?? '').trim()
+    if (!code || !name) continue
+    const hsCode = idx.hsCode != null ? String(r[idx.hsCode] ?? '').trim() : ''
+    items.push({ code, name, hsCode: hsCode || undefined })
+  }
+  return items
+}
+
 export async function parsePoExcel(file: File): Promise<ParsedLine[]> {
   const wb = await readWorkbook(file)
-  const sheet = wb.Sheets[wb.SheetNames[0]]
+  const sheet = pickSheet(wb, /^po\b|purchase/i)
   const rows = rowsFromSheet(sheet)
   return parseRows(rows).lines.map(({ sellingPriceWoVat, sellingPriceWithVat, ...l }) => l)
 }
 
 export async function parseCostingExcel(file: File): Promise<ParsedCosting> {
   const wb = await readWorkbook(file)
-  const sheet = wb.Sheets[wb.SheetNames[0]]
+  const sheet = pickSheet(wb, /costing|landed/i)
   const rows = rowsFromSheet(sheet)
   const { lines, end } = parseRows(rows)
 

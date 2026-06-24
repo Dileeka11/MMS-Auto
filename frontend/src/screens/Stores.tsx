@@ -4,7 +4,7 @@ import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, inp
 import { Icon } from '../components/Icon'
 import { LineEditor } from '../components/doc'
 import { api } from '../api'
-import { branches as branchSeed } from '../data'
+import { branches as branchSeed, fmtDate } from '../data'
 import type { EditorLine, Item } from '../types'
 import type { Go } from './types'
 
@@ -84,7 +84,7 @@ export function TransferScreen({ go: _go }: { go: Go }) {
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.id}</Td>
             <Td c="var(--tx-0)">{r.from}</Td>
             <Td><span className="row gap-2"><Icon n="chev" s={13} c="var(--tx-3)" />{r.to}</span></Td>
-            <Td mono>{r.date}</Td><Td align="right" mono>{r.items}</Td><Td align="right" mono>{r.qty}</Td>
+            <Td mono>{fmtDate(r.date)}</Td><Td align="right" mono>{r.items}</Td><Td align="right" mono>{r.qty}</Td>
             <Td align="center"><Badge tone={r.status === 'Completed' ? 'green' : 'amber'} dot>{r.status}</Badge></Td>
           </>} />}
       </Card>
@@ -130,7 +130,7 @@ export function AdjustScreen({ go: _go }: { go: Go }) {
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.item}<span className="mono t-3" style={{ fontSize: 11, marginLeft: 8 }}>{r.code}</span></Td>
             <Td align="center"><Badge tone={r.type === 'Increase' ? 'green' : 'red'}>{r.type === 'Increase' ? '+ Increase' : '− Decrease'}</Badge></Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.qty}</Td>
-            <Td>{r.reason}</Td><Td>{r.by}</Td><Td mono>{r.date}</Td>
+            <Td>{r.reason}</Td><Td>{r.by}</Td><Td mono>{fmtDate(r.date)}</Td>
           </>} />}
       </Card>
       <Modal open={modal} onClose={() => setModal(false)} width={560} title="New Stock Adjustment"
@@ -182,7 +182,7 @@ export function BinCardScreen({ go: _go }: { go: Go }) {
           <Table cols={[{ label: 'Date' }, { label: 'Reference' }, { label: 'Type' }, { label: 'In', align: 'right' }, { label: 'Out', align: 'right' }, { label: 'Balance', align: 'right' }]}
             rows={ledger}
             render={(r) => <>
-              <Td mono>{r.date || '—'}</Td>
+              <Td mono>{fmtDate(r.date) || '—'}</Td>
               <Td mono c="var(--tx-3)">{r.ref}</Td>
               <Td><Badge tone="neutral">{r.type}</Badge></Td>
               <Td align="right" mono c="var(--tx-3)">{r.in || '—'}</Td>

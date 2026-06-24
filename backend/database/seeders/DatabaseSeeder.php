@@ -14,6 +14,7 @@ use App\Models\Quotation;
 use App\Models\Receipt;
 use App\Models\SalesRep;
 use App\Models\SalesReturn;
+use App\Models\Supplier;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -28,6 +29,7 @@ class DatabaseSeeder extends Seeder
         $customers = $this->seedCustomers();
         $reps = $this->seedReps();
         $this->seedMasters($reps);
+        $this->seedSuppliers();
         $this->seedTransactions($items, $customers);
     }
 
@@ -204,6 +206,25 @@ class DatabaseSeeder extends Seeder
         }
         foreach ([['Ruwan Fernando', 'Sales', 'Sales Manager'], ['Kasun Bandara', 'Stores', 'Store Keeper'], ['Nimal Jayasuriya', 'Finance', 'Accountant'], ['Ahmed Razik', 'Procurement', 'Buyer'], ['Sanduni Mendis', 'Admin', 'HR Officer'], ['Pradeep Silva', 'Sales', 'Sales Executive']] as $i => $e) {
             Master::create(['type' => 'employee', 'code' => 'EMP-' . (101 + $i), 'name' => $e[0], 'status' => 'Active', 'data' => ['department' => $e[1], 'role' => $e[2], 'contact' => '07' . (11000000 + $i * 7654)]]);
+        }
+    }
+
+    private function seedSuppliers()
+    {
+        $rows = [
+            ['SUP-01', 'Toyota Lanka PLC', '+94 11 277 7888', 'sales@toyota.lk', 'Colombo', 'Sri Lanka', 'VAT-101-1001', 'DA 30 Days', 'LKR', 'No. 75, Buthgamuwa Rd, Rajagiriya'],
+            ['SUP-02', 'United Motors', '+94 11 286 6611', 'info@unimo.lk', 'Colombo', 'Sri Lanka', 'VAT-101-1002', 'DA 60 Days', 'LKR', 'No. 100, Hyde Park Corner, Colombo 02'],
+            ['SUP-03', 'Diesel & Motor Eng.', '+94 11 234 0000', 'parts@dimo.lk', 'Colombo', 'Sri Lanka', 'VAT-101-1003', 'DP at sight', 'LKR', 'P.O. Box 339, Galle Road, Colombo 03'],
+            ['SUP-04', 'AutoMart Imports', '+81 3 6779 4400', 'exports@automart.jp', 'Tokyo', 'Japan', 'JP-220-998', 'LC at sight', 'JPY', '2-3-1 Marunouchi, Chiyoda-ku, Tokyo'],
+            ['SUP-05', 'Global Parts Co', '+1 313 555 0144', 'orders@globalparts.com', 'Detroit', 'United States', 'EIN-44-7788001', '100% TT in advance', 'USD', '500 Renaissance Center, Detroit, MI'],
+            ['SUP-06', 'Nippon Trading', '+81 6 6233 1100', 'info@nippon-trading.jp', 'Osaka', 'Japan', 'JP-441-227', 'DA 60 Days', 'JPY', '3-5-12 Honmachi, Chuo-ku, Osaka'],
+        ];
+        foreach ($rows as $r) {
+            Supplier::updateOrCreate(['code' => $r[0]], [
+                'name' => $r[1], 'contact' => $r[2], 'email' => $r[3], 'city' => $r[4],
+                'country' => $r[5], 'tax_no' => $r[6], 'payment_terms' => $r[7],
+                'currency' => $r[8], 'address' => $r[9], 'status' => 'Active',
+            ]);
         }
     }
 

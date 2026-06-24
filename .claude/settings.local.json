@@ -23,7 +23,21 @@
       "Bash(grep -E \"CACHE_DRIVER|CACHE_STORE\" .env)",
       "Bash(grep -l \"with\\(\" app/Http/Controllers/Api/ -r)",
       "Bash(git checkout *)",
-      "PowerShell(Set-Location 'D:\\\\My Projects'; try { Rename-Item -LiteralPath 'MMS-Auto' -NewName 'NMS-Auto' -ErrorAction Stop; \"renamed\" } catch { \"FAILED: $_\" })"
+      "PowerShell(Set-Location 'D:\\\\My Projects'; try { Rename-Item -LiteralPath 'MMS-Auto' -NewName 'NMS-Auto' -ErrorAction Stop; \"renamed\" } catch { \"FAILED: $_\" })",
+      "Bash(python -c \"import sys; sys.path.insert\\(0, 'backend/vendor'\\); import openpyxl\")",
+      "Bash(python -m pip install openpyxl xlrd pandas)",
+      "Bash(python -c ' *)",
+      "Bash(python -m pip install beautifulsoup4 lxml)",
+      "Bash(find \"d:/My Projects\" -maxdepth 5 -iname \"Format for System PO*\" 2>&1 | head -5)",
+      "Read(//d/My Projects/**)",
+      "Bash(find \"C:/Users/ASUS/Downloads\" \"C:/Users/ASUS/Desktop\" \"C:/Users/ASUS/Documents\" -maxdepth 3 -iname \"*Format*PO*\" 2>&1 | head -5)",
+      "Read(//c/Users/ASUS/Downloads/**)",
+      "Bash(node -e ' *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "PowerShell(Resolve-DnsName ftp.chalana.xyz -Type A -ErrorAction SilentlyContinue)",
+      "PowerShell($hosts = @\\('chalana.xyz', 'nms-auto.sourcecode.lk', 'sourcecode.lk', 'ftp.sourcecode.lk', 'ftp.nms-auto.sourcecode.lk'\\); foreach \\($h in $hosts\\) { try { $r = Resolve-DnsName $h -Type A -ErrorAction Stop | Select-Object -First 1; Write-Host \"OK   $h -> $\\($r.IPAddress\\)\" -ForegroundColor Green } catch { Write-Host \"FAIL $h\" -ForegroundColor Red } })"
     ]
   }
 }

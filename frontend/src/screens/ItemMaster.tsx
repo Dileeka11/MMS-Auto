@@ -1,9 +1,10 @@
 /* NMS-Auto — Item Master + Customer Master (API-backed) */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { api } from '../api'
 import { brands as brandSeed, categories as catSeed, groups as grpSeed, money } from '../data'
+import { parseItemMasterExcel } from '../excel'
 import type { Item, Customer } from '../types'
 import type { Go } from './types'
 
@@ -23,8 +24,43 @@ export function ItemMasterScreen({ go }: { go: Go }) {
   const [codeErr, setCodeErr] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const importRef = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
+
   const refresh = () => { setLoading(true); api.items.list().then((d) => setRows(d as any)).finally(() => setLoading(false)) }
   useEffect(() => { refresh() }, [])
+
+  const onImport = async (file: File | null) => {
+    if (!file) return
+    setImporting(true)
+    try {
+      const parsed = await parseItemMasterExcel(file)
+      if (!parsed.length) { setToast('No items detected in the sheet'); setTimeout(() => setToast(''), 3500); return }
+      const res: any = await (api.items as any).bulk(parsed)
+      await refresh()
+      setToast(`Imported ${parsed.length} items · ${res?.created || 0} new, ${res?.updated || 0} updated`)
+      setTimeout(() => setToast(''), 4500)
+    } catch (e: any) {
+      setToast('Import failed: ' + (e?.response?.data?.message || e?.message || 'unknown'))
+      setTimeout(() => setToast(''), 4500)
+    } finally {
+      setImporting(false)
+      if (importRef.current) importRef.current.value = ''
+    }
+  }
+
+  const clearAll = async () => {
+    if (!confirm(`Delete ALL ${rows.length} items? This cannot be undone.`)) return
+    try {
+      const res: any = await (api.items as any).clearAll()
+      await refresh()
+      setToast(`Cleared ${res?.deleted ?? 0} items`)
+      setTimeout(() => setToast(''), 3500)
+    } catch (e: any) {
+      setToast('Clear failed: ' + (e?.response?.data?.message || e?.message || 'unknown'))
+      setTimeout(() => setToast(''), 4500)
+    }
+  }
 
   const open = (r?: Item) => { setForm(r || { unit: 'Pcs', group: 'OEM', status: 'in', reorder: 12 }); setCodeErr(''); setModal(r ? 'edit' : 'add') }
   const codeTaken = (code: string) => {
@@ -33,7 +69,10 @@ export function ItemMasterScreen({ go }: { go: Go }) {
     return rows.some((x) => x.code.trim().toLowerCase() === c && x.id !== form.id)
   }
   const save = async () => {
-    const code = (form.code || '').trim()
+    let code = (form.code || '').trim()
+    if (!code && modal === 'add') {
+      try { code = await (api.items as any).nextCode() as string } catch { /* ignore */ }
+    }
     if (!code) { setCodeErr('Item code is required.'); return }
     if (codeTaken(code)) { setCodeErr(`Item code "${code}" already exists.`); return }
     setSaving(true)
@@ -53,8 +92,8 @@ export function ItemMasterScreen({ go }: { go: Go }) {
   const f = rows.filter((r) => (!q || (r.name + r.code).toLowerCase().includes(q.toLowerCase())) && (!cat || r.category === cat) && (!brand || r.brand === brand) && (!stat || r.status === stat))
 
   const exportExcel = () => {
-    const headers = ['Item Code', 'Item Name', 'Brand', 'Category', 'Group', 'Unit', 'Rack', 'Avg Cost (Rs)', 'FIFO Cost (Rs)', 'Selling Price (Rs)']
-    const data = f.map((i) => [i.code, i.name, i.brand, i.category, i.group, i.unit, i.rack, i.avgCost, i.fifoCost, i.price])
+    const headers = ['Item Code', 'HS Code', 'Item Name', 'Brand', 'Category', 'Group', 'Unit', 'Rack', 'Avg Cost (Rs)', 'FIFO Cost (Rs)', 'Selling Price (Rs)']
+    const data = f.map((i) => [i.code, i.hsCode || '', i.name, i.brand, i.category, i.group, i.unit, i.rack, i.avgCost, i.fifoCost, i.price])
     downloadXls('NMS-Auto_Item_Master_PriceList.xls', headers, data)
     setToast('Exported ' + f.length + ' items'); setTimeout(() => setToast(''), 3200)
   }
@@ -65,6 +104,12 @@ export function ItemMasterScreen({ go }: { go: Go }) {
     <div>
       <PageHead crumbs="Master Files" title="Item Master" icon="pkg" sub={`${rows.length} spare parts · ${rows.filter((i) => i.status !== 'in').length} need attention`}
         actions={<>
+          <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
+            onChange={(e) => onImport(e.target.files?.[0] || null)} />
+          <Btn variant="ghost" icon="upload" onClick={() => importRef.current?.click()} disabled={importing}>
+            {importing ? 'Importing…' : 'Import Excel'}
+          </Btn>
+          {rows.length > 0 && <Btn variant="danger" icon="trash" onClick={clearAll}>Clear All</Btn>}
           <Btn variant="solid" icon="excel" onClick={exportExcel}>Export Excel</Btn>
           <Btn variant="primary" icon="plus" onClick={() => open()}>Add Item</Btn>
         </>} />
@@ -83,12 +128,13 @@ export function ItemMasterScreen({ go }: { go: Go }) {
         </div>
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> : (
         <Table cols={[
-          { label: 'Code', w: 90 }, { label: 'Item Name' }, { label: 'Brand' }, { label: 'Category' }, { label: 'Group' },
+          { label: 'Code', w: 90 }, { label: 'HS Code', w: 110 }, { label: 'Item Name' }, { label: 'Brand' }, { label: 'Category' }, { label: 'Group' },
           { label: 'Rack', align: 'center' }, { label: 'Avg Cost', align: 'right' }, { label: 'FIFO Cost', align: 'right' },
           { label: 'Price', align: 'right' }, { label: 'Qty', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 110 }]}
           rows={f}
           render={(i) => <>
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{i.code}</Td>
+            <Td mono c="var(--tx-2)">{i.hsCode || '—'}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{i.name}</Td>
             <Td>{i.brand}</Td><Td>{i.category}</Td>
             <Td><Badge tone="neutral">{i.group}</Badge></Td>
@@ -113,15 +159,27 @@ export function ItemMasterScreen({ go }: { go: Go }) {
       <Modal open={!!modal} onClose={() => setModal(null)} width={680} title={(modal === 'add' ? 'Add ' : 'Edit ') + 'Item'} sub="Spare part master record"
         footer={<><Btn variant="plain" onClick={() => setModal(null)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Item'}</Btn></>}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-          <Field label="Item Code">
+          <Field label={<span className="row between" style={{ alignItems: 'baseline' }}>
+            <span>Item Code</span>
+            {modal === 'add' && (
+              <button type="button"
+                onClick={async () => {
+                  try { const c = await (api.items as any).nextCode() as string; if (c) { setForm((s: any) => ({ ...s, code: c })); setCodeErr('') } } catch { /* ignore */ }
+                }}
+                style={{ background: 'transparent', border: 'none', color: 'var(--ac-bright)', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                Generate
+              </button>
+            )}
+          </span>}>
             <Input value={form.code || ''}
               onChange={(e) => { setForm((s: any) => ({ ...s, code: e.target.value })); if (codeErr) setCodeErr('') }}
               onBlur={(e) => { if (codeTaken(e.target.value)) setCodeErr(`Item code "${e.target.value.trim()}" already exists.`) }}
-              placeholder="BP-2201"
+              placeholder="Type or click Generate"
               style={codeErr ? { borderColor: 'var(--bad)' } : undefined} />
             {codeErr && <span style={{ fontSize: 11.5, color: 'var(--bad)', marginTop: 4 }}>{codeErr}</span>}
           </Field>
-          <Field label="Item Name" style={{ gridColumn: 'span 2' }}><Input value={form.name || ''} onChange={(e) => setForm((s: any) => ({ ...s, name: e.target.value }))} /></Field>
+          <Field label="HS Code"><Input value={form.hsCode || ''} onChange={(e) => setForm((s: any) => ({ ...s, hsCode: e.target.value }))} placeholder="87141090" /></Field>
+          <Field label="Item Name"><Input value={form.name || ''} onChange={(e) => setForm((s: any) => ({ ...s, name: e.target.value }))} /></Field>
           <Field label="Brand"><Select value={form.brand || ''} onChange={(e) => setForm((s: any) => ({ ...s, brand: e.target.value }))}><option value="">Select…</option>{brandSeed.map((b) => <option key={b}>{b}</option>)}</Select></Field>
           <Field label="Category"><Select value={form.category || ''} onChange={(e) => setForm((s: any) => ({ ...s, category: e.target.value }))}><option value="">Select…</option>{catSeed.map((b) => <option key={b}>{b}</option>)}</Select></Field>
           <Field label="Group"><Select value={form.group || ''} onChange={(e) => setForm((s: any) => ({ ...s, group: e.target.value }))}>{grpSeed.map((b) => <option key={b}>{b}</option>)}</Select></Field>

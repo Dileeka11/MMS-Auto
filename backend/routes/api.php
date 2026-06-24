@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\SalesRepController;
 use App\Http\Controllers\Api\SalesReturnController;
 use App\Http\Controllers\Api\StockAdjustmentController;
 use App\Http\Controllers\Api\StockTransferController;
+use App\Http\Controllers\Api\SupplierController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -36,6 +37,11 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::get('dashboard', [DashboardController::class, 'index']);
 
 // Master files (Item / Customer / Sales Rep are first-class tables)
+Route::get('items/next-code', function () {
+    return response()->json(['code' => app(\App\Http\Controllers\Api\ItemController::class)->nextCode()]);
+});
+Route::post('items/bulk', [ItemController::class, 'bulk']);
+Route::delete('items', [ItemController::class, 'clearAll']);
 Route::apiResource('items', ItemController::class);
 Route::apiResource('customers', CustomerController::class);
 Route::apiResource('sales-reps', SalesRepController::class);
@@ -47,6 +53,7 @@ Route::put('masters/{type}/{master}', [MasterController::class, 'update']);
 Route::delete('masters/{type}/{master}', [MasterController::class, 'destroy']);
 
 // Procurement
+Route::apiResource('suppliers', SupplierController::class);
 Route::apiResource('purchase-orders', PurchaseOrderController::class);
 Route::apiResource('shipments', ShipmentController::class)->only(['index', 'show', 'store', 'destroy']);
 Route::apiResource('grns', GrnController::class)->only(['index', 'store', 'destroy']);

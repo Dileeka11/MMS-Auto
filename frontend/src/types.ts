@@ -5,6 +5,7 @@ export type Stock = 'in' | 'low' | 'out'
 export interface Item {
   id: string
   code: string
+  hsCode?: string
   name: string
   category: string
   brand: string
@@ -18,6 +19,22 @@ export interface Item {
   stockByBranch: number[]
   rack: string
   status: Stock
+}
+
+export interface Supplier {
+  id: number | string
+  code?: string
+  name: string
+  contact?: string
+  email?: string
+  city?: string
+  country?: string
+  taxNo?: string
+  paymentTerms?: string
+  currency?: string
+  address?: string
+  notes?: string
+  status?: string
 }
 
 export interface Customer {
@@ -50,7 +67,7 @@ export interface POLine {
 export interface PurchaseOrder {
   id: string; code?: string; supplier: string; supplierContact?: string;
   date: string; lines: POLine[]; total: number; status: string;
-  piNumber?: string; piDate?: string; paymentTerms?: string; incoTerms?: string;
+  piNumber?: string; piDate?: string; orderRequiredMonth?: string; paymentTerms?: string; incoTerms?: string;
   currency?: string; notes?: string; shipments?: Shipment[];
 }
 export interface ShipmentLine {

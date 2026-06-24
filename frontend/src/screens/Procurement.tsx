@@ -6,7 +6,7 @@
      TrackingScreen  : balance + shipment status + financial impact dashboard */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Card, PageHead, Btn, Badge, Field, Input, Select, Modal,
+  Card, PageHead, Btn, Badge, Field, Input, DateInput, Select, Modal,
   Table, Td, statusTone, inputStyle,
 } from '../components/ui'
 import { Icon } from '../components/Icon'
@@ -15,11 +15,12 @@ import DB from '../data'
 import { api } from '../api'
 import { parsePoExcel, parseCostingExcel, fileToBase64, type ParsedLine, type ParsedCostingLine } from '../excel'
 import { computeCosting, type ComplexCharge } from '../lib/costing'
-import type { PurchaseOrder, Shipment, ShipmentLine, GRN, TrackingRow } from '../types'
+import type { PurchaseOrder, Shipment, ShipmentLine, GRN, TrackingRow, Supplier } from '../types'
 import type { Go } from './types'
 
 const D = DB
 const fmtMoney = (n: number) => D.money(n || 0)
+const fmtDate = (v: any) => D.fmtDate(v)
 const today = () => new Date().toISOString().slice(0, 10)
 
 /* ============================================================== *
@@ -28,16 +29,17 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 interface POForm {
   supplier: string; supplierContact: string; date: string;
-  piNumber: string; piDate: string;
+  piNumber: string; piDate: string; orderRequiredMonth: string;
   paymentTerms: string; incoTerms: string; currency: string; notes: string;
 }
 const blankPO = (): POForm => ({
   supplier: '', supplierContact: '', date: today(),
-  piNumber: '', piDate: '', paymentTerms: '30 Days', incoTerms: 'FOB',
+  piNumber: '', piDate: '', orderRequiredMonth: '',
+  paymentTerms: 'DA 30 Days', incoTerms: 'FOB',
   currency: 'USD', notes: '',
 })
 
-const PAYMENT_TERMS = ['Advance', 'CAD', 'LC at sight', 'LC 30 Days', '30 Days', '45 Days', '60 Days', '90 Days']
+const PAYMENT_TERMS = ['100% TT in advance', 'DP at sight', 'DA 30 Days', 'DA 60 Days', 'LC at sight']
 const INCO_TERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'CFR', 'DAP', 'DDP']
 const CURRENCIES = ['USD', 'LKR', 'EUR', 'JPY', 'GBP', 'CNY', 'INR']
 
@@ -52,6 +54,10 @@ export function POScreen({ go }: { go: Go }) {
   const [parsing, setParsing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState('')
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [supplierPick, setSupplierPick] = useState(false)
+  const [itemIndex, setItemIndex] = useState<Record<string, { name: string; hsCode?: string }>>({})
+  const [matchInfo, setMatchInfo] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const reload = async () => {
@@ -60,15 +66,52 @@ export function POScreen({ go }: { go: Go }) {
     catch { /* offline */ }
     finally { setLoading(false) }
   }
-  useEffect(() => { reload() }, [])
+  const loadSuppliers = async () => {
+    try { setSuppliers(await (api as any).suppliers.list() as Supplier[]) } catch { /* offline */ }
+  }
+  const loadItemIndex = async () => {
+    try {
+      const items = await api.items.list() as any[]
+      const idx: Record<string, { name: string; hsCode?: string }> = {}
+      items.forEach((it) => { if (it.code) idx[String(it.code).trim().toLowerCase()] = { name: it.name, hsCode: it.hsCode } })
+      setItemIndex(idx)
+    } catch { /* offline */ }
+  }
+  useEffect(() => { reload(); loadSuppliers(); loadItemIndex() }, [])
+
+  const pickSupplier = (s: Supplier) => {
+    setForm((f) => ({
+      ...f,
+      supplier: s.name,
+      supplierContact: s.contact || f.supplierContact,
+      paymentTerms: s.paymentTerms || f.paymentTerms,
+      currency: s.currency || f.currency,
+    }))
+    setSupplierPick(false)
+  }
 
   const onFile = async (f: File | null) => {
     if (!f) return
-    setErr(''); setParsing(true); setFileName(f.name)
+    setErr(''); setMatchInfo(''); setParsing(true); setFileName(f.name)
     try {
       const parsed = await parsePoExcel(f)
-      if (!parsed.length) setErr('No item rows detected. Expecting columns like PART NO / DESCRIPTION / HS CODE / ORDER QUANTITY / UNIT PRICE FOB-USD.')
-      setLines(parsed)
+      if (!parsed.length) { setErr('No item rows detected. Expecting columns like PART NO / DESCRIPTION / HS CODE / ORDER QUANTITY / UNIT PRICE FOB-USD.'); setLines([]); return }
+      // Enrich from Item Master: description + HS code come from the master,
+      // Excel keeps qty + unit price + total. Items missing from the master are
+      // still loaded but flagged.
+      let matched = 0
+      const missing: string[] = []
+      const enriched = parsed.map((l) => {
+        const key = (l.code || '').trim().toLowerCase()
+        const m = key && itemIndex[key]
+        if (m) { matched++; return { ...l, item: m.name, hsCode: m.hsCode || l.hsCode } }
+        if (l.code) missing.push(l.code)
+        return l
+      })
+      setLines(enriched)
+      const total = parsed.length
+      const missCount = missing.length
+      setMatchInfo(`${matched} / ${total} matched from Item Master` + (missCount ? ` · ${missCount} not in master (using Excel values)` : ''))
     } catch (e: any) { setErr(e?.message || 'Could not read Excel') }
     finally { setParsing(false) }
   }
@@ -124,7 +167,7 @@ export function POScreen({ go }: { go: Go }) {
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.code || r.id}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.supplier}</Td>
             <Td mono>{r.piNumber || '—'}</Td>
-            <Td mono>{r.date}</Td>
+            <Td mono>{fmtDate(r.date)}</Td>
             <Td align="right" mono>{r.lines?.length || 0}</Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{fmtMoney(r.total)}</Td>
             <Td align="center"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></Td>
@@ -147,13 +190,20 @@ export function POScreen({ go }: { go: Go }) {
         </>}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 18 }}>
           <Field label="Supplier *">
-            <SearchSelect value={form.supplier} onChange={(v) => setForm({ ...form, supplier: v })}
-              options={D.suppliers} placeholder="Search supplier…" allowCustom />
+            <button type="button" onClick={() => setSupplierPick(true)}
+              style={{ ...inputStyle, textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: form.supplier ? 'var(--tx-0)' : 'var(--tx-2)' }}>
+              <span>{form.supplier || 'Select supplier…'}</span>
+              <Icon n="chevd" s={15} />
+            </button>
           </Field>
           <Field label="Supplier Contact"><Input value={form.supplierContact} onChange={(e) => setForm({ ...form, supplierContact: e.target.value })} placeholder="Email / phone" /></Field>
-          <Field label="PO Date"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+          <Field label="PO Date"><DateInput value={form.date} onChange={(v) => setForm({ ...form, date: v })} /></Field>
           <Field label="PI Number"><Input value={form.piNumber} onChange={(e) => setForm({ ...form, piNumber: e.target.value })} placeholder="e.g. PI-2026-118" /></Field>
-          <Field label="PI Date"><Input type="date" value={form.piDate} onChange={(e) => setForm({ ...form, piDate: e.target.value })} /></Field>
+          <Field label="PI Date"><DateInput value={form.piDate} onChange={(v) => setForm({ ...form, piDate: v })} /></Field>
+          <Field label="Order Required Month">
+            <Input type="month" value={form.orderRequiredMonth}
+              onChange={(e) => setForm({ ...form, orderRequiredMonth: e.target.value })} />
+          </Field>
           <Field label="Currency">
             <Select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })}>
               {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
@@ -177,6 +227,11 @@ export function POScreen({ go }: { go: Go }) {
           hint="Drop .xlsx with: PART NO · DESCRIPTION · HS CODE · ORDER QUANTITY · UNIT PRICE FOB-USD · TOTAL AMOUNT USD-FOB" />
 
         {err && <ErrBox text={err} />}
+        {matchInfo && !err && (
+          <div className="row gap-2" style={{ marginTop: 10, padding: '8px 12px', background: 'var(--ac-dim)', color: 'var(--ac-bright)', border: '1px solid var(--ac-line)', borderRadius: 'var(--r-s)', fontSize: 12.5 }}>
+            <Icon n="check" s={15} />{matchInfo}
+          </div>
+        )}
 
         {lines.length > 0 && (
           <div style={{ marginTop: 14, border: '1px solid var(--line)', borderRadius: 'var(--r-m)', overflow: 'hidden' }}>
@@ -212,7 +267,7 @@ export function POScreen({ go }: { go: Go }) {
 
       <Modal open={!!view} onClose={() => setView(null)} width={820}
         title={view?.code || view?.id}
-        sub={view && `${view.supplier} · ${view.date}${view.piNumber ? ' · PI ' + view.piNumber : ''}`}
+        sub={view && `${view.supplier} · ${fmtDate(view.date)}${view.piNumber ? ' · PI ' + view.piNumber : ''}`}
         footer={<><Badge tone={statusTone(view?.status || '')}>{view?.status}</Badge><Btn variant="primary" icon="print">Print PO</Btn></>}>
         {view && (
           <div>
@@ -220,7 +275,8 @@ export function POScreen({ go }: { go: Go }) {
               <KV k="Payment" v={view.paymentTerms} />
               <KV k="Inco" v={view.incoTerms} />
               <KV k="Currency" v={view.currency} />
-              <KV k="PI Date" v={view.piDate} />
+              <KV k="PI Date" v={fmtDate(view.piDate)} />
+              <KV k="Required Month" v={view.orderRequiredMonth} />
               <KV k="Contact" v={view.supplierContact} />
               <KV k="Notes" v={view.notes} />
             </div>
@@ -246,6 +302,14 @@ export function POScreen({ go }: { go: Go }) {
           </div>
         )}
       </Modal>
+
+      <SupplierPicker
+        open={supplierPick}
+        onClose={() => setSupplierPick(false)}
+        suppliers={suppliers}
+        onPick={pickSupplier}
+        onCreated={(s) => { setSuppliers((arr) => [...arr, s].sort((a, b) => a.name.localeCompare(b.name))); pickSupplier(s) }}
+      />
     </div>
   )
 }
@@ -431,7 +495,7 @@ export function CostingScreen({ go }: { go: Go }) {
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{s.code}</Td>
             <Td mono>{s.poCode}</Td>
             <Td mono>{s.invoiceNo || '—'}</Td>
-            <Td mono>{s.date}</Td>
+            <Td mono>{fmtDate(s.date)}</Td>
             <Td align="center"><Badge>{[s.shipmentType, s.shipmentVolume].filter(Boolean).join(' · ') || '—'}</Badge></Td>
             <Td align="right" mono>{fmtMoney(s.itemsTotalLkr || s.itemsTotal)}</Td>
             <Td align="right" mono>{fmtMoney(s.chargesTotalLkr || s.extrasTotal)}</Td>
@@ -473,20 +537,20 @@ export function CostingScreen({ go }: { go: Go }) {
                 <Field label="Invoice No"><Input value={form.invoiceNo} onChange={(e) => setForm({ ...form, invoiceNo: e.target.value })} /></Field>
                 <Field label="BL Number"><Input value={form.blNumber} onChange={(e) => setForm({ ...form, blNumber: e.target.value })} /></Field>
                 <Field label="No. of Packages"><Input type="number" value={form.noOfPackages} onChange={(e) => setForm({ ...form, noOfPackages: e.target.value })} /></Field>
-                <Field label="Shipment Date"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+                <Field label="Shipment Date"><DateInput value={form.date} onChange={(v) => setForm({ ...form, date: v })} /></Field>
                 <Field label="Gross Weight (kg)"><Input type="number" value={form.grossWeight} onChange={(e) => setForm({ ...form, grossWeight: e.target.value })} /></Field>
                 <Field label="Net Weight (kg)"><Input type="number" value={form.netWeight} onChange={(e) => setForm({ ...form, netWeight: e.target.value })} /></Field>
                 <Field label="Shipment Type"><Select value={form.shipmentType} onChange={(e) => setForm({ ...form, shipmentType: e.target.value })}>{SHIPMENT_TYPES.map((t) => <option key={t}>{t}</option>)}</Select></Field>
                 <Field label="Shipment Volume"><Select value={form.shipmentVolume} onChange={(e) => setForm({ ...form, shipmentVolume: e.target.value })}>{SHIPMENT_VOLUMES.map((t) => <option key={t}>{t}</option>)}</Select></Field>
-                <Field label="ETD"><Input type="date" value={form.etd} onChange={(e) => setForm({ ...form, etd: e.target.value })} /></Field>
-                <Field label="ETA"><Input type="date" value={form.etaDate} onChange={(e) => setForm({ ...form, etaDate: e.target.value })} /></Field>
+                <Field label="ETD"><DateInput value={form.etd} onChange={(v) => setForm({ ...form, etd: v })} /></Field>
+                <Field label="ETA"><DateInput value={form.etaDate} onChange={(v) => setForm({ ...form, etaDate: v })} /></Field>
               </div>
             </Section>
 
             <Section title="Tax & Custom">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
                 <Field label="Cusdec No"><Input value={form.cusdecNo} onChange={(e) => setForm({ ...form, cusdecNo: e.target.value })} /></Field>
-                <Field label="Cusdec Date"><Input type="date" value={form.cusdecDate} onChange={(e) => setForm({ ...form, cusdecDate: e.target.value })} /></Field>
+                <Field label="Cusdec Date"><DateInput value={form.cusdecDate} onChange={(v) => setForm({ ...form, cusdecDate: v })} /></Field>
                 <Field label="Banking Rate"><Input type="number" value={form.bankingRate} onChange={(e) => setForm({ ...form, bankingRate: e.target.value })} /></Field>
                 <Field label="Custom Rate"><Input type="number" value={form.customRate} onChange={(e) => setForm({ ...form, customRate: e.target.value })} /></Field>
                 <Field label="Settlement Rate"><Input type="number" value={form.settlementRate} onChange={(e) => setForm({ ...form, settlementRate: e.target.value })} /></Field>
@@ -498,7 +562,7 @@ export function CostingScreen({ go }: { go: Go }) {
                 <Field label="CID (LKR)"><Input type="number" value={form.cidAmount} onChange={(e) => setForm({ ...form, cidAmount: e.target.value })} /></Field>
                 <Field label="PAL (LKR)"><Input type="number" value={form.palAmount} onChange={(e) => setForm({ ...form, palAmount: e.target.value })} /></Field>
                 <Field label="DUTY (LKR)"><Input type="number" value={form.dutyAmount} onChange={(e) => setForm({ ...form, dutyAmount: e.target.value })} /></Field>
-                <Field label="DUTY Date"><Input type="date" value={form.dutyDate} onChange={(e) => setForm({ ...form, dutyDate: e.target.value })} /></Field>
+                <Field label="DUTY Date"><DateInput value={form.dutyDate} onChange={(v) => setForm({ ...form, dutyDate: v })} /></Field>
                 <Field label="CESS (LKR)"><Input type="number" value={form.cessAmount} onChange={(e) => setForm({ ...form, cessAmount: e.target.value })} /></Field>
                 <Field label="VAT (LKR)"><Input type="number" value={form.vatAmount} onChange={(e) => setForm({ ...form, vatAmount: e.target.value })} /></Field>
                 <Field label="SSCL (LKR)"><Input type="number" value={form.ssclAmount} onChange={(e) => setForm({ ...form, ssclAmount: e.target.value })} /></Field>
@@ -542,7 +606,7 @@ function POPicker({ pos, onPick }: { pos: PurchaseOrder[]; onPick: (p: PurchaseO
             <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--ac-dim)', display: 'grid', placeItems: 'center', color: 'var(--ac-bright)' }}><Icon n="cart" s={17} /></div>
             <div>
               <div className="row gap-2"><span className="mono" style={{ fontWeight: 600, color: 'var(--ac-bright)' }}>{p.code || p.id}</span><Badge tone={statusTone(p.status)}>{p.status}</Badge></div>
-              <div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{p.supplier} · {p.lines?.length || 0} items · {p.date}{p.piNumber ? ' · PI ' + p.piNumber : ''}</div>
+              <div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{p.supplier} · {p.lines?.length || 0} items · {fmtDate(p.date)}{p.piNumber ? ' · PI ' + p.piNumber : ''}</div>
             </div>
           </div>
           <div className="row gap-3"><span className="num" style={{ fontWeight: 600 }}>{fmtMoney(p.total)}</span><Icon n="chev" s={16} c="var(--tx-3)" /></div>
@@ -756,7 +820,7 @@ export function GRNScreen({ go: _go }: { go: Go }) {
             <Td mono>{r.po}</Td>
             <Td mono>{r.shipmentCode || '—'}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.supplier}</Td>
-            <Td mono>{r.date}</Td>
+            <Td mono>{fmtDate(r.date)}</Td>
             <Td align="right" mono>{r.items}</Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{fmtMoney(r.total)}</Td>
             <Td align="center"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></Td>
@@ -804,7 +868,7 @@ export function GRNScreen({ go: _go }: { go: Go }) {
                   <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--ac-dim)', display: 'grid', placeItems: 'center', color: 'var(--ac-bright)' }}><Icon n="box" s={17} /></div>
                   <div>
                     <div className="row gap-2"><span className="mono" style={{ fontWeight: 600, color: 'var(--ac-bright)' }}>{s.code}</span><Badge tone={statusTone(s.status)}>{s.status}</Badge></div>
-                    <div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{s.date} · {[s.invoiceNo, s.blNumber].filter(Boolean).join(' · ') || 'No invoice/BL info'} · Landed {fmtMoney(s.landedTotal)}</div>
+                    <div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{fmtDate(s.date)} · {[s.invoiceNo, s.blNumber].filter(Boolean).join(' · ') || 'No invoice/BL info'} · Landed {fmtMoney(s.landedTotal)}</div>
                   </div>
                 </div>
                 <Icon n="chev" s={16} c="var(--tx-3)" />
@@ -919,7 +983,7 @@ export function TrackingScreen({ go: _go }: { go: Go }) {
                     <span className="mono" style={{ fontWeight: 700, color: 'var(--ac-bright)' }}>{r.poCode}</span>
                     <Badge tone={statusTone(r.status)} dot>{r.status}</Badge>
                   </div>
-                  <div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{r.supplier}{r.piNumber ? ` · PI ${r.piNumber}` : ''} · {r.date}</div>
+                  <div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{r.supplier}{r.piNumber ? ` · PI ${r.piNumber}` : ''} · {fmtDate(r.date)}</div>
                 </div>
               </div>
               <div className="row gap-4" style={{ fontFamily: 'JetBrains Mono', fontSize: 12.5 }}>
@@ -1097,5 +1161,120 @@ function ExcelDrop({ onPick, fileName, parsing, fileRef, hint }: {
       <div style={{ marginTop: 8, fontSize: 13.5, fontWeight: 600 }}>{parsing ? 'Reading…' : fileName || 'Click or drop Excel here'}</div>
       <div className="t-2" style={{ fontSize: 11.5, marginTop: 4 }}>{hint}</div>
     </div>
+  )
+}
+
+/* ---------- Supplier Picker Modal ---------- */
+
+interface SupplierForm {
+  name: string; contact: string; email: string;
+}
+const blankSupplier = (): SupplierForm => ({ name: '', contact: '', email: '' })
+
+function SupplierPicker({ open, onClose, suppliers, onPick, onCreated }: {
+  open: boolean
+  onClose: () => void
+  suppliers: Supplier[]
+  onPick: (s: Supplier) => void
+  onCreated: (s: Supplier) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [mode, setMode] = useState<'list' | 'add'>('list')
+  const [form, setForm] = useState<SupplierForm>(blankSupplier())
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (open) { setMode('list'); setQuery(''); setForm(blankSupplier()); setErr('') }
+  }, [open])
+
+  const startQuickAdd = (prefillName?: string) => {
+    setForm({ ...blankSupplier(), name: prefillName || '' })
+    setErr('')
+    setMode('add')
+  }
+
+  const q = query.trim().toLowerCase()
+  const filtered = q
+    ? suppliers.filter((s) =>
+      [s.name, s.code, s.city, s.country, s.contact, s.email].some((v) => (v || '').toLowerCase().includes(q)))
+    : suppliers
+
+  const submit = async () => {
+    if (!form.name.trim()) { setErr('Name is required'); return }
+    setSaving(true); setErr('')
+    try {
+      const created = await (api as any).suppliers.create(form) as Supplier
+      onCreated(created)
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || 'Could not save supplier')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} width={760}
+      title={mode === 'list' ? 'Select Supplier' : 'Quick Add Supplier'}
+      sub={mode === 'list' ? 'Search and pick a supplier — or add a new one' : 'Just the basics — manage full details in Supplier Master'}
+      footer={mode === 'list'
+        ? <>
+          <Btn variant="plain" onClick={onClose}>Cancel</Btn>
+          <Btn variant="primary" icon="plus" onClick={() => startQuickAdd(query.trim())}>New Supplier</Btn>
+        </>
+        : <>
+          <Btn variant="plain" onClick={() => setMode('list')}>Back</Btn>
+          <Btn variant="primary" icon="check" onClick={submit} disabled={saving || !form.name.trim()}>
+            {saving ? 'Saving…' : 'Save Supplier'}
+          </Btn>
+        </>}>
+      {mode === 'list' && (
+        <div>
+          <div style={{ position: 'relative', marginBottom: 12 }}>
+            <Input autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name, code, city, contact…" />
+          </div>
+          <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-m)', maxHeight: 380, overflow: 'auto' }}>
+            {filtered.length === 0 && (
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 13 }}>
+                <div className="t-3" style={{ marginBottom: 10 }}>No suppliers match.</div>
+                <Btn variant="primary" icon="plus" onClick={() => startQuickAdd(query.trim())}>
+                  {query.trim() ? <>Quick add <b style={{ marginLeft: 4 }}>{query.trim()}</b></> : 'New Supplier'}
+                </Btn>
+              </div>
+            )}
+            {filtered.map((s) => (
+              <button key={s.id} type="button" onClick={() => onPick(s)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '12px 14px', cursor: 'pointer', background: 'transparent',
+                  color: 'var(--tx-0)', border: 'none', borderBottom: '1px solid var(--line-soft)',
+                }}>
+                <div className="row between" style={{ alignItems: 'baseline' }}>
+                  <div style={{ fontWeight: 600 }}>{s.name}</div>
+                  <div className="t-3 mono" style={{ fontSize: 11 }}>{s.code || ''}</div>
+                </div>
+                <div className="t-2" style={{ fontSize: 12, marginTop: 3 }}>
+                  {[s.city, s.country].filter(Boolean).join(', ') || '—'}
+                  {s.contact ? ` · ${s.contact}` : ''}
+                  {s.email ? ` · ${s.email}` : ''}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {mode === 'add' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Name *" style={{ gridColumn: '1 / -1' }}>
+            <Input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Supplier company name" />
+          </Field>
+          <Field label="Contact"><Input value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} placeholder="Phone" /></Field>
+          <Field label="Email"><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="sales@supplier.com" /></Field>
+          <div style={{ gridColumn: '1 / -1', fontSize: 12, color: 'var(--tx-3)' }}>
+            Code is generated automatically. Add address, tax, payment terms, etc. from the <b>Supplier Master</b> page.
+          </div>
+          {err && <div style={{ gridColumn: '1 / -1' }}><ErrBox text={err} /></div>}
+        </div>
+      )}
+    </Modal>
   )
 }

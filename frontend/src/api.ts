@@ -74,10 +74,16 @@ export const company = {
 }
 
 export const api = {
-  items: resource('items'),
+  items: {
+    ...resource('items'),
+    bulk: (items: any[]) => http.post('/items/bulk', { items: items.map((i) => snakeize(i)) }).then((r) => camelize(r.data)),
+    clearAll: () => http.delete('/items').then((r) => r.data),
+    nextCode: () => http.get('/items/next-code').then((r) => (r.data?.code as string) || ''),
+  },
   customers: resource('customers'),
   reps: resource('sales-reps'),
   users: resource('users'),
+  suppliers: resource('suppliers'),
   purchaseOrders: resource('purchase-orders'),
   shipments: {
     ...resource('shipments'),

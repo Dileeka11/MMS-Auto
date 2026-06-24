@@ -1,4 +1,5 @@
 /* NMS-Auto — shared UI kit, ported from ui.jsx */
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
@@ -104,6 +105,78 @@ export const inputStyle: CSSProperties = {
 export function Input(p: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...p} style={{ ...inputStyle, ...(p.style || {}) }} />
 }
+/** DateInput — accepts/emits ISO `yyyy-mm-dd`, displays dd-mm-yyyy, opens native calendar. */
+const isoToDmy = (iso: string) => {
+  const m = (iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/)
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
+}
+const dmyToIso = (dmy: string): string | null => {
+  const s = (dmy || '').trim().replace(/[./]/g, '-')
+  const m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2}|\d{4})$/)
+  if (!m) return null
+  let [, d, mo, y] = m
+  if (y.length === 2) y = (Number(y) >= 70 ? '19' : '20') + y
+  const dd = d.padStart(2, '0'); const mm = mo.padStart(2, '0')
+  const dt = new Date(`${y}-${mm}-${dd}`)
+  if (isNaN(dt.getTime())) return null
+  return `${y}-${mm}-${dd}`
+}
+export function DateInput({ value, onChange, placeholder = 'dd-mm-yyyy', style, disabled }: {
+  value?: string
+  onChange?: (iso: string) => void
+  placeholder?: string
+  style?: CSSProperties
+  disabled?: boolean
+}) {
+  const [text, setText] = useState(isoToDmy(value || ''))
+  const hidden = useRef<HTMLInputElement>(null)
+  useEffect(() => { setText(isoToDmy(value || '')) }, [value])
+
+  const commit = (raw: string) => {
+    if (!raw.trim()) { onChange?.(''); return }
+    const iso = dmyToIso(raw)
+    if (iso) onChange?.(iso)
+    else setText(isoToDmy(value || ''))
+  }
+  const openPicker = () => {
+    const el = hidden.current; if (!el) return
+    // showPicker is supported on modern Chromium/Firefox; fall back to focus
+    if (typeof (el as any).showPicker === 'function') (el as any).showPicker()
+    else el.focus()
+  }
+  return (
+    <div style={{ position: 'relative', ...style }}>
+      <input
+        type="text"
+        value={text}
+        disabled={disabled}
+        placeholder={placeholder}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit((e.target as HTMLInputElement).value) } }}
+        style={{ ...inputStyle, paddingRight: 34 }}
+      />
+      <button type="button" onClick={openPicker} disabled={disabled} title="Pick date"
+        style={{
+          position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+          background: 'transparent', border: 'none', cursor: 'pointer',
+          color: 'var(--tx-2)', padding: 4, display: 'flex', alignItems: 'center',
+        }}>
+        <Icon n="calendar" s={16} />
+      </button>
+      <input
+        ref={hidden}
+        type="date"
+        value={value || ''}
+        onChange={(e) => { onChange?.(e.target.value); setText(isoToDmy(e.target.value)) }}
+        tabIndex={-1}
+        aria-hidden
+        style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+      />
+    </div>
+  )
+}
+
 export function Select({ children, ...p }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <div style={{ position: 'relative' }}>

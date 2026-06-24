@@ -1,10 +1,10 @@
 /* NMS-Auto — Sales Return + Payment Receipt + Expense (API-backed) */
 import { useEffect, useState } from 'react'
-import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, statusTone, inputStyle } from '../components/ui'
+import { Card, PageHead, Btn, Badge, Field, Input, DateInput, Select, Modal, Table, Td, statusTone, inputStyle } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { StatRow } from '../components/doc'
 import { api } from '../api'
-import { money, moneyK, branches as branchSeed } from '../data'
+import { money, moneyK, fmtDate, branches as branchSeed } from '../data'
 import type { SalesReturn, Customer } from '../types'
 import type { Go } from './types'
 
@@ -97,7 +97,7 @@ export function ReturnScreen({ go: _go }: { go: Go }) {
         footer={view?.status === 'Pending Approval' ? <><Btn variant="danger" icon="x" onClick={() => { decide(view!.id, 'reject'); setView(null) }}>Reject</Btn><Btn variant="ok" icon="check" onClick={() => { decide(view!.id, 'approve'); setView(null) }}>Approve &amp; Restock</Btn></> : <Badge tone={statusTone(view?.status || '')}>{view?.status}</Badge>}>
         {view && (
           <div className="col gap-3">
-            {([['Customer', view.customer], ['Reason', view.reason], ['Items', view.items], ['Amount', money(view.amount)], ['Raised by', view.raisedBy], ['Date', view.date]] as [string, any][]).map(([k, v]) => (
+            {([['Customer', view.customer], ['Reason', view.reason], ['Items', view.items], ['Amount', money(view.amount)], ['Raised by', view.raisedBy], ['Date', fmtDate(view.date)]] as [string, any][]).map(([k, v]) => (
               <div key={k} className="row between" style={{ paddingBottom: 9, borderBottom: '1px solid var(--line-soft)' }}>
                 <span className="t-2" style={{ fontSize: 12.5 }}>{k}</span><span style={{ fontSize: 13, fontWeight: 500 }}>{v}</span>
               </div>
@@ -179,7 +179,7 @@ export function ReceiptScreen({ go: _go }: { go: Go }) {
                   <tbody>{synth.map((inv: any) => (
                     <tr key={inv.id}>
                       <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--line-soft)' }} className="mono">{inv.id}</td>
-                      <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--line-soft)' }} className="mono t-2">{inv.date}</td>
+                      <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--line-soft)' }} className="mono t-2">{fmtDate(inv.date)}</td>
                       <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--line-soft)', textAlign: 'right' }} className="mono">{money(inv.due)}</td>
                       <td style={{ padding: '6px 12px', borderBottom: '1px solid var(--line-soft)', textAlign: 'right' }}>
                         <input type="number" value={alloc[inv.id] || ''} max={inv.due} placeholder="0" onChange={(e) => setAlloc((s) => ({ ...s, [inv.id]: Math.min(inv.due, +e.target.value) }))} style={{ ...inputStyle, width: 110, padding: '5px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono' }} />
@@ -238,7 +238,7 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
           render={(r) => <>
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.id}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.type}</Td>
-            <Td>{r.branch}</Td><Td mono>{r.date}</Td><Td c="var(--tx-2)">{r.note || '—'}</Td>
+            <Td>{r.branch}</Td><Td mono>{fmtDate(r.date)}</Td><Td c="var(--tx-2)">{r.note || '—'}</Td>
             <Td align="right" mono c="var(--bad)" style={{ fontWeight: 600 }}>{money(r.amount || 0)}</Td>
             <Td align="right"><button className="mms-act danger" onClick={() => remove(r.id)}><Icon n="trash" s={15} /></button></Td>
           </>} />}
@@ -249,7 +249,7 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
           <Field label="Expense Type"><Select value={form.type || ''} onChange={(e) => setForm((s: any) => ({ ...s, type: e.target.value }))}><option value="">Select…</option>{['Fuel', 'Salary', 'Rent', 'Utilities', 'Transport', 'Maintenance', 'Misc'].map((t) => <option key={t}>{t}</option>)}</Select></Field>
           <Field label="Branch"><Select value={form.branch || ''} onChange={(e) => setForm((s: any) => ({ ...s, branch: e.target.value }))}>{branchSeed.map((b) => <option key={b}>{b}</option>)}</Select></Field>
           <Field label="Amount (Rs)"><Input type="number" value={form.amount || ''} onChange={(e) => setForm((s: any) => ({ ...s, amount: e.target.value }))} /></Field>
-          <Field label="Date"><Input type="date" value={form.date || ''} onChange={(e) => setForm((s: any) => ({ ...s, date: e.target.value }))} /></Field>
+          <Field label="Date"><DateInput value={form.date || ''} onChange={(v) => setForm((s: any) => ({ ...s, date: v }))} /></Field>
           <Field label="Note" full><Input value={form.note || ''} onChange={(e) => setForm((s: any) => ({ ...s, note: e.target.value }))} placeholder="Optional" /></Field>
         </div>
       </Modal>

@@ -10,6 +10,22 @@ import type {
 
 export const money = (n: number) =>
   'Rs ' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })
+
+/** Display dates as dd-mm-yy. Accepts ISO `yyyy-mm-dd`, Date, or any parseable date.
+ *  Returns the original input untouched when it can't be parsed. */
+export const fmtDate = (v: string | Date | null | undefined): string => {
+  if (!v) return ''
+  if (typeof v === 'string') {
+    const iso = v.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (iso) return `${iso[3]}-${iso[2]}-${iso[1].slice(2)}`
+  }
+  const d = v instanceof Date ? v : new Date(v)
+  if (isNaN(d.getTime())) return String(v)
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yy = String(d.getFullYear()).slice(-2)
+  return `${dd}-${mm}-${yy}`
+}
 export const moneyK = (n: number) => {
   if (Math.abs(n) >= 1e6) return 'Rs ' + (n / 1e6).toFixed(2) + 'M'
   if (Math.abs(n) >= 1e3) return 'Rs ' + (n / 1e3).toFixed(1) + 'K'
@@ -194,7 +210,7 @@ export const company: Company = {
 }
 
 export const DB = {
-  money, moneyK, brands, categories, groups, branches, suppliers,
+  money, moneyK, fmtDate, brands, categories, groups, branches, suppliers,
   items, customers, reps,
   purchaseOrders, grns, quotations, invoices, returns, receipts, expenses,
   monthlySales, categoryShare, dailyTrend, company,

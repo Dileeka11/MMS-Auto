@@ -14,6 +14,7 @@ export const NAV: NavNode[] = [
   { section: 'Master Files', icon: 'folder', items: [
     { id: 'm/item', label: 'Item Master', icon: 'pkg', star: true },
     { id: 'm/customer', label: 'Customer Master', icon: 'users', star: true },
+    { id: 'm/supplier', label: 'Supplier Master', icon: 'truck', star: true },
     { id: 'm/salesExec', label: 'Sales Executive', icon: 'target' },
     { id: 'm/vehicleBrand', label: 'Vehicle Brand', icon: 'car' },
     { id: 'm/vehicleModel', label: 'Vehicle Model', icon: 'car' },

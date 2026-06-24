@@ -1,6 +1,6 @@
 /* NMS-Auto — Reports (API-backed) */
 import { useEffect, useState } from 'react'
-import { Card, PageHead, Btn, Badge, Field, Input, Select, Table, Td } from '../components/ui'
+import { Card, PageHead, Btn, Badge, Field, Input, DateInput, Select, Table, Td } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { Donut, ProgressRow } from '../components/charts'
 import { api } from '../api'
@@ -103,8 +103,8 @@ export default function ReportsScreen({ go: _go }: { go: Go }) {
           <Card style={{ marginBottom: 16 }}>
             <div className="row between wrap gap-3" style={{ marginBottom: 8 }}>
               <div className="row gap-2">
-                <Field label="From" style={{ width: 150 }}><Input type="date" /></Field>
-                <Field label="To" style={{ width: 150 }}><Input type="date" /></Field>
+                <Field label="From" style={{ width: 150 }}><DateInput /></Field>
+                <Field label="To" style={{ width: 150 }}><DateInput /></Field>
                 <Field label="Branch" style={{ width: 160 }}><Select defaultValue="All">{['All', ...branchSeed].map((b) => <option key={b}>{b}</option>)}</Select></Field>
               </div>
               <Btn variant="primary" icon="filter" style={{ alignSelf: 'flex-end' }}>Run Report</Btn>
