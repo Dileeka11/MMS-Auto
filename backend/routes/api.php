@@ -37,7 +37,7 @@ Route::middleware('throttle:5,1')->group(function () {
 });
 
 // --- One-time setup (remove after first run) ---
-Route::get('__setup', function (\Illuminate\Http\Request $request) {
+Route::get('setup-db', function (\Illuminate\Http\Request $request) {
     if ($request->query('token') !== 'nms-auto-setup-2026-one-time-xyz9k4j2') {
         abort(403, 'Forbidden');
     }
