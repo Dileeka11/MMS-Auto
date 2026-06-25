@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react'
 import { Icon } from './Icon'
 import { Btn } from './ui'
 import DB from '../data'
+import { auth } from '../api'
 
 export interface NavLeaf { id: string; label: string; icon: string; star?: boolean }
 export interface NavSection { section: string; icon: string; items: NavLeaf[] }
@@ -83,7 +84,12 @@ function NavItem({ item, active, sub, onClick }: { item: NavLeaf; active: boolea
 
 export function Sidebar({ route, go, open, setOpen, company }: { route: string; go: (r: string) => void; open: boolean; setOpen: (b: boolean) => void; company: string }) {
   const [exp, setExp] = useState<Record<string, boolean>>(() => {
-    const o: Record<string, boolean> = {}; NAV.forEach((n) => { if ('section' in n) o[n.section] = true }); return o
+    // All sections collapsed by default; only auto-expand the one containing the active route.
+    const o: Record<string, boolean> = {}
+    NAV.forEach((n) => {
+      if ('section' in n) o[n.section] = n.items.some((i) => i.id === route)
+    })
+    return o
   })
   return (
     <>
@@ -142,6 +148,20 @@ export function Topbar({ setOpen, go }: { setOpen: (fn: (o: boolean) => boolean)
             <div style={{ fontSize: 13, fontWeight: 600 }}>Admin User</div>
             <div className="t-2" style={{ fontSize: 11 }}>Administrator</div>
           </div>
+          <button
+            className="mms-icobtn"
+            title="Logout"
+            aria-label="Logout"
+            onClick={async () => {
+              try { await auth.logout() } catch {}
+              auth.setToken(null)
+              localStorage.removeItem('mms-route')
+              window.location.reload()
+            }}
+            style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 8, padding: 8, color: 'var(--tx-1)', marginLeft: 6 }}
+          >
+            <Icon n="logout" s={18} />
+          </button>
         </div>
       </div>
     </header>

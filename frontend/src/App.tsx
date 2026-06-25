@@ -4,6 +4,8 @@ import type { ComponentType } from 'react'
 import { Sidebar, Topbar } from './components/Shell'
 import DB from './data'
 import type { Go, ScreenProps } from './screens/types'
+import Login from './screens/Login'
+import { auth, type AuthUser } from './api'
 
 import DashScreen from './screens/Dashboard'
 import { DataModule, MASTERS } from './screens/Masters'
@@ -52,8 +54,22 @@ export default function App() {
   const [route, setRoute] = useState<string>(() => localStorage.getItem('mms-route') || 'dash')
   const [open, setOpen] = useState(false)
   const [brand, setBrand] = useState(DB.company.name)
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [authReady, setAuthReady] = useState(false)
   const go: Go = (r) => { setRoute(r); localStorage.setItem('mms-route', r); window.scrollTo(0, 0) }
   useEffect(() => { document.title = brand + ' — Admin Panel' }, [brand])
+
+  useEffect(() => {
+    const token = auth.getToken()
+    if (!token) { setAuthReady(true); return }
+    auth.me()
+      .then((u) => setUser(u))
+      .catch(() => auth.setToken(null))
+      .finally(() => setAuthReady(true))
+  }, [])
+
+  if (!authReady) return null
+  if (!user) return <Login onAuth={setUser} />
 
   const Screen = SCREENS[route] || (() => <div style={{ padding: 40 }} className="t-2">Screen not found</div>)
   return (
@@ -62,7 +78,7 @@ export default function App() {
       <div className="mms-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar setOpen={setOpen} route={route} go={go} />
         <main key={route} className="fade-in" style={{ padding: '24px clamp(16px,3vw,32px) 60px', flex: 1 }}>
-          <Screen go={go} setBrand={setBrand} />
+          <Screen go={go} setBrand={setBrand} user={user} />
         </main>
       </div>
     </div>

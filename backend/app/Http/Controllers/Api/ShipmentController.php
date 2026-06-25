@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\HandlesApprovals;
 use App\Http\Controllers\Controller;
 use App\Models\PurchaseOrder;
 use App\Models\Shipment;
@@ -11,9 +12,11 @@ use Illuminate\Support\Facades\DB;
 
 class ShipmentController extends Controller
 {
+    use HandlesApprovals;
+
     public function index(Request $request)
     {
-        $q = Shipment::with(['lines'])->orderByDesc('id');
+        $q = Shipment::with(['lines', 'approver1:id,name', 'approver2:id,name', 'rejectedBy:id,name'])->orderByDesc('id');
         if ($request->filled('po')) {
             $q->where('po_code', $request->get('po'));
         }
@@ -23,7 +26,19 @@ class ShipmentController extends Controller
 
     public function show(Shipment $shipment)
     {
-        return $shipment->load(['lines', 'purchaseOrder.lines']);
+        return $shipment->load(['lines', 'purchaseOrder.lines', 'approver1:id,name', 'approver2:id,name', 'rejectedBy:id,name']);
+    }
+
+    public function approve(Request $request, Shipment $shipment)
+    {
+        return $this->performApprove($request, $shipment, 'shipment')
+            ->load(['lines', 'approver1:id,name', 'approver2:id,name']);
+    }
+
+    public function reject(Request $request, Shipment $shipment)
+    {
+        return $this->performReject($request, $shipment, 'shipment')
+            ->load(['lines', 'rejectedBy:id,name']);
     }
 
     /**
@@ -89,6 +104,13 @@ class ShipmentController extends Controller
 
         return DB::transaction(function () use ($data) {
             $po = PurchaseOrder::where('code', $data['po'])->firstOrFail();
+
+            if (!$po->isFullyApproved()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'po' => 'This PO is not fully approved yet. Two admin approvals are required before costing.',
+                ]);
+            }
+
             $seq = $po->shipments()->count() + 1;
             $code = $po->code . '-S' . $seq;
 
@@ -170,7 +192,7 @@ class ShipmentController extends Controller
                 'items_total_usd' => $computed['items_total_usd'],
                 'items_total_lkr' => $computed['items_total_lkr'],
                 'charges_total_lkr' => $computed['charges_total_lkr'],
-                'status' => 'Costed',
+                'status' => 'Awaiting Approval',
             ]);
 
             foreach ($computed['lines'] as $cl) {

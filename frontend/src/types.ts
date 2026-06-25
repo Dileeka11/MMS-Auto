@@ -69,6 +69,11 @@ export interface PurchaseOrder {
   date: string; lines: POLine[]; total: number; status: string;
   piNumber?: string; piDate?: string; orderRequiredMonth?: string; paymentTerms?: string; incoTerms?: string;
   currency?: string; notes?: string; shipments?: Shipment[];
+  approver1Id?: number | null; approver1At?: string | null; approver1?: { id: number; name: string } | null;
+  approver2Id?: number | null; approver2At?: string | null; approver2?: { id: number; name: string } | null;
+  rejectedById?: number | null; rejectedAt?: string | null; rejectReason?: string | null;
+  rejectedBy?: { id: number; name: string } | null;
+  approvalsCount?: number; approvalsRequired?: number;
 }
 export interface ShipmentLine {
   id?: number; code: string; hsCode?: string; item: string; qty: number; cost: number;
@@ -105,10 +110,20 @@ export interface Shipment {
   banking?: ComplexChargeShape; clearance?: ComplexChargeShape;
   slpa?: ComplexChargeShape; demurrage?: ComplexChargeShape;
   itemsTotalUsd?: number; itemsTotalLkr?: number; chargesTotalLkr?: number;
+  approver1Id?: number | null; approver1At?: string | null; approver1?: { id: number; name: string } | null;
+  approver2Id?: number | null; approver2At?: string | null; approver2?: { id: number; name: string } | null;
+  rejectedById?: number | null; rejectedAt?: string | null; rejectReason?: string | null;
+  rejectedBy?: { id: number; name: string } | null;
+  approvalsCount?: number; approvalsRequired?: number;
 }
 export interface GRN {
   id: string; po: string; shipmentCode?: string; supplier: string;
   date: string; items: number; total: number; status: string;
+  approver1Id?: number | null; approver1At?: string | null; approver1?: { id: number; name: string } | null;
+  approver2Id?: number | null; approver2At?: string | null; approver2?: { id: number; name: string } | null;
+  rejectedById?: number | null; rejectedAt?: string | null; rejectReason?: string | null;
+  rejectedBy?: { id: number; name: string } | null;
+  approvalsCount?: number; approvalsRequired?: number;
 }
 export interface TrackingRow {
   poCode: string; supplier: string; piNumber?: string; date: string;

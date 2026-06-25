@@ -44,10 +44,12 @@ export default function DashScreen({ go }: { go: Go }) {
   const lowStock = data.lowStock || []
   const topItems = data.topItems || []
   const reps = data.reps || []
+  const trend = (data.salesTrend || []) as { label: string; value: number }[]
 
-  const stockByCat: Record<string, number> = {}
-  topItems.forEach((i: any) => { stockByCat[i.category] = (stockByCat[i.category] || 0) + (i.qty || 0) * (i.avgCost || 0) })
-  const catData = Object.entries(stockByCat).map(([label, value]) => ({ label, value: value as number }))
+  const catPalette = ['var(--ac)', 'var(--ok)', 'var(--warn)', 'var(--info)', '#8b5cf6', '#ec4899', '#14b8a6', 'var(--tx-3)']
+  const catData = ((data.stockByCategory || []) as { label: string; value: number | string }[])
+    .map((c, i) => ({ label: c.label || 'Uncategorized', value: Number(c.value) || 0, color: catPalette[i % catPalette.length] }))
+    .filter((c) => c.value > 0)
 
   const now = new Date()
   const weekday = now.toLocaleDateString('en-GB', { weekday: 'long' })
@@ -60,7 +62,7 @@ export default function DashScreen({ go }: { go: Go }) {
 
       <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 16 }}>
         <KPI icon="coins" label="Sales · this month" value={moneyK(kpis.salesMonth || 0)} tone="blue" />
-        <KPI icon="chart" label="Gross profit" value={moneyK((kpis.salesMonth || 0) * 0.35)} tone="green" />
+        <KPI icon="chart" label="Gross profit · this month" value={moneyK(kpis.grossProfit || 0)} tone="green" />
         <KPI icon="wallet" label="Receivables" value={moneyK(kpis.receivables || 0)} tone="amber" />
         <KPI icon="box" label="Stock value" value={moneyK(kpis.stockValue || 0)} tone="blue" />
       </div>
@@ -68,18 +70,28 @@ export default function DashScreen({ go }: { go: Go }) {
       <div className="dash-2col" style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16, marginBottom: 16 }}>
         <Card>
           <div className="row between" style={{ marginBottom: 18 }}>
-            <div><div className="eyebrow">Performance</div><h3 style={{ fontSize: 18, marginTop: 3 }}>Sales overview</h3></div>
+            <div><div className="eyebrow">Performance</div><h3 style={{ fontSize: 18, marginTop: 3 }}>Sales overview · 12 months</h3></div>
           </div>
-          <div className="row between" style={{ padding: '12px 0', borderBottom: '1px solid var(--line-soft)' }}><span className="t-2">Total SKUs</span><span className="num" style={{ fontWeight: 700 }}>{kpis.totalSkus || 0}</span></div>
-          <div className="row between" style={{ padding: '12px 0', borderBottom: '1px solid var(--line-soft)' }}><span className="t-2">Out of stock</span><span className="num" style={{ fontWeight: 700, color: 'var(--bad)' }}>{kpis.outOfStock || 0}</span></div>
-          <div className="row between" style={{ padding: '12px 0', borderBottom: '1px solid var(--line-soft)' }}><span className="t-2">Low stock</span><span className="num" style={{ fontWeight: 700, color: 'var(--warn)' }}>{kpis.lowStock || 0}</span></div>
-          <div className="row between" style={{ padding: '12px 0' }}><span className="t-2">Pending returns</span><span className="num" style={{ fontWeight: 700 }}>{data.pendingReturns || 0}</span></div>
+          {trend.length > 0 && trend.some((t) => t.value > 0) ? (
+            <AreaChart
+              height={180}
+              labels={trend.map((t) => t.label)}
+              series={[{ data: trend.map((t) => t.value), color: 'var(--ac-bright)' }]}
+              format={(v) => moneyK(v)}
+            />
+          ) : <div className="t-3" style={{ padding: 20 }}>No sales recorded yet</div>}
+          <div style={{ marginTop: 12 }}>
+            <div className="row between" style={{ padding: '10px 0', borderTop: '1px solid var(--line-soft)' }}><span className="t-2">Total SKUs</span><span className="num" style={{ fontWeight: 700 }}>{kpis.totalSkus || 0}</span></div>
+            <div className="row between" style={{ padding: '10px 0', borderTop: '1px solid var(--line-soft)' }}><span className="t-2">Out of stock</span><span className="num" style={{ fontWeight: 700, color: 'var(--bad)' }}>{kpis.outOfStock || 0}</span></div>
+            <div className="row between" style={{ padding: '10px 0', borderTop: '1px solid var(--line-soft)' }}><span className="t-2">Low stock</span><span className="num" style={{ fontWeight: 700, color: 'var(--warn)' }}>{kpis.lowStock || 0}</span></div>
+            <div className="row between" style={{ padding: '10px 0', borderTop: '1px solid var(--line-soft)' }}><span className="t-2">Pending returns</span><span className="num" style={{ fontWeight: 700 }}>{data.pendingReturns || 0}</span></div>
+          </div>
         </Card>
         <Card>
           <div className="eyebrow">Inventory mix</div><h3 style={{ fontSize: 18, marginTop: 3, marginBottom: 18 }}>Stock by Category</h3>
           {catData.length > 0 ? (
-            <Donut center="8" data={catData.slice(0, 6).map((c, i) => ({ label: c.label, value: c.value, color: ['var(--ac)', 'var(--ok)', 'var(--warn)', 'var(--info)', '#8b5cf6', 'var(--tx-3)'][i] }))} />
-          ) : <div className="t-3" style={{ padding: 20 }}>No data</div>}
+            <Donut center={catData.length} data={catData.slice(0, 6)} />
+          ) : <div className="t-3" style={{ padding: 20 }}>No stock on hand</div>}
         </Card>
       </div>
 

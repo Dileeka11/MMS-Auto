@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\HandlesApprovals;
 use App\Http\Controllers\Controller;
 use App\Models\Grn;
 use App\Models\Item;
@@ -14,9 +15,24 @@ use Illuminate\Support\Facades\DB;
 
 class GrnController extends Controller
 {
+    use HandlesApprovals;
+
     public function index()
     {
-        return Grn::with('lines')->orderByDesc('id')->get();
+        return Grn::with(['lines', 'approver1:id,name', 'approver2:id,name', 'rejectedBy:id,name'])
+            ->orderByDesc('id')->get();
+    }
+
+    public function approve(Request $request, Grn $grn)
+    {
+        return $this->performApprove($request, $grn, 'grn')
+            ->load(['lines', 'approver1:id,name', 'approver2:id,name']);
+    }
+
+    public function reject(Request $request, Grn $grn)
+    {
+        return $this->performReject($request, $grn, 'grn')
+            ->load(['lines', 'rejectedBy:id,name']);
     }
 
     /**
@@ -46,7 +62,20 @@ class GrnController extends Controller
 
         return DB::transaction(function () use ($data) {
             $po = PurchaseOrder::where('code', $data['po'])->firstOrFail();
+
+            if (!$po->isFullyApproved()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'po' => 'This PO is not fully approved yet. Two admin approvals are required before GRN.',
+                ]);
+            }
+
             $shipment = Shipment::where('code', $data['shipment_code'])->firstOrFail();
+
+            if (!$shipment->isFullyApproved()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'shipment_code' => 'This shipment (costing) is not fully approved yet. Two admin approvals are required before GRN.',
+                ]);
+            }
 
             $grn = Grn::create([
                 'code' => 'GRN-' . (7700 + Grn::count() + 1),
@@ -57,7 +86,7 @@ class GrnController extends Controller
                 'date' => $data['date'] ?? now()->toDateString(),
                 'items' => 0,
                 'total' => 0,
-                'status' => 'Posted',
+                'status' => 'Awaiting Approval',
             ]);
 
             $total = 0;

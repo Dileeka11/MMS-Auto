@@ -3,21 +3,37 @@ import axios from 'axios'
 
 export const http = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
-  headers: { Accept: 'application/json' },
+  timeout: 30_000,
+  headers: {
+    Accept: 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+  },
 })
+
+const genReqId = () =>
+  (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2) + Date.now().toString(36))
 
 http.interceptors.request.use((cfg) => {
   const t = localStorage.getItem('mms-token')
   if (t) cfg.headers.Authorization = `Bearer ${t}`
+  cfg.headers['X-Request-Id'] = genReqId()
   return cfg
 })
 
+let unauthorizedHandled = false
 http.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err?.response?.status === 401 && localStorage.getItem('mms-token')) {
+    const status = err?.response?.status
+    if (status === 401 && localStorage.getItem('mms-token') && !unauthorizedHandled) {
+      unauthorizedHandled = true
       localStorage.removeItem('mms-token')
       window.location.reload()
+    }
+    if (status === 429 && import.meta.env.DEV) {
+      console.warn('[api] rate limited; retry after', err?.response?.headers?.['retry-after'])
     }
     return Promise.reject(err)
   },
@@ -54,7 +70,7 @@ export function resource<T = any>(name: string) {
   }
 }
 
-export interface AuthUser { id: number; name: string; email: string }
+export interface AuthUser { id: number; name: string; email: string; role?: 'admin' | 'user' }
 
 export const auth = {
   login: (email: string, password: string) =>
@@ -84,12 +100,22 @@ export const api = {
   reps: resource('sales-reps'),
   users: resource('users'),
   suppliers: resource('suppliers'),
-  purchaseOrders: resource('purchase-orders'),
+  purchaseOrders: {
+    ...resource('purchase-orders'),
+    approve: (id: string | number) => http.post(`/purchase-orders/${id}/approve`).then((r) => camelize(r.data)),
+    reject: (id: string | number, reason?: string) => http.post(`/purchase-orders/${id}/reject`, { reason }).then((r) => camelize(r.data)),
+  },
   shipments: {
     ...resource('shipments'),
     byPo: (poCode: string) => http.get('/shipments', { params: { po: poCode } }).then((r) => camelize(r.data)),
+    approve: (id: string | number) => http.post(`/shipments/${id}/approve`).then((r) => camelize(r.data)),
+    reject: (id: string | number, reason?: string) => http.post(`/shipments/${id}/reject`, { reason }).then((r) => camelize(r.data)),
   },
-  grns: resource('grns'),
+  grns: {
+    ...resource('grns'),
+    approve: (id: string | number) => http.post(`/grns/${id}/approve`).then((r) => camelize(r.data)),
+    reject: (id: string | number, reason?: string) => http.post(`/grns/${id}/reject`, { reason }).then((r) => camelize(r.data)),
+  },
   tracking: () => http.get('/po-tracking').then((r) => camelize(r.data)),
   quotations: resource('quotations'),
   invoices: resource('invoices'),

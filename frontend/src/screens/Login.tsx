@@ -4,8 +4,9 @@ import { Btn } from '../components/ui'
 import { auth, type AuthUser } from '../api'
 
 export default function Login({ onAuth }: { onAuth: (user: AuthUser) => void }) {
-  const [email, setEmail] = useState('admin@NMS-Auto.lk')
+  const [email, setEmail] = useState('admin@mms-auto.lk')
   const [password, setPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -57,8 +58,29 @@ export default function Login({ onAuth }: { onAuth: (user: AuthUser) => void }) 
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span className="eyebrow" style={{ fontSize: 10 }}>Password</span>
-          <input style={input} type="password" autoComplete="current-password" value={password}
-            onChange={(e) => setPassword(e.target.value)} required />
+          <div style={{ position: 'relative' }}>
+            <input
+              style={{ ...input, paddingRight: 42 }}
+              type={showPw ? 'text' : 'password'}
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((v) => !v)}
+              aria-label={showPw ? 'Hide password' : 'Show password'}
+              title={showPw ? 'Hide password' : 'Show password'}
+              style={{
+                position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)',
+                background: 'none', border: 'none', cursor: 'pointer', padding: 6,
+                color: 'var(--tx-2)', display: 'grid', placeItems: 'center',
+              }}
+            >
+              <Icon n={showPw ? 'eye-off' : 'eye'} s={18} />
+            </button>
+          </div>
         </label>
 
         {err && (
@@ -67,11 +89,11 @@ export default function Login({ onAuth }: { onAuth: (user: AuthUser) => void }) 
         )}
 
         <Btn variant="primary" size="lg" icon="shield" disabled={busy}>
-          {busy ? 'Signing inâ€¦' : 'Sign in'}
+          {busy ? 'Signing in...' : 'Sign in'}
         </Btn>
 
         <div className="t-2" style={{ fontSize: 11, textAlign: 'center', marginTop: 4 }}>
-          Default admin: <code style={{ fontFamily: 'JetBrains Mono' }}>admin@NMS-Auto.lk</code> / <code style={{ fontFamily: 'JetBrains Mono' }}>password</code>
+          Default admin: <code style={{ fontFamily: 'JetBrains Mono' }}>admin@mms-auto.lk</code> / <code style={{ fontFamily: 'JetBrains Mono' }}>password</code>
         </div>
       </form>
     </div>

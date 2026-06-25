@@ -12,12 +12,19 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    headers: {
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+    },
   },
   build: {
     target: 'es2020',
     sourcemap: false,
     cssCodeSplit: true,
     chunkSizeWarningLimit: 600,
+    minify: 'esbuild',
+    reportCompressedSize: false,
     rollupOptions: {
       output: {
         // Pin large vendor deps to their own long-cached chunks so app code
@@ -25,6 +32,7 @@ export default defineConfig({
         manualChunks: {
           react: ['react', 'react-dom'],
           axios: ['axios'],
+          xlsx: ['xlsx'],
         },
       },
     },
@@ -32,5 +40,6 @@ export default defineConfig({
   esbuild: {
     // strip console + debugger calls from production bundle
     drop: ['console', 'debugger'],
+    legalComments: 'none',
   },
 })

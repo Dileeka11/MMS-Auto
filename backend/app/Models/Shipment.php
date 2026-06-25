@@ -2,13 +2,21 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasTwoStepApproval;
 use Illuminate\Database\Eloquent\Model;
 
 class Shipment extends Model
 {
+    use HasTwoStepApproval;
+
     protected $guarded = [];
 
+    protected $appends = ['approvals_count', 'approvals_required'];
+
     protected $casts = [
+        'approver1_at' => 'datetime',
+        'approver2_at' => 'datetime',
+        'rejected_at' => 'datetime',
         'date' => 'date:Y-m-d',
         'etd' => 'date:Y-m-d',
         'eta_date' => 'date:Y-m-d',

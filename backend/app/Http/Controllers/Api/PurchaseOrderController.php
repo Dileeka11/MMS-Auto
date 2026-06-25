@@ -2,23 +2,32 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\HandlesApprovals;
 use App\Http\Controllers\Controller;
 use App\Models\Item;
 use App\Models\PurchaseOrder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class PurchaseOrderController extends Controller
 {
+    use HandlesApprovals;
+
     public function index()
     {
-        return PurchaseOrder::with(['lines', 'shipments'])->orderByDesc('id')->get();
+        return PurchaseOrder::with(['lines', 'shipments', 'approver1:id,name', 'approver2:id,name', 'rejectedBy:id,name'])
+            ->orderByDesc('id')
+            ->get();
     }
 
     public function show(PurchaseOrder $purchaseOrder)
     {
-        return $purchaseOrder->load(['lines', 'shipments.lines', 'shipments.extras']);
+        return $purchaseOrder->load([
+            'lines', 'shipments.lines', 'shipments.extras',
+            'approver1:id,name', 'approver2:id,name', 'rejectedBy:id,name',
+        ]);
     }
 
     public function store(Request $request)
@@ -69,7 +78,7 @@ class PurchaseOrderController extends Controller
                 'currency' => $data['currency'] ?? 'LKR',
                 'notes' => $data['notes'] ?? null,
                 'total' => $total,
-                'status' => 'Pending',
+                'status' => 'Awaiting Approval',
             ]);
             foreach ($data['lines'] as $l) {
                 $qty = (int) $l['qty'];
@@ -107,7 +116,19 @@ class PurchaseOrderController extends Controller
         return response()->noContent();
     }
 
-    private function nextCode()
+    public function approve(Request $request, PurchaseOrder $purchaseOrder)
+    {
+        return $this->performApprove($request, $purchaseOrder, 'po')
+            ->load(['lines', 'approver1:id,name', 'approver2:id,name']);
+    }
+
+    public function reject(Request $request, PurchaseOrder $purchaseOrder)
+    {
+        return $this->performReject($request, $purchaseOrder, 'po')
+            ->load(['lines', 'rejectedBy:id,name']);
+    }
+
+    public function nextCode()
     {
         return 'PO-' . (4400 + PurchaseOrder::count() + 1);
     }

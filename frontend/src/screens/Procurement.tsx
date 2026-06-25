@@ -11,6 +11,7 @@ import {
 } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { StatRow } from '../components/doc'
+import { ApprovalCounter, ApprovalPanel, canApprove as canApproveR, canReject as canRejectR, runApprovalAction } from '../components/Approval'
 import DB from '../data'
 import { api } from '../api'
 import { parsePoExcel, parseCostingExcel, fileToBase64, type ParsedLine, type ParsedCostingLine } from '../excel'
@@ -43,7 +44,8 @@ const PAYMENT_TERMS = ['100% TT in advance', 'DP at sight', 'DA 30 Days', 'DA 60
 const INCO_TERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'CFR', 'DAP', 'DDP']
 const CURRENCIES = ['USD', 'LKR', 'EUR', 'JPY', 'GBP', 'CNY', 'INR']
 
-export function POScreen({ go }: { go: Go }) {
+export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: string } | null }) {
+  const isAdmin = user?.role === 'admin'
   const [rows, setRows] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
@@ -139,8 +141,29 @@ export function POScreen({ go }: { go: Go }) {
     } finally { setSubmitting(false) }
   }
 
-  const pending = rows.filter((r) => r.status === 'Pending').length
+  const pending = rows.filter((r) => r.status === 'Awaiting Approval').length
   const orderValue = rows.reduce((a, r) => a + (r.total || 0), 0)
+
+  const refresh = async () => {
+    const fresh = await api.purchaseOrders.list()
+    setRows(fresh as any)
+    if (view) {
+      const updated = (fresh as PurchaseOrder[]).find((x) => x.id === view.id) || null
+      setView(updated)
+    }
+  }
+  const approvePo = async (po: PurchaseOrder) => {
+    const ok = await runApprovalAction(() => api.purchaseOrders.approve(po.id))
+    if (ok) await refresh()
+  }
+  const rejectPo = async (po: PurchaseOrder) => {
+    const reason = prompt('Reject reason (optional):') ?? ''
+    if (!confirm('Reject this PO? This cannot be undone.')) return
+    const ok = await runApprovalAction(() => api.purchaseOrders.reject(po.id, reason))
+    if (ok) await refresh()
+  }
+  const canApprove = (po: PurchaseOrder) => canApproveR(po, isAdmin, user?.id)
+  const canReject  = (po: PurchaseOrder) => canRejectR(po, isAdmin)
 
   return (
     <div>
@@ -170,10 +193,17 @@ export function POScreen({ go }: { go: Go }) {
             <Td mono>{fmtDate(r.date)}</Td>
             <Td align="right" mono>{r.lines?.length || 0}</Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{fmtMoney(r.total)}</Td>
-            <Td align="center"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></Td>
+            <Td align="center">
+              <div className="col gap-1" style={{ alignItems: 'center' }}>
+                <Badge tone={statusTone(r.status)} dot>{r.status}</Badge>
+                <ApprovalCounter po={r} />
+              </div>
+            </Td>
             <Td align="right"><div className="row gap-1" style={{ justifyContent: 'flex-end' }}>
               <button className="mms-act" onClick={() => setView(r)}><Icon n="eye" s={15} /></button>
-              {r.status !== 'Completed' && <Btn variant="ghost" size="sm" onClick={() => go('dc/costing')}>Costing</Btn>}
+              {canApprove(r) && <Btn variant="primary" size="sm" icon="check" onClick={() => approvePo(r)}>Approve</Btn>}
+              {canReject(r)  && <Btn variant="ghost"   size="sm" icon="x"     onClick={() => rejectPo(r)}>Reject</Btn>}
+              {r.status === 'Approved' && <Btn variant="ghost" size="sm" onClick={() => go('dc/costing')}>Costing</Btn>}
             </div></Td>
           </>} />
       </Card>
@@ -268,7 +298,14 @@ export function POScreen({ go }: { go: Go }) {
       <Modal open={!!view} onClose={() => setView(null)} width={820}
         title={view?.code || view?.id}
         sub={view && `${view.supplier} · ${fmtDate(view.date)}${view.piNumber ? ' · PI ' + view.piNumber : ''}`}
-        footer={<><Badge tone={statusTone(view?.status || '')}>{view?.status}</Badge><Btn variant="primary" icon="print">Print PO</Btn></>}>
+        footer={<>
+          <Badge tone={statusTone(view?.status || '')}>{view?.status}</Badge>
+          <div className="row gap-2" style={{ marginLeft: 'auto' }}>
+            {view && canReject(view)  && <Btn variant="ghost"   icon="x"     onClick={() => rejectPo(view)}>Reject</Btn>}
+            {view && canApprove(view) && <Btn variant="primary" icon="check" onClick={() => approvePo(view)}>Approve</Btn>}
+            <Btn variant="primary" icon="print">Print PO</Btn>
+          </div>
+        </>}>
         {view && (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16, fontSize: 12.5 }}>
@@ -280,6 +317,8 @@ export function POScreen({ go }: { go: Go }) {
               <KV k="Contact" v={view.supplierContact} />
               <KV k="Notes" v={view.notes} />
             </div>
+
+            <ApprovalPanel po={view} />
             <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-m)', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead><tr style={{ background: 'var(--bg-0)' }}>
@@ -350,7 +389,13 @@ const blankCosting = (): CostingForm => ({
 const blankCharge = (): ComplexCharge => ({ amountUsd: 0, amountLkr: 0, agent: '', invoiceNo: '', policyNo: '', invoiceValue: 0 })
 const num = (s: string | number | undefined) => Number(s || 0) || 0
 
-export function CostingScreen({ go }: { go: Go }) {
+/** A PO is unlocked for downstream flow only after both admins have approved it. */
+const APPROVED_STATUSES = ['Approved', 'Partial GRN', 'Completed']
+const isApproved = (p: { status?: string }) => APPROVED_STATUSES.includes(p.status || '')
+
+export function CostingScreen({ go, user }: { go: Go; user?: { id: number; role?: string } | null }) {
+  const isAdmin = user?.role === 'admin'
+  const [viewShip, setViewShip] = useState<Shipment | null>(null)
   const [pos, setPos] = useState<PurchaseOrder[]>([])
   const [shipments, setShipments] = useState<Shipment[]>([])
   const [loading, setLoading] = useState(true)
@@ -383,7 +428,7 @@ export function CostingScreen({ go }: { go: Go }) {
   }
   useEffect(() => { reload() }, [])
 
-  const openPOs = pos.filter((p) => p.status !== 'Completed')
+  const openPOs = pos.filter((p) => p.status !== 'Completed' && isApproved(p))
 
   const reset = () => {
     setPo(null); setForm(blankCosting())
@@ -469,6 +514,25 @@ export function CostingScreen({ go }: { go: Go }) {
 
   const closeAndReset = () => { setModal(false); reset(); setCreated(null) }
 
+  const refreshShipments = async () => {
+    const fresh = await api.shipments.list()
+    setShipments(fresh as any)
+    if (viewShip) {
+      const updated = (fresh as Shipment[]).find((x: any) => x.id === viewShip.id) || null
+      setViewShip(updated)
+    }
+  }
+  const approveShip = async (s: Shipment) => {
+    const ok = await runApprovalAction(() => api.shipments.approve(s.id!))
+    if (ok) await refreshShipments()
+  }
+  const rejectShip = async (s: Shipment) => {
+    const reason = prompt('Reject reason (optional):') ?? ''
+    if (!confirm('Reject this shipment? This cannot be undone.')) return
+    const ok = await runApprovalAction(() => api.shipments.reject(s.id!, reason))
+    if (ok) await refreshShipments()
+  }
+
   return (
     <div>
       <PageHead crumbs="Data Capture" title="Costing & Shipment" icon="box"
@@ -488,6 +552,7 @@ export function CostingScreen({ go }: { go: Go }) {
           { label: 'Type', align: 'center' },
           { label: 'Items LKR', align: 'right' }, { label: 'Charges', align: 'right' },
           { label: 'Landed', align: 'right' }, { label: 'Status', align: 'center' },
+          { label: '', align: 'right', w: 160 },
         ]}
           rows={shipments}
           empty={loading ? 'Loading…' : 'No shipments yet — click "New Costing".'}
@@ -500,9 +565,49 @@ export function CostingScreen({ go }: { go: Go }) {
             <Td align="right" mono>{fmtMoney(s.itemsTotalLkr || s.itemsTotal)}</Td>
             <Td align="right" mono>{fmtMoney(s.chargesTotalLkr || s.extrasTotal)}</Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{fmtMoney(s.landedTotal)}</Td>
-            <Td align="center"><Badge tone={statusTone(s.status)} dot>{s.status}</Badge></Td>
+            <Td align="center">
+              <div className="col gap-1" style={{ alignItems: 'center' }}>
+                <Badge tone={statusTone(s.status)} dot>{s.status}</Badge>
+                <ApprovalCounter po={s} />
+              </div>
+            </Td>
+            <Td align="right">
+              <div className="row gap-1" style={{ justifyContent: 'flex-end' }}>
+                <button className="mms-act" onClick={() => setViewShip(s)}><Icon n="eye" s={15} /></button>
+                {canApproveR(s, isAdmin, user?.id) && <Btn variant="primary" size="sm" icon="check" onClick={() => approveShip(s)}>Approve</Btn>}
+                {canRejectR(s, isAdmin)            && <Btn variant="ghost"   size="sm" icon="x"     onClick={() => rejectShip(s)}>Reject</Btn>}
+              </div>
+            </Td>
           </>} />
       </Card>
+
+      <Modal open={!!viewShip} onClose={() => setViewShip(null)} width={720}
+        title={viewShip?.code}
+        sub={viewShip && `PO ${viewShip.poCode} · ${fmtDate(viewShip.date)}`}
+        footer={<>
+          <Badge tone={statusTone(viewShip?.status || '')}>{viewShip?.status}</Badge>
+          <div className="row gap-2" style={{ marginLeft: 'auto' }}>
+            {viewShip && canRejectR(viewShip, isAdmin)            && <Btn variant="ghost"   icon="x"     onClick={() => rejectShip(viewShip)}>Reject</Btn>}
+            {viewShip && canApproveR(viewShip, isAdmin, user?.id) && <Btn variant="primary" icon="check" onClick={() => approveShip(viewShip)}>Approve</Btn>}
+          </div>
+        </>}>
+        {viewShip && (
+          <div>
+            <ApprovalPanel po={viewShip} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, fontSize: 12.5 }}>
+              <KV k="Invoice"      v={viewShip.invoiceNo} />
+              <KV k="BL Number"    v={viewShip.blNumber} />
+              <KV k="Vessel"       v={viewShip.vessel} />
+              <KV k="Type"         v={viewShip.shipmentType} />
+              <KV k="Volume"       v={viewShip.shipmentVolume} />
+              <KV k="ETA"          v={fmtDate(viewShip.etaDate)} />
+              <KV k="Items LKR"    v={fmtMoney(viewShip.itemsTotalLkr || viewShip.itemsTotal)} />
+              <KV k="Charges LKR"  v={fmtMoney(viewShip.chargesTotalLkr || viewShip.extrasTotal)} />
+              <KV k="Landed Total" v={fmtMoney(viewShip.landedTotal)} />
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={modal} onClose={closeAndReset} width={1180}
         title={created ? 'Shipment Created' : (po ? `Costing for ${po.code || po.id}` : 'Select Purchase Order')}
@@ -718,11 +823,13 @@ interface RecvRow {
   sellingPriceWithVat: number
 }
 
-export function GRNScreen({ go: _go }: { go: Go }) {
+export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role?: string } | null }) {
+  const isAdmin = user?.role === 'admin'
   const [rows, setRows] = useState<GRN[]>([])
   const [pos, setPos] = useState<PurchaseOrder[]>([])
   const [allShipments, setAllShipments] = useState<Shipment[]>([])
   const [loading, setLoading] = useState(true)
+  const [viewGrn, setViewGrn] = useState<GRN | null>(null)
 
   const [modal, setModal] = useState(false)
   const [step, setStep] = useState<1 | 2 | 3>(1)
@@ -743,8 +850,27 @@ export function GRNScreen({ go: _go }: { go: Go }) {
   }
   useEffect(() => { reload() }, [])
 
-  const openPOs = pos.filter((p) => p.status !== 'Completed')
-  const shipmentsFor = (poCode: string) => allShipments.filter((s) => s.poCode === poCode && s.status !== 'Received')
+  const openPOs = pos.filter((p) => p.status !== 'Completed' && isApproved(p))
+  const shipmentsFor = (poCode: string) => allShipments.filter((s) => s.poCode === poCode && s.status !== 'Received' && isApproved(s))
+
+  const refreshGrns = async () => {
+    const fresh = await api.grns.list()
+    setRows(fresh as any)
+    if (viewGrn) {
+      const updated = (fresh as GRN[]).find((x: any) => x.id === viewGrn.id) || null
+      setViewGrn(updated)
+    }
+  }
+  const approveGrn = async (g: GRN) => {
+    const ok = await runApprovalAction(() => api.grns.approve(g.id))
+    if (ok) await refreshGrns()
+  }
+  const rejectGrn = async (g: GRN) => {
+    const reason = prompt('Reject reason (optional):') ?? ''
+    if (!confirm('Reject this GRN? This cannot be undone.')) return
+    const ok = await runApprovalAction(() => api.grns.reject(g.id, reason))
+    if (ok) await refreshGrns()
+  }
 
   const choosePO = (p: PurchaseOrder) => { setPo(p); setStep(2) }
   const chooseShipment = async (s: Shipment) => {
@@ -812,6 +938,7 @@ export function GRNScreen({ go: _go }: { go: Go }) {
           { label: 'GRN No' }, { label: 'PO' }, { label: 'Shipment' }, { label: 'Supplier' },
           { label: 'Date' }, { label: 'Items', align: 'right' }, { label: 'Value', align: 'right' },
           { label: 'Status', align: 'center' },
+          { label: '', align: 'right', w: 160 },
         ]}
           rows={rows}
           empty={loading ? 'Loading…' : 'No GRNs yet.'}
@@ -823,9 +950,43 @@ export function GRNScreen({ go: _go }: { go: Go }) {
             <Td mono>{fmtDate(r.date)}</Td>
             <Td align="right" mono>{r.items}</Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{fmtMoney(r.total)}</Td>
-            <Td align="center"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></Td>
+            <Td align="center">
+              <div className="col gap-1" style={{ alignItems: 'center' }}>
+                <Badge tone={statusTone(r.status)} dot>{r.status}</Badge>
+                <ApprovalCounter po={r} />
+              </div>
+            </Td>
+            <Td align="right">
+              <div className="row gap-1" style={{ justifyContent: 'flex-end' }}>
+                <button className="mms-act" onClick={() => setViewGrn(r)}><Icon n="eye" s={15} /></button>
+                {canApproveR(r, isAdmin, user?.id) && <Btn variant="primary" size="sm" icon="check" onClick={() => approveGrn(r)}>Approve</Btn>}
+                {canRejectR(r, isAdmin)            && <Btn variant="ghost"   size="sm" icon="x"     onClick={() => rejectGrn(r)}>Reject</Btn>}
+              </div>
+            </Td>
           </>} />
       </Card>
+
+      <Modal open={!!viewGrn} onClose={() => setViewGrn(null)} width={620}
+        title={viewGrn?.id}
+        sub={viewGrn && `${viewGrn.supplier} · PO ${viewGrn.po} · ${fmtDate(viewGrn.date)}`}
+        footer={<>
+          <Badge tone={statusTone(viewGrn?.status || '')}>{viewGrn?.status}</Badge>
+          <div className="row gap-2" style={{ marginLeft: 'auto' }}>
+            {viewGrn && canRejectR(viewGrn, isAdmin)            && <Btn variant="ghost"   icon="x"     onClick={() => rejectGrn(viewGrn)}>Reject</Btn>}
+            {viewGrn && canApproveR(viewGrn, isAdmin, user?.id) && <Btn variant="primary" icon="check" onClick={() => approveGrn(viewGrn)}>Approve</Btn>}
+          </div>
+        </>}>
+        {viewGrn && (
+          <div>
+            <ApprovalPanel po={viewGrn} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 12.5 }}>
+              <KV k="Shipment" v={viewGrn.shipmentCode} />
+              <KV k="Items"    v={String(viewGrn.items)} />
+              <KV k="Value"    v={fmtMoney(viewGrn.total)} />
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={modal} onClose={reset} width={1080}
         title={step === 1 ? 'GRN · Step 1 — Select PO' : step === 2 ? `GRN · Step 2 — Select Shipment for ${po?.code || po?.id}` : `Receive Goods · ${shipment?.code}`}
