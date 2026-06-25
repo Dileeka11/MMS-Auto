@@ -37,7 +37,7 @@ class PermissionController extends Controller
 
         Log::channel('audit')->info('permissions_updated', [
             'role' => $role,
-            'by' => $request->user()?->id,
+            'by' => optional($request->user())->id,
         ]);
 
         return ['ok' => true, 'matrix' => Permissions::matrix()];
