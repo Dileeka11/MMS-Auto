@@ -38,8 +38,10 @@ class RouteServiceProvider extends ServiceProvider
         $this->configureRateLimiting();
 
         $this->routes(function () {
-            Route::prefix('api')
-                ->middleware('api')
+            // Note: no /api prefix here. Laravel's public/index.php is deployed
+            // at /api/index.php on the server, so Apache strips /api/ when
+            // computing PATH_INFO. Adding the prefix here would double it.
+            Route::middleware('api')
                 ->namespace($this->namespace)
                 ->group(base_path('routes/api.php'));
 
