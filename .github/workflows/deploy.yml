@@ -154,6 +154,13 @@ jobs:
           exclude: |
             **/.git*
             **/.git*/**
+            assets/**
+            api/**
+            laravel/**
+            cgi-bin/**
+            .well-known/**
+            index.html
+            .htaccess
 
       - name: Trigger server-side extraction
         env:
