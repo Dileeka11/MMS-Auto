@@ -5,10 +5,13 @@ if ($token !== 'nms-auto-setup-2026-one-time-xyz9k4j2') {
     die('Forbidden');
 }
 
-$reset = function_exists('opcache_reset') ? opcache_reset() : false;
+$result = [];
+
+// 1. OPcache reset
+$result['opcache_reset'] = function_exists('opcache_reset') ? opcache_reset() : false;
 clearstatcache(true);
 
-// Clear Laravel bootstrap caches so new routes/config are picked up
+// 2. Clear Laravel bootstrap caches
 $cacheDir = __DIR__ . '/../laravel/bootstrap/cache';
 $cleared = [];
 foreach (['routes-v7.php', 'routes.php', 'config.php', 'packages.php', 'services.php', 'events.php'] as $f) {
@@ -17,9 +20,29 @@ foreach (['routes-v7.php', 'routes.php', 'config.php', 'packages.php', 'services
         $cleared[] = $f . ' (' . (unlink($path) ? 'deleted' : 'failed') . ')';
     }
 }
+$result['laravel_cache_cleared'] = $cleared;
 
-echo json_encode([
-    'opcache_reset' => $reset,
-    'laravel_cache_cleared' => $cleared,
-    'time' => date('c'),
-]);
+// 3. If ?action=migrate, boot Laravel and run migrate + seed
+if (($_GET['action'] ?? '') === 'migrate') {
+    try {
+        require __DIR__ . '/../laravel/vendor/autoload.php';
+        $app = require __DIR__ . '/../laravel/bootstrap/app.php';
+        $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+        $kernel->bootstrap();
+
+        $migrateOutput = new Symfony\Component\Console\Output\BufferedOutput();
+        $kernel->call('migrate', ['--force' => true], $migrateOutput);
+        $result['migrate'] = $migrateOutput->fetch();
+
+        $seedOutput = new Symfony\Component\Console\Output\BufferedOutput();
+        $kernel->call('db:seed', ['--force' => true], $seedOutput);
+        $result['seed'] = $seedOutput->fetch();
+    } catch (\Throwable $e) {
+        $result['error'] = $e->getMessage();
+        $result['trace'] = $e->getTraceAsString();
+    }
+}
+
+$result['time'] = date('c');
+header('Content-Type: application/json');
+echo json_encode($result, JSON_PRETTY_PRINT);
