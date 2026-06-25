@@ -63,7 +63,9 @@
       "PowerShell(php -l \"d:/My Projects/NMS-Auto/backend/app/Models/Concerns/HasTwoStepApproval.php\")",
       "PowerShell(php -l \"d:/My Projects/NMS-Auto/backend/app/Models/Shipment.php\")",
       "PowerShell(php -l \"d:/My Projects/NMS-Auto/backend/app/Models/Grn.php\")",
-      "PowerShell(php -l \"d:/My Projects/NMS-Auto/backend/database/migrations/2026_06_26_000003_add_approvals_to_shipments_and_grns.php\")"
+      "PowerShell(php -l \"d:/My Projects/NMS-Auto/backend/database/migrations/2026_06_26_000003_add_approvals_to_shipments_and_grns.php\")",
+      "Bash(gh run *)",
+      "PowerShell(gh run list --workflow=deploy.yml --limit 3)"
     ]
   }
 }
