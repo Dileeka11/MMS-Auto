@@ -169,7 +169,7 @@ class GrnController extends Controller
 
             // Shipment status
             $shipBalance = $shipment->lines()->get()->sum(function ($sl) {
-                return $sl->purchaseOrderLine?->balance_qty ?? 0;
+                return optional($sl->purchaseOrderLine)->balance_qty ?? 0;
             });
             $shipment->update(['status' => $shipBalance <= 0 ? 'Received' : 'Partially Received']);
 

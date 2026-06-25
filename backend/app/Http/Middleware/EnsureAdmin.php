@@ -13,7 +13,7 @@ class EnsureAdmin
         $user = $request->user();
         if (!$user || $user->role !== 'admin') {
             Log::channel('security')->warning('admin_denied', [
-                'user_id' => $user?->id,
+                'user_id' => $user ? $user->id : null,
                 'path' => $request->path(),
                 'ip' => $request->ip(),
             ]);

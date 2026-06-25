@@ -45,7 +45,7 @@ class LogRequests
             'status' => $status,
             'duration_ms' => $durationMs,
             'ip' => $request->ip(),
-            'user_id' => $user?->id,
+            'user_id' => $user ? $user->id : null,
             'ua' => substr((string) $request->userAgent(), 0, 200),
         ];
 

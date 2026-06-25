@@ -121,8 +121,8 @@ class ShipmentController extends Controller
                 $key = ($l['code'] ?? '') ?: $l['item'];
                 $poLine = $poLines->get($key);
                 $linesPayload[] = array_merge($l, [
-                    'purchase_order_line_id' => $poLine?->id,
-                    'hs_code' => $l['hs_code'] ?? ($poLine?->hs_code),
+                    'purchase_order_line_id' => optional($poLine)->id,
+                    'hs_code' => $l['hs_code'] ?? optional($poLine)->hs_code,
                 ]);
             }
 

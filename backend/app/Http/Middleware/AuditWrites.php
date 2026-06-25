@@ -31,8 +31,8 @@ class AuditWrites
             'method' => $request->method(),
             'path' => $request->path(),
             'status' => $status,
-            'user_id' => $request->user()?->id,
-            'user_email' => $request->user()?->email,
+            'user_id' => optional($request->user())->id,
+            'user_email' => optional($request->user())->email,
             'ip' => $request->ip(),
         ]);
 

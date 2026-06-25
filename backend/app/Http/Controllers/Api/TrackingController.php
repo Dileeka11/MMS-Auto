@@ -37,7 +37,7 @@ class TrackingController extends Controller
                 'po_code' => $po->code,
                 'supplier' => $po->supplier,
                 'pi_number' => $po->pi_number,
-                'date' => $po->date?->toDateString(),
+                'date' => optional($po->date)->toDateString(),
                 'currency' => $po->currency,
                 'total' => (float) $po->total,
                 'ordered_qty' => $orderedQty,
@@ -49,7 +49,7 @@ class TrackingController extends Controller
                 'shipments' => $po->shipments->map(fn ($s) => [
                     'code' => $s->code,
                     'seq' => $s->seq,
-                    'date' => $s->date?->toDateString(),
+                    'date' => optional($s->date)->toDateString(),
                     'status' => $s->status,
                     'items_total' => (float) $s->items_total,
                     'extras_total' => (float) $s->extras_total,
