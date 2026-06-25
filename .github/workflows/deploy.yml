@@ -58,7 +58,7 @@ jobs:
         with:
           php-version: '7.4'
           extensions: mbstring, bcmath, pdo, pdo_mysql, tokenizer, xml, ctype, json, fileinfo, openssl, zip
-          tools: composer:v2
+          tools: composer:2.6.6
 
       - name: Install composer dependencies (fresh resolve for PHP 7.4 + stable)
         working-directory: backend
