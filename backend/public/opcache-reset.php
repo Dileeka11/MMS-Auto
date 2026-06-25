@@ -22,6 +22,32 @@ foreach (['routes-v7.php', 'routes.php', 'config.php', 'packages.php', 'services
 }
 $result['laravel_cache_cleared'] = $cleared;
 
+// Action: routes — list all registered Laravel routes
+if (($_GET['action'] ?? '') === 'routes') {
+    try {
+        require __DIR__ . '/../laravel/vendor/autoload.php';
+        $app = require __DIR__ . '/../laravel/bootstrap/app.php';
+        $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
+        $request = Illuminate\Http\Request::create('/test', 'GET');
+        $app->instance('request', $request);
+        $kernel->bootstrap();
+        $routes = [];
+        foreach (\Illuminate\Support\Facades\Route::getRoutes() as $route) {
+            $routes[] = [
+                'methods' => $route->methods(),
+                'uri' => $route->uri(),
+                'name' => $route->getName(),
+                'action' => $route->getActionName(),
+            ];
+        }
+        $result['routes_count'] = count($routes);
+        $result['routes'] = $routes;
+    } catch (\Throwable $e) {
+        $result['error'] = $e->getMessage();
+        $result['trace'] = explode("\n", $e->getTraceAsString());
+    }
+}
+
 // 3. If ?action=migrate, boot Laravel and run migrate + seed
 if (($_GET['action'] ?? '') === 'migrate') {
     try {
