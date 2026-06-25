@@ -23,4 +23,9 @@ class PurchaseOrderLine extends Model
     {
         return $this->belongsTo(PurchaseOrder::class);
     }
+
+    public function item()
+    {
+        return $this->belongsTo(Item::class);
+    }
 }

@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Item;
 use App\Models\PurchaseOrder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class PurchaseOrderController extends Controller
 {
@@ -33,14 +35,26 @@ class PurchaseOrderController extends Controller
             'currency' => 'nullable|string',
             'notes' => 'nullable|string',
             'lines' => 'required|array|min:1',
-            'lines.*.code' => 'nullable|string',
+            'lines.*.code' => 'required|string',
             'lines.*.hs_code' => 'nullable|string',
             'lines.*.item' => 'required|string',
             'lines.*.qty' => 'required|numeric|min:1',
             'lines.*.cost' => 'required|numeric',
         ]);
 
-        return DB::transaction(function () use ($data) {
+        $norm = fn ($s) => strtoupper(trim((string) $s));
+        $codes = collect($data['lines'])->pluck('code')->map($norm)->unique()->values();
+        $itemMap = Item::all(['id', 'code'])
+            ->mapWithKeys(fn ($i) => [$norm($i->code) => $i->id]);
+
+        $unmatched = $codes->reject(fn ($c) => isset($itemMap[$c]))->values();
+        if ($unmatched->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'lines' => 'Item code(s) not found in Item Master: ' . $unmatched->implode(', '),
+            ]);
+        }
+
+        return DB::transaction(function () use ($data, $itemMap, $norm) {
             $total = collect($data['lines'])->sum(fn ($l) => (int) $l['qty'] * (float) $l['cost']);
             $po = PurchaseOrder::create([
                 'code' => $this->nextCode(),
@@ -60,7 +74,8 @@ class PurchaseOrderController extends Controller
             foreach ($data['lines'] as $l) {
                 $qty = (int) $l['qty'];
                 $po->lines()->create([
-                    'code' => $l['code'] ?? null,
+                    'item_id' => $itemMap[$norm($l['code'])],
+                    'code' => $l['code'],
                     'hs_code' => $l['hs_code'] ?? null,
                     'item' => $l['item'],
                     'qty' => $qty,
