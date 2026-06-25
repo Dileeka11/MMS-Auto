@@ -17,17 +17,3 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Route::get('/__setup', function (\Illuminate\Http\Request $request) {
-    if ($request->query('token') !== 'nms-auto-setup-2026-one-time-xyz9k4j2') {
-        abort(403, 'Forbidden');
-    }
-    try {
-        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-        $migrateOutput = \Illuminate\Support\Facades\Artisan::output();
-        \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
-        $seedOutput = \Illuminate\Support\Facades\Artisan::output();
-        return response('<pre>MIGRATE:\n' . e($migrateOutput) . "\n\nSEED:\n" . e($seedOutput) . '</pre>');
-    } catch (\Throwable $e) {
-        return response('<pre>ERROR: ' . e($e->getMessage()) . "\n\n" . e($e->getTraceAsString()) . '</pre>', 500);
-    }
-});
