@@ -9,6 +9,9 @@ class AddApprovalsToShipmentsAndGrns extends Migration
     public function up()
     {
         foreach (['shipments', 'grns'] as $tbl) {
+            // Widen status column so 'Awaiting Approval' fits
+            \DB::statement("ALTER TABLE {$tbl} MODIFY status VARCHAR(50) NOT NULL DEFAULT ''");
+
             Schema::table($tbl, function (Blueprint $table) use ($tbl) {
                 $table->unsignedBigInteger('approver1_id')->nullable()->after('status');
                 $table->timestamp('approver1_at')->nullable()->after('approver1_id');
