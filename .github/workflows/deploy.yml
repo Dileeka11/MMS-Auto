@@ -37,6 +37,7 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./frontend/dist/
           server-dir: /
+          state-name: .ftp-deploy-sync-state-frontend.json
           exclude: |
             **/.git*
             **/.git*/**
@@ -151,6 +152,7 @@ jobs:
           local-dir: ./deploy/root/
           server-dir: /
           dangerous-clean-slate: false
+          state-name: .ftp-deploy-sync-state-backend-root.json
           exclude: |
             **/.git*
             **/.git*/**
@@ -184,3 +186,4 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./deploy/api/
           server-dir: /api/
+          state-name: .ftp-deploy-sync-state-api.json
