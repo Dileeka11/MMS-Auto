@@ -18,7 +18,7 @@ Route::get('/', function () {
 });
 
 Route::get('/__setup', function (\Illuminate\Http\Request $request) {
-    if ($request->query('token') !== env('EXTRACT_TOKEN')) {
+    if ($request->query('token') !== 'nms-auto-setup-2026-one-time-xyz9k4j2') {
         abort(403, 'Forbidden');
     }
     try {
