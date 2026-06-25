@@ -9,7 +9,9 @@ use App\Http\Controllers\Api\GrnController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\MasterController;
+use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\PurchaseOrderController;
+use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ShipmentController;
 use App\Http\Controllers\Api\TrackingController;
 use App\Http\Controllers\Api\QuotationController;
@@ -87,4 +89,11 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
     // Administration
     Route::get('company-profile', [CompanyProfileController::class, 'show']);
     Route::put('company-profile', [CompanyProfileController::class, 'update']);
+
+    // User & permission management (admin-only)
+    Route::middleware('admin')->group(function () {
+        Route::apiResource('users', UserController::class);
+        Route::get('permissions', [PermissionController::class, 'index']);
+        Route::put('permissions/{role}', [PermissionController::class, 'updateRole']);
+    });
 });

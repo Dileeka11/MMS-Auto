@@ -67,13 +67,20 @@ class AuthController extends Controller
 
         return [
             'token' => $token,
-            'user' => $user->only(['id', 'name', 'email', 'role']),
+            'user' => array_merge(
+                $user->only(['id', 'name', 'email', 'role', 'branch', 'status']),
+                ['permissions' => $user->permissionList()]
+            ),
         ];
     }
 
     public function me(Request $request)
     {
-        return $request->user()->only(['id', 'name', 'email']);
+        $u = $request->user();
+        return array_merge(
+            $u->only(['id', 'name', 'email', 'role', 'branch', 'status']),
+            ['permissions' => $u->permissionList()]
+        );
     }
 
     public function logout(Request $request)

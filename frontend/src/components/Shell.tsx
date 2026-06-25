@@ -4,7 +4,8 @@ import type { CSSProperties } from 'react'
 import { Icon } from './Icon'
 import { Btn } from './ui'
 import DB from '../data'
-import { auth } from '../api'
+import { auth, type AuthUser } from '../api'
+import { canAccessRoute } from '../lib/permissions'
 
 export interface NavLeaf { id: string; label: string; icon: string; star?: boolean }
 export interface NavSection { section: string; icon: string; items: NavLeaf[] }
@@ -82,7 +83,18 @@ function NavItem({ item, active, sub, onClick }: { item: NavLeaf; active: boolea
   )
 }
 
-export function Sidebar({ route, go, open, setOpen, company }: { route: string; go: (r: string) => void; open: boolean; setOpen: (b: boolean) => void; company: string }) {
+export function Sidebar({ route, go, open, setOpen, company, user }: { route: string; go: (r: string) => void; open: boolean; setOpen: (b: boolean) => void; company: string; user?: AuthUser | null }) {
+  // Filter NAV by permission: drop hidden leaves and collapse empty sections.
+  const visibleNav: NavNode[] = NAV
+    .map((n) => {
+      if ('section' in n) {
+        const items = n.items.filter((i) => canAccessRoute(user, i.id))
+        return items.length ? { ...n, items } : null
+      }
+      return canAccessRoute(user, n.id) ? n : null
+    })
+    .filter((n): n is NavNode => n !== null)
+
   const [exp, setExp] = useState<Record<string, boolean>>(() => {
     // All sections collapsed by default; only auto-expand the one containing the active route.
     const o: Record<string, boolean> = {}
@@ -103,7 +115,7 @@ export function Sidebar({ route, go, open, setOpen, company }: { route: string; 
           </div>
         </div>
         <nav style={{ padding: '10px 10px 24px', overflowY: 'auto', flex: 1 }}>
-          {NAV.map((n, i) => {
+          {visibleNav.map((n, i) => {
             if (!('section' in n)) return <NavItem key={n.id} item={n} active={route === n.id} onClick={() => { go(n.id); setOpen(false) }} />
             const open2 = exp[n.section]
             return (

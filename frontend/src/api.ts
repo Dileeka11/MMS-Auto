@@ -70,7 +70,27 @@ export function resource<T = any>(name: string) {
   }
 }
 
-export interface AuthUser { id: number; name: string; email: string; role?: 'admin' | 'user' }
+export interface AuthUser {
+  id: number; name: string; email: string;
+  role?: string;
+  branch?: string | null;
+  status?: 'Active' | 'Inactive';
+  /** Flat list of "Module:Action" strings the role is allowed to perform. */
+  permissions?: string[];
+}
+
+export interface PermissionMatrix {
+  roles: string[];
+  modules: string[];
+  actions: string[];
+  matrix: Record<string, Record<string, Record<string, boolean>>>;
+}
+
+export const permissionsApi = {
+  list: () => http.get<PermissionMatrix>('/permissions').then((r) => r.data),
+  updateRole: (role: string, modules: Record<string, Record<string, boolean>>) =>
+    http.put(`/permissions/${role}`, { modules }).then((r) => r.data),
+}
 
 export const auth = {
   login: (email: string, password: string) =>

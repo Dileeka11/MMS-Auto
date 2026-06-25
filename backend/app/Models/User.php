@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -22,11 +21,23 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'branch',
+        'status',
     ];
 
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    public function hasPermission(string $module, string $action): bool
+    {
+        return \App\Support\Permissions::userCan($this, $module, $action);
+    }
+
+    public function permissionList(): array
+    {
+        return \App\Support\Permissions::forRole($this->role ?: 'user');
     }
 
     /**

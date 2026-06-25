@@ -6,6 +6,7 @@ import DB from './data'
 import type { Go, ScreenProps } from './screens/types'
 import Login from './screens/Login'
 import { auth, type AuthUser } from './api'
+import { canAccessRoute } from './lib/permissions'
 
 import DashScreen from './screens/Dashboard'
 import { DataModule, MASTERS } from './screens/Masters'
@@ -71,14 +72,21 @@ export default function App() {
   if (!authReady) return null
   if (!user) return <Login onAuth={setUser} />
 
-  const Screen = SCREENS[route] || (() => <div style={{ padding: 40 }} className="t-2">Screen not found</div>)
+  // Permission gate: silently downgrade to dashboard if user lacks access to the
+  // saved route (e.g. after a permission change). The Sidebar already hides the
+  // entries they can't reach, but the route may be persisted in localStorage.
+  const effectiveRoute = canAccessRoute(user, route) ? route : 'dash'
+  const Screen = SCREENS[effectiveRoute] || (() => <div style={{ padding: 40 }} className="t-2">Screen not found</div>)
+  const denied = !canAccessRoute(user, route)
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <Sidebar route={route} go={go} open={open} setOpen={setOpen} company={brand} />
+      <Sidebar route={effectiveRoute} go={go} open={open} setOpen={setOpen} company={brand} user={user} />
       <div className="mms-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <Topbar setOpen={setOpen} route={route} go={go} />
-        <main key={route} className="fade-in" style={{ padding: '24px clamp(16px,3vw,32px) 60px', flex: 1 }}>
-          <Screen go={go} setBrand={setBrand} user={user} />
+        <Topbar setOpen={setOpen} route={effectiveRoute} go={go} />
+        <main key={effectiveRoute} className="fade-in" style={{ padding: '24px clamp(16px,3vw,32px) 60px', flex: 1 }}>
+          {denied
+            ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--bad)' }}>You do not have permission to view this screen.</div>
+            : <Screen go={go} setBrand={setBrand} user={user} />}
         </main>
       </div>
     </div>
