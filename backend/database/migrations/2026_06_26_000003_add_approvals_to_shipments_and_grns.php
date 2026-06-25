@@ -13,18 +13,45 @@ class AddApprovalsToShipmentsAndGrns extends Migration
             \DB::statement("ALTER TABLE {$tbl} MODIFY status VARCHAR(50) NOT NULL DEFAULT ''");
 
             Schema::table($tbl, function (Blueprint $table) use ($tbl) {
-                $table->unsignedBigInteger('approver1_id')->nullable()->after('status');
-                $table->timestamp('approver1_at')->nullable()->after('approver1_id');
-                $table->unsignedBigInteger('approver2_id')->nullable()->after('approver1_at');
-                $table->timestamp('approver2_at')->nullable()->after('approver2_id');
-                $table->unsignedBigInteger('rejected_by_id')->nullable()->after('approver2_at');
-                $table->timestamp('rejected_at')->nullable()->after('rejected_by_id');
-                $table->string('reject_reason')->nullable()->after('rejected_at');
-
-                $table->foreign('approver1_id', $tbl.'_approver1_fk')->references('id')->on('users')->nullOnDelete();
-                $table->foreign('approver2_id', $tbl.'_approver2_fk')->references('id')->on('users')->nullOnDelete();
-                $table->foreign('rejected_by_id', $tbl.'_rejected_by_fk')->references('id')->on('users')->nullOnDelete();
+                if (!Schema::hasColumn($tbl, 'approver1_id')) {
+                    $table->unsignedBigInteger('approver1_id')->nullable()->after('status');
+                }
+                if (!Schema::hasColumn($tbl, 'approver1_at')) {
+                    $table->timestamp('approver1_at')->nullable()->after('approver1_id');
+                }
+                if (!Schema::hasColumn($tbl, 'approver2_id')) {
+                    $table->unsignedBigInteger('approver2_id')->nullable()->after('approver1_at');
+                }
+                if (!Schema::hasColumn($tbl, 'approver2_at')) {
+                    $table->timestamp('approver2_at')->nullable()->after('approver2_id');
+                }
+                if (!Schema::hasColumn($tbl, 'rejected_by_id')) {
+                    $table->unsignedBigInteger('rejected_by_id')->nullable()->after('approver2_at');
+                }
+                if (!Schema::hasColumn($tbl, 'rejected_at')) {
+                    $table->timestamp('rejected_at')->nullable()->after('rejected_by_id');
+                }
+                if (!Schema::hasColumn($tbl, 'reject_reason')) {
+                    $table->string('reject_reason')->nullable()->after('rejected_at');
+                }
             });
+
+            // Add foreign keys only if not already present
+            try {
+                Schema::table($tbl, function (Blueprint $table) use ($tbl) {
+                    $table->foreign('approver1_id', $tbl.'_approver1_fk')->references('id')->on('users')->nullOnDelete();
+                });
+            } catch (\Throwable $e) { /* already exists */ }
+            try {
+                Schema::table($tbl, function (Blueprint $table) use ($tbl) {
+                    $table->foreign('approver2_id', $tbl.'_approver2_fk')->references('id')->on('users')->nullOnDelete();
+                });
+            } catch (\Throwable $e) { /* already exists */ }
+            try {
+                Schema::table($tbl, function (Blueprint $table) use ($tbl) {
+                    $table->foreign('rejected_by_id', $tbl.'_rejected_by_fk')->references('id')->on('users')->nullOnDelete();
+                });
+            } catch (\Throwable $e) { /* already exists */ }
         }
 
         // Existing rows enter the new workflow.
