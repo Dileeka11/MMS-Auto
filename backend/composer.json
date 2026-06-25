@@ -60,6 +60,6 @@
             "php": "7.4.33"
         }
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true
 }

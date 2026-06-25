@@ -60,9 +60,11 @@ jobs:
           extensions: mbstring, bcmath, pdo, pdo_mysql, tokenizer, xml, ctype, json, fileinfo, openssl, zip
           tools: composer:v2
 
-      - name: Install composer dependencies
+      - name: Install composer dependencies (fresh resolve for PHP 7.4 + stable)
         working-directory: backend
-        run: composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction
+        run: |
+          rm -f composer.lock
+          composer update --no-dev --optimize-autoloader --prefer-dist --prefer-stable --no-interaction
 
       - name: Create production .env
         working-directory: backend
