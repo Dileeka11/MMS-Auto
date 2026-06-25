@@ -70,12 +70,13 @@ jobs:
           ENV_CONTENT: ${{ secrets.PROD_ENV_FILE }}
         run: printf '%s' "$ENV_CONTENT" > .env
 
-      - name: Cache config & routes
+      - name: Clear any cached config (paths would be wrong on server)
         working-directory: backend
         run: |
-          php artisan config:cache
-          php artisan route:cache
-          php artisan view:cache
+          php artisan config:clear || true
+          php artisan route:clear || true
+          php artisan view:clear || true
+          rm -f bootstrap/cache/config.php bootstrap/cache/routes-v7.php bootstrap/cache/packages.php bootstrap/cache/services.php
 
       - name: Prepare Laravel app folder (without public/)
         run: |
