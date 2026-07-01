@@ -72,7 +72,14 @@
       "PowerShell(php -l \"d:/My Projects/NMS-Auto/backend/app/Support/Permissions.php\")",
       "PowerShell(php -l \"d:/My Projects/NMS-Auto/backend/database/migrations/2026_06_26_000004_create_role_permissions_and_extend_users.php\")",
       "Bash(grep -rl \"permission\" tests)",
-      "Bash(ls tests/Feature)"
+      "Bash(ls tests/Feature)",
+      "PowerShell(gh run list --workflow=deploy.yml --limit 3 --json databaseId,conclusion,headSha,displayTitle)",
+      "PowerShell($p = \"$env:LOCALAPPDATA\\\\GitHubCLI\\\\gh.exe\",\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\",\"C:\\\\Program Files \\(x86\\)\\\\GitHub CLI\\\\gh.exe\"; $p | Where-Object { Test-Path $_ })",
+      "PowerShell($t = git config --get credential.helper 2>$null; Write-Output \"helper=$t\"; if \\($env:GH_TOKEN\\) { Write-Output \"GH_TOKEN set\" }; if \\($env:GITHUB_TOKEN\\) { Write-Output \"GITHUB_TOKEN set\" }; Test-Path \"$env:APPDATA\\\\GitHub CLI\\\\hosts.yml\"; git remote get-url origin)",
+      "PowerShell(winget install --id GitHub.cli -e --accept-source-agreements --accept-package-agreements 2>&1)",
+      "PowerShell($gh = \"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\"; if \\(Test-Path $gh\\) { & $gh --version } else { Write-Output \"not at default path\" })",
+      "PowerShell(& \"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" auth status 2>&1)",
+      "PowerShell($input = \"protocol=https`nhost=github.com`n`n\"; $out = $input | git credential fill 2>$null; $token = \\($out | Select-String '^password='\\).ToString\\(\\) -replace '^password=',''; if \\($token\\) { Write-Output \"GOT_TOKEN len=$\\($token.Length\\)\" } else { Write-Output \"NO_TOKEN\" })"
     ]
   }
 }
