@@ -79,17 +79,22 @@ export interface AuthUser {
   permissions?: string[];
 }
 
+export interface PermUser {
+  id: number; name: string; email: string; role?: string;
+}
+
 export interface PermissionMatrix {
-  roles: string[];
+  users: PermUser[];
   modules: string[];
   actions: string[];
+  /** Keyed by user id (as string). */
   matrix: Record<string, Record<string, Record<string, boolean>>>;
 }
 
 export const permissionsApi = {
   list: () => http.get<PermissionMatrix>('/permissions').then((r) => r.data),
-  updateRole: (role: string, modules: Record<string, Record<string, boolean>>) =>
-    http.put(`/permissions/${role}`, { modules }).then((r) => r.data),
+  updateUser: (userId: number, modules: Record<string, Record<string, boolean>>) =>
+    http.put(`/permissions/${userId}`, { modules }).then((r) => r.data),
 }
 
 export const auth = {

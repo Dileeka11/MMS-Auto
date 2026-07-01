@@ -70,7 +70,9 @@
       "PowerShell(php -l \"d:/My Projects/NMS-Auto/backend/app/Http/Controllers/Api/UserController.php\")",
       "PowerShell(php -l \"d:/My Projects/NMS-Auto/backend/app/Models/RolePermission.php\")",
       "PowerShell(php -l \"d:/My Projects/NMS-Auto/backend/app/Support/Permissions.php\")",
-      "PowerShell(php -l \"d:/My Projects/NMS-Auto/backend/database/migrations/2026_06_26_000004_create_role_permissions_and_extend_users.php\")"
+      "PowerShell(php -l \"d:/My Projects/NMS-Auto/backend/database/migrations/2026_06_26_000004_create_role_permissions_and_extend_users.php\")",
+      "Bash(grep -rl \"permission\" tests)",
+      "Bash(ls tests/Feature)"
     ]
   }
 }

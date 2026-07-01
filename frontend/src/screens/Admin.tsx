@@ -80,7 +80,7 @@ export function UsersScreen({ go: _go, user: me }: { go: Go; user?: { id: number
       </Card>
 
       <Modal open={modal} onClose={close} width={560} title={editing ? 'Edit User' : 'Add System User'}
-        sub={editing ? editing.email : 'Permissions are inherited from the assigned role.'}
+        sub={editing ? editing.email : 'The role seeds a starting permission set — fine-tune it per user under User Permission.'}
         footer={<>
           <Btn variant="plain" onClick={close}>Cancel</Btn>
           <Btn variant="primary" icon="check" onClick={save} disabled={busy}>{busy ? 'Saving...' : (editing ? 'Save Changes' : 'Create User')}</Btn>
@@ -102,7 +102,7 @@ export function UsersScreen({ go: _go, user: me }: { go: Go; user?: { id: number
 export function PermScreen({ go: _go }: { go: Go }) {
   const [matrix, setMatrix] = useState<PermissionMatrix | null>(null)
   const [loading, setLoading] = useState(true)
-  const [role, setRole] = useState('manager')
+  const [userId, setUserId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [msg, setMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null)
@@ -110,33 +110,41 @@ export function PermScreen({ go: _go }: { go: Go }) {
   const load = () => {
     setLoading(true); setMsg(null)
     permissionsApi.list()
-      .then((d) => { setMatrix(d); if (!d.roles.includes(role)) setRole(d.roles.find((r) => r !== 'admin') || d.roles[0]); setDirty(false) })
+      .then((d) => {
+        setMatrix(d)
+        setUserId((cur) => (cur && d.users.some((u) => u.id === cur)) ? cur : (d.users[0]?.id ?? null))
+        setDirty(false)
+      })
       .catch(() => setMsg({ tone: 'err', text: 'Failed to load permission matrix.' }))
       .finally(() => setLoading(false))
   }
   useEffect(load, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const key = userId != null ? String(userId) : ''
+  const selectedUser = matrix?.users.find((u) => u.id === userId) || null
+  const isAdminUser = selectedUser?.role === 'admin'
+
   const toggle = (m: string, a: string) => {
-    if (!matrix || role === 'admin') return
+    if (!matrix || !key || isAdminUser) return
     setMatrix({
       ...matrix,
-      matrix: { ...matrix.matrix, [role]: { ...matrix.matrix[role], [m]: { ...matrix.matrix[role][m], [a]: !matrix.matrix[role][m][a] } } },
+      matrix: { ...matrix.matrix, [key]: { ...matrix.matrix[key], [m]: { ...matrix.matrix[key][m], [a]: !matrix.matrix[key][m][a] } } },
     })
     setDirty(true); setMsg(null)
   }
   const bulkRow = (m: string, val: boolean) => {
-    if (!matrix || role === 'admin') return
+    if (!matrix || !key || isAdminUser) return
     const row: Record<string, boolean> = {}
     matrix.actions.forEach((a) => row[a] = val)
-    setMatrix({ ...matrix, matrix: { ...matrix.matrix, [role]: { ...matrix.matrix[role], [m]: row } } })
+    setMatrix({ ...matrix, matrix: { ...matrix.matrix, [key]: { ...matrix.matrix[key], [m]: row } } })
     setDirty(true); setMsg(null)
   }
 
   const save = async () => {
-    if (!matrix || role === 'admin') return
+    if (!matrix || !userId || isAdminUser) return
     setSaving(true); setMsg(null)
     try {
-      await permissionsApi.updateRole(role, matrix.matrix[role])
+      await permissionsApi.updateUser(userId, matrix.matrix[key])
       setDirty(false); setMsg({ tone: 'ok', text: 'Permissions saved.' })
     } catch (ex: any) {
       setMsg({ tone: 'err', text: ex?.response?.data?.message || 'Save failed' })
@@ -145,15 +153,13 @@ export function PermScreen({ go: _go }: { go: Go }) {
 
   if (loading || !matrix) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading permissions…</div>
 
-  const roleLabels: Record<string, string> = { admin: 'Administrator', manager: 'Manager', storekeeper: 'Store Keeper', accountant: 'Accountant', salesrep: 'Sales Rep', cashier: 'Cashier', user: 'User' }
-  const isAdminRole = role === 'admin'
-  const grid = matrix.matrix[role] || {}
+  const grid = matrix.matrix[key] || {}
 
   return (
     <div>
-      <PageHead crumbs="Administration" title="User Permission" icon="shield" sub="Role-based access control matrix"
+      <PageHead crumbs="Administration" title="User Permission" icon="shield" sub="Per-user access control matrix"
         actions={
-          <Btn variant="primary" icon="check" onClick={save} disabled={saving || !dirty || isAdminRole}>
+          <Btn variant="primary" icon="check" onClick={save} disabled={saving || !dirty || isAdminUser}>
             {saving ? 'Saving...' : dirty ? 'Save Permissions' : 'Saved'}
           </Btn>
         } />
@@ -166,14 +172,20 @@ export function PermScreen({ go: _go }: { go: Go }) {
       )}
 
       <Card pad={0}>
-        <div className="row gap-2 wrap" style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)' }}>
-          <span className="t-2" style={{ fontSize: 12.5, alignSelf: 'center', marginRight: 6 }}>Role:</span>
-          {matrix.roles.map((r) => <Btn key={r} variant="ghost" size="sm" active={role === r} onClick={() => { if (dirty && !confirm('Discard unsaved changes?')) return; setRole(r); setDirty(false); setMsg(null) }}>{roleLabels[r] || r}</Btn>)}
+        <div className="row gap-2" style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', alignItems: 'center' }}>
+          <span className="t-2" style={{ fontSize: 12.5, marginRight: 6 }}>User:</span>
+          <Select
+            value={userId ?? ''}
+            onChange={(e) => { if (dirty && !confirm('Discard unsaved changes?')) return; setUserId(Number(e.target.value)); setDirty(false); setMsg(null) }}
+            style={{ minWidth: 260, maxWidth: 360 }}
+          >
+            {matrix.users.map((u) => <option key={u.id} value={u.id}>{u.name} — {u.email}{u.role === 'admin' ? ' (Admin)' : ''}</option>)}
+          </Select>
         </div>
 
-        {isAdminRole && (
+        {isAdminUser && (
           <div style={{ padding: '10px 18px', background: 'var(--ac-dim)', color: 'var(--ac-bright)', fontSize: 12.5, borderBottom: '1px solid var(--ac-line)' }}>
-            The Administrator role has full access to every module by definition and cannot be modified.
+            Administrators have full access to every module by definition and cannot be modified.
           </div>
         )}
 
@@ -191,17 +203,17 @@ export function PermScreen({ go: _go }: { go: Go }) {
                 <tr key={m} className="mms-tr">
                   <td style={{ padding: '10px 18px', borderBottom: '1px solid var(--line-soft)', fontWeight: 600, color: 'var(--tx-0)' }}>{m}</td>
                   {matrix.actions.map((a) => {
-                    const on = !!grid[m]?.[a] || isAdminRole
+                    const on = !!grid[m]?.[a] || isAdminUser
                     return (
                       <td key={a} style={{ padding: '8px 14px', borderBottom: '1px solid var(--line-soft)', textAlign: 'center' }}>
-                        <button onClick={() => toggle(m, a)} disabled={isAdminRole} style={{ width: 34, height: 20, borderRadius: 20, border: 'none', cursor: isAdminRole ? 'not-allowed' : 'pointer', background: on ? 'var(--ac)' : 'var(--bg-3)', position: 'relative', transition: 'background .18s', opacity: isAdminRole ? 0.6 : 1 }}>
+                        <button onClick={() => toggle(m, a)} disabled={isAdminUser} style={{ width: 34, height: 20, borderRadius: 20, border: 'none', cursor: isAdminUser ? 'not-allowed' : 'pointer', background: on ? 'var(--ac)' : 'var(--bg-3)', position: 'relative', transition: 'background .18s', opacity: isAdminUser ? 0.6 : 1 }}>
                           <span style={{ position: 'absolute', top: 2, left: on ? 16 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .18s' }} />
                         </button>
                       </td>
                     )
                   })}
                   <td style={{ padding: '8px 14px', borderBottom: '1px solid var(--line-soft)', textAlign: 'center' }}>
-                    <Btn variant="ghost" size="sm" disabled={isAdminRole} onClick={() => bulkRow(m, !allOn)}>{allOn ? 'None' : 'All'}</Btn>
+                    <Btn variant="ghost" size="sm" disabled={isAdminUser} onClick={() => bulkRow(m, !allOn)}>{allOn ? 'None' : 'All'}</Btn>
                   </td>
                 </tr>
               )

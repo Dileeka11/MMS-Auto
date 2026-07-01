@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Support\Permissions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -11,35 +12,38 @@ class PermissionController extends Controller
 {
     public function index()
     {
-        Permissions::seedDefaultsIfEmpty();
+        $users = User::orderBy('id')->get(['id', 'name', 'email', 'role']);
+
+        $matrix = [];
+        foreach ($users as $user) {
+            Permissions::seedUserIfMissing($user);
+            $matrix[$user->id] = Permissions::gridForUser($user);
+        }
 
         return [
-            'roles'   => Permissions::ROLES,
+            'users'   => $users,
             'modules' => Permissions::MODULES,
             'actions' => Permissions::ACTIONS,
-            'matrix'  => Permissions::matrix(),
+            'matrix'  => $matrix,
         ];
     }
 
     /**
-     * Replace permissions for a single role.
+     * Replace permissions for a single user.
      * Body: { modules: { "Module Name": { "View": true, ... } } }
      */
-    public function updateRole(Request $request, string $role)
+    public function updateUser(Request $request, User $user)
     {
-        if (!in_array($role, Permissions::ROLES, true)) {
-            return response()->json(['message' => 'Unknown role.'], 422);
-        }
         $data = $request->validate([
             'modules' => 'required|array',
         ]);
-        Permissions::saveForRole($role, $data['modules']);
+        Permissions::saveForUser($user, $data['modules']);
 
         Log::channel('audit')->info('permissions_updated', [
-            'role' => $role,
+            'user_id' => $user->id,
             'by' => optional($request->user())->id,
         ]);
 
-        return ['ok' => true, 'matrix' => Permissions::matrix()];
+        return ['ok' => true, 'matrix' => Permissions::gridForUser($user)];
     }
 }

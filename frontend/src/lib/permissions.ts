@@ -18,6 +18,21 @@ export const ROUTE_MODULE: Record<string, string> = {
   'm/customer': 'Customer Master',
   'm/supplier': 'Supplier Master',
   'm/salesExec': 'Sales Executive',
+  'm/vehicleBrand': 'Vehicle Brand',
+  'm/vehicleModel': 'Vehicle Model',
+  'm/brand': 'Brand Master',
+  'm/brandCat': 'Brand Category',
+  'm/group': 'Group Master',
+  'm/services': 'Services',
+  'm/department': 'Department',
+  'm/employee': 'Employee Master',
+  'm/payment': 'Payment Master',
+  'm/bank': 'Bank Master',
+  'm/country': 'Country Master',
+  'm/branch': 'Branch Master',
+  'm/expenseType': 'Expense Type',
+  'm/credit': 'Credit Period',
+  'm/remark': 'Invoice Remark',
   'dc/po': 'Purchase Order',
   'dc/costing': 'Costing & Shipment',
   'dc/grn': 'GRN',
@@ -40,7 +55,9 @@ export const ROUTE_MODULE: Record<string, string> = {
 }
 
 export function canAccessRoute(user: AuthUser | null | undefined, routeId: string): boolean {
+  if (!user) return false
+  if (user.role === 'admin') return true // admin sees everything
   const mod = ROUTE_MODULE[routeId]
-  if (!mod) return true // unmapped → allow (custom masters etc.)
+  if (!mod) return false // fail closed: unmapped route → deny for non-admins
   return userCan(user, mod, 'View')
 }

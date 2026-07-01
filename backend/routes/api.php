@@ -116,6 +116,6 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
     Route::middleware('admin')->group(function () {
         Route::apiResource('users', UserController::class);
         Route::get('permissions', [PermissionController::class, 'index']);
-        Route::put('permissions/{role}', [PermissionController::class, 'updateRole']);
+        Route::put('permissions/{user}', [PermissionController::class, 'updateUser']);
     });
 });

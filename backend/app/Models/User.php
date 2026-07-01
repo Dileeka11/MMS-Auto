@@ -37,7 +37,7 @@ class User extends Authenticatable
 
     public function permissionList(): array
     {
-        return \App\Support\Permissions::forRole($this->role ?: 'user');
+        return \App\Support\Permissions::forUser($this);
     }
 
     /**

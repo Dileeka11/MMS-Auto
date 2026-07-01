@@ -2,8 +2,8 @@
 
 namespace App\Support;
 
-use App\Models\RolePermission;
 use App\Models\User;
+use App\Models\UserPermission;
 use Illuminate\Support\Facades\Cache;
 
 class Permissions
@@ -15,6 +15,9 @@ class Permissions
     public const MODULES = [
         'Dashboard',
         'Item Master', 'Customer Master', 'Supplier Master', 'Sales Executive',
+        'Vehicle Brand', 'Vehicle Model', 'Brand Master', 'Brand Category', 'Group Master',
+        'Services', 'Department', 'Employee Master', 'Payment Master', 'Bank Master',
+        'Country Master', 'Branch Master', 'Expense Type', 'Credit Period', 'Invoice Remark',
         'Purchase Order', 'Costing & Shipment', 'GRN', 'PO Tracking',
         'Quotation', 'Sales Invoice', 'Sales Return', 'Payment Receipt', 'Expense',
         'Stock Transfer', 'Stock Adjustment', 'BIN Card', 'Live Stock', 'Price Control',
@@ -25,12 +28,14 @@ class Permissions
     public const ACTIONS = ['View', 'Create', 'Edit', 'Delete', 'Approve'];
 
     /**
-     * Default roles shipped with the system. The 'admin' role is implicit:
-     * it always has every permission and bypasses the matrix.
+     * Roles shipped with the system. These are now only a convenience: each
+     * role has a default permission set that seeds a user's own matrix the
+     * first time it is needed. Actual access is resolved per-user. The 'admin'
+     * role is implicit — it always has every permission and bypasses the matrix.
      */
     public const ROLES = ['admin', 'manager', 'storekeeper', 'accountant', 'salesrep', 'cashier', 'user'];
 
-    /** Cache TTL (seconds) for the per-role matrix. */
+    /** Cache TTL (seconds) for a user's resolved permission list. */
     private const CACHE_TTL = 300;
 
     public static function rolesForUI(): array
@@ -39,40 +44,115 @@ class Permissions
     }
 
     /**
-     * Return a {role: {module: {action: bool}}} matrix for every role.
+     * Default permission predicates per role, used only to seed a brand-new
+     * user's personal matrix. Returns a map of role => fn(module, action): bool.
      */
-    public static function matrix(): array
+    private static function roleDefaults(): array
     {
-        $rows = RolePermission::all();
-        $out = [];
-        foreach (self::ROLES as $r) {
-            $out[$r] = [];
-            foreach (self::MODULES as $m) {
-                $out[$r][$m] = [];
-                foreach (self::ACTIONS as $a) {
-                    $out[$r][$m][$a] = $r === 'admin'; // admin defaults to all
-                }
-            }
-        }
-        foreach ($rows as $p) {
-            if (isset($out[$p->role][$p->module][$p->action])) {
-                $out[$p->role][$p->module][$p->action] = true;
+        return [
+            'admin' => fn ($m, $a) => true,
+            'manager' => fn ($m, $a) => true && $a !== 'Delete' || in_array($m, ['Sales Invoice', 'Quotation']),
+            'storekeeper' => fn ($m, $a) => in_array($m, ['Dashboard', 'Item Master', 'Supplier Master', 'GRN', 'Stock Transfer', 'Stock Adjustment', 'BIN Card', 'Live Stock', 'Price Control']) && $a !== 'Approve',
+            'accountant' => fn ($m, $a) => in_array($m, ['Dashboard', 'Customer Master', 'Sales Invoice', 'Payment Receipt', 'Expense', 'Reports']) && $a !== 'Delete',
+            'salesrep' => fn ($m, $a) => in_array($m, ['Dashboard', 'Item Master', 'Customer Master', 'Quotation', 'Sales Invoice']) && in_array($a, ['View', 'Create']),
+            'cashier' => fn ($m, $a) => in_array($m, ['Dashboard', 'Payment Receipt', 'Sales Invoice']) && in_array($a, ['View', 'Create']),
+            'user' => fn ($m, $a) => $m === 'Dashboard' && $a === 'View',
+        ];
+    }
+
+    /** Empty {module: {action: false}} grid. */
+    private static function emptyGrid(): array
+    {
+        $grid = [];
+        foreach (self::MODULES as $m) {
+            foreach (self::ACTIONS as $a) {
+                $grid[$m][$a] = false;
             }
         }
 
-        return $out;
+        return $grid;
+    }
+
+    /** Default {module: {action: bool}} grid for a role. */
+    public static function defaultGridForRole(string $role): array
+    {
+        $fn = self::roleDefaults()[$role] ?? self::roleDefaults()['user'];
+        $grid = [];
+        foreach (self::MODULES as $m) {
+            foreach (self::ACTIONS as $a) {
+                $grid[$m][$a] = (bool) $fn($m, $a);
+            }
+        }
+
+        return $grid;
     }
 
     /**
-     * Replace all permissions for a role with the given matrix slice:
+     * Ensure a user has a personal permission matrix. On first use we seed it
+     * from the user's role defaults so admins have a sensible starting point.
+     * Admin users are never seeded — their access is implicit.
+     */
+    public static function seedUserIfMissing(User $user): void
+    {
+        if ($user->role === 'admin') {
+            return;
+        }
+        if (UserPermission::where('user_id', $user->id)->exists()) {
+            return;
+        }
+        $grid = self::defaultGridForRole($user->role ?: 'user');
+        $rows = [];
+        foreach ($grid as $module => $actions) {
+            foreach ($actions as $action => $enabled) {
+                if ($enabled) {
+                    $rows[] = [
+                        'user_id' => $user->id, 'module' => $module, 'action' => $action,
+                        'created_at' => now(), 'updated_at' => now(),
+                    ];
+                }
+            }
+        }
+        if ($rows) {
+            UserPermission::insert($rows);
+        }
+        Cache::forget("perm:user:{$user->id}");
+    }
+
+    /**
+     * Return a {module: {action: bool}} matrix for a single user.
+     * Admin users get every permission.
+     */
+    public static function gridForUser(User $user): array
+    {
+        $grid = self::emptyGrid();
+        if ($user->role === 'admin') {
+            foreach (self::MODULES as $m) {
+                foreach (self::ACTIONS as $a) {
+                    $grid[$m][$a] = true;
+                }
+            }
+
+            return $grid;
+        }
+        foreach (UserPermission::where('user_id', $user->id)->get() as $p) {
+            if (isset($grid[$p->module][$p->action])) {
+                $grid[$p->module][$p->action] = true;
+            }
+        }
+
+        return $grid;
+    }
+
+    /**
+     * Replace all permissions for a user with the given matrix slice:
      *   {module: {action: bool}}
      */
-    public static function saveForRole(string $role, array $modules): void
+    public static function saveForUser(User $user, array $modules): void
     {
-        if ($role === 'admin') {
+        if ($user->role === 'admin') {
             return; // admin permissions are implicit and not stored.
         }
-        RolePermission::where('role', $role)->delete();
+        UserPermission::where('user_id', $user->id)->delete();
         $rows = [];
         foreach ($modules as $module => $actions) {
             if (!in_array($module, self::MODULES, true)) {
@@ -84,34 +164,39 @@ class Permissions
                 }
                 if ($enabled) {
                     $rows[] = [
-                        'role' => $role, 'module' => $module, 'action' => $action,
+                        'user_id' => $user->id, 'module' => $module, 'action' => $action,
                         'created_at' => now(), 'updated_at' => now(),
                     ];
                 }
             }
         }
         if ($rows) {
-            RolePermission::insert($rows);
+            UserPermission::insert($rows);
         }
-        Cache::forget("perm:role:{$role}");
+        Cache::forget("perm:user:{$user->id}");
     }
 
     /**
-     * Flat list of "Module:Action" strings the role has access to.
+     * Flat list of "Module:Action" strings the user has access to.
      */
-    public static function forRole(string $role): array
+    public static function forUser(?User $user): array
     {
-        if ($role === 'admin') {
+        if (!$user) {
+            return [];
+        }
+        if ($user->role === 'admin') {
             $all = [];
             foreach (self::MODULES as $m) {
                 foreach (self::ACTIONS as $a) {
                     $all[] = "{$m}:{$a}";
                 }
             }
+
             return $all;
         }
-        return Cache::remember("perm:role:{$role}", self::CACHE_TTL, function () use ($role) {
-            return RolePermission::where('role', $role)
+
+        return Cache::remember("perm:user:{$user->id}", self::CACHE_TTL, function () use ($user) {
+            return UserPermission::where('user_id', $user->id)
                 ->get()
                 ->map(fn ($p) => "{$p->module}:{$p->action}")
                 ->values()
@@ -127,37 +212,7 @@ class Permissions
         if ($user->role === 'admin') {
             return true;
         }
-        return in_array("{$module}:{$action}", self::forRole($user->role), true);
-    }
 
-    /**
-     * Seed a sensible default matrix the first time the table is empty.
-     */
-    public static function seedDefaultsIfEmpty(): void
-    {
-        if (RolePermission::count() > 0) {
-            return;
-        }
-        $defaults = [
-            'manager' => fn ($m, $a) => true && $a !== 'Delete' || in_array($m, ['Sales Invoice', 'Quotation']),
-            'storekeeper' => fn ($m, $a) => in_array($m, ['Dashboard', 'Item Master', 'Supplier Master', 'GRN', 'Stock Transfer', 'Stock Adjustment', 'BIN Card', 'Live Stock', 'Price Control']) && $a !== 'Approve',
-            'accountant' => fn ($m, $a) => in_array($m, ['Dashboard', 'Customer Master', 'Sales Invoice', 'Payment Receipt', 'Expense', 'Reports']) && $a !== 'Delete',
-            'salesrep' => fn ($m, $a) => in_array($m, ['Dashboard', 'Item Master', 'Customer Master', 'Quotation', 'Sales Invoice']) && in_array($a, ['View', 'Create']),
-            'cashier' => fn ($m, $a) => in_array($m, ['Dashboard', 'Payment Receipt', 'Sales Invoice']) && in_array($a, ['View', 'Create']),
-            'user' => fn ($m, $a) => $m === 'Dashboard' && $a === 'View',
-        ];
-        $rows = [];
-        foreach ($defaults as $role => $fn) {
-            foreach (self::MODULES as $m) {
-                foreach (self::ACTIONS as $a) {
-                    if ($fn($m, $a)) {
-                        $rows[] = ['role' => $role, 'module' => $m, 'action' => $a, 'created_at' => now(), 'updated_at' => now()];
-                    }
-                }
-            }
-        }
-        if ($rows) {
-            RolePermission::insert($rows);
-        }
+        return in_array("{$module}:{$action}", self::forUser($user), true);
     }
 }

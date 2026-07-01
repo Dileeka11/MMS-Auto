@@ -35,6 +35,9 @@ class UserController extends Controller
             'status'   => $data['status'] ?? 'Active',
         ]);
 
+        // Seed the new user's personal permission matrix from their role defaults.
+        Permissions::seedUserIfMissing($user);
+
         return response()->json($user->only(['id', 'name', 'email', 'role', 'branch', 'status', 'created_at']), 201);
     }
 
