@@ -52,6 +52,54 @@
   --sb-w: 248px;
   --topbar-h: 60px;
   --ease: cubic-bezier(.22,.61,.36,1);
+
+  /* translucent topbar background (theme-aware) */
+  --top-bg: oklch(0.19 0.013 250 / 0.8);
+  /* soft accent glow behind the app body */
+  --body-glow: oklch(0.62 0.19 256 / 0.07);
+}
+
+/* ===========================================================
+   LIGHT THEME — applied via [data-theme="light"] on <html>
+   =========================================================== */
+[data-theme="light"]{
+  /* surfaces — clean cool white/greys */
+  --bg-0: oklch(0.965 0.004 250);   /* app background */
+  --bg-1: oklch(0.995 0.001 250);   /* panels / cards */
+  --bg-2: oklch(0.945 0.005 250);   /* raised / hover */
+  --bg-3: oklch(0.915 0.006 250);   /* inputs / wells */
+  --line: oklch(0.87 0.008 250);    /* borders */
+  --line-soft: oklch(0.91 0.006 250);
+
+  /* text — dark on light */
+  --tx-0: oklch(0.24 0.012 250);    /* primary */
+  --tx-1: oklch(0.4 0.012 250);     /* secondary */
+  --tx-2: oklch(0.52 0.012 250);    /* muted */
+  --tx-3: oklch(0.64 0.012 250);    /* faint */
+
+  /* accent — slightly deeper so it reads on white */
+  --ac: oklch(0.55 0.2 256);
+  --ac-bright: oklch(0.5 0.21 256);
+  --ac-dim: oklch(0.55 0.2 256 / 0.1);
+  --ac-line: oklch(0.55 0.2 256 / 0.3);
+
+  /* semantic — deepen for contrast on light */
+  --ok: oklch(0.58 0.15 155);
+  --ok-dim: oklch(0.58 0.15 155 / 0.12);
+  --warn: oklch(0.62 0.14 65);
+  --warn-dim: oklch(0.62 0.14 65 / 0.14);
+  --bad: oklch(0.56 0.2 25);
+  --bad-dim: oklch(0.56 0.2 25 / 0.1);
+  --info: oklch(0.55 0.13 220);
+
+  --sh-1: 0 1px 2px oklch(0 0 0 / 0.08);
+  --sh-2: 0 8px 24px -10px oklch(0.3 0.02 250 / 0.18);
+  --sh-3: 0 24px 60px -18px oklch(0.3 0.02 250 / 0.25);
+
+  --hazard: repeating-linear-gradient(-45deg, oklch(0.72 0.15 70 / 0.9) 0 8px, oklch(0.93 0.006 250) 8px 16px);
+
+  --top-bg: oklch(0.995 0.001 250 / 0.82);
+  --body-glow: oklch(0.55 0.2 256 / 0.06);
 }
 
 /* theme variants applied via [data-accent] on <html> (company profile picker) */
@@ -64,13 +112,18 @@
 html,body{ margin:0; padding:0; }
 body{
   background:
-    radial-gradient(1200px 600px at 80% -10%, oklch(0.62 0.19 256 / 0.07), transparent 60%),
+    radial-gradient(1200px 600px at 80% -10%, var(--body-glow), transparent 60%),
     var(--bg-0);
   color: var(--tx-0);
   font-family:'IBM Plex Sans', system-ui, sans-serif;
   font-size:14px;
   line-height:1.45;
   -webkit-font-smoothing:antialiased;
+  transition: background-color .3s var(--ease), color .3s var(--ease);
+}
+/* smooth surface/border colour crossfade when switching themes */
+.mms-card, .mms-sb, .mms-top, .mms-act, .mms-icobtn, .mms-nav, input, select, textarea{
+  transition: background-color .3s var(--ease), border-color .3s var(--ease), color .3s var(--ease);
 }
 #root{ min-height:100vh; }
 

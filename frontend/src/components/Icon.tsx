@@ -69,6 +69,8 @@ export function Icon({ n, s = 18, c = 'currentColor', sw = 1.75, style }: IconPr
     car: <><path d="M5 13l1.5-4.5A2 2 0 0 1 8.4 7h7.2a2 2 0 0 1 1.9 1.5L19 13" /><path d="M3 17v-2a2 2 0 0 1 1.2-1.8L5 13h14l.8.2A2 2 0 0 1 21 15v2a1 1 0 0 1-1 1h-1v1a1 1 0 0 1-2 0v-1H7v1a1 1 0 0 1-2 0v-1H4a1 1 0 0 1-1-1z" /><circle cx="7.5" cy="15.5" r="1" /><circle cx="16.5" cy="15.5" r="1" /></>,
     wrench: <path d="M14.5 5.5a4 4 0 0 0 5 5L21 9l-2-2 1-3-3 1-2-2-1.5 1.5a4 4 0 0 0-1 1.5zM12.5 9.5 4 18a2 2 0 1 0 2 2l8.5-8.5" />,
     alert: <><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 16v.5" /></>,
+    sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
+    moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />,
   }
   return <svg {...P}>{paths[n] || paths.box}</svg>
 }

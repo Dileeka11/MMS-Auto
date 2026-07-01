@@ -136,8 +136,30 @@ export function Sidebar({ route, go, open, setOpen, company, user }: { route: st
   )
 }
 
+export function ThemeToggle() {
+  const [theme, setTheme] = useState<string>(() => document.documentElement.dataset.theme || 'dark')
+  const toggle = () => {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    document.documentElement.dataset.theme = next
+    localStorage.setItem('mms-theme', next)
+  }
+  const isDark = theme === 'dark'
+  return (
+    <button
+      className="mms-icobtn"
+      onClick={toggle}
+      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 8, padding: 8, color: 'var(--tx-1)' }}
+    >
+      <Icon n={isDark ? 'sun' : 'moon'} s={18} />
+    </button>
+  )
+}
+
 export function Topbar({ setOpen, go }: { setOpen: (fn: (o: boolean) => boolean) => void; route: string; go: (r: string) => void }) {
-  const headStyle: CSSProperties = { height: 'var(--topbar-h)', padding: '0 20px', borderBottom: '1px solid var(--line)', background: 'oklch(0.19 0.013 250 / 0.8)', backdropFilter: 'blur(10px)', position: 'sticky', top: 0, zIndex: 50 }
+  const headStyle: CSSProperties = { height: 'var(--topbar-h)', padding: '0 20px', borderBottom: '1px solid var(--line)', background: 'var(--top-bg)', backdropFilter: 'blur(10px)', position: 'sticky', top: 0, zIndex: 50 }
   return (
     <header className="mms-top row between" style={headStyle}>
       <div className="row gap-3">
@@ -150,6 +172,7 @@ export function Topbar({ setOpen, go }: { setOpen: (fn: (o: boolean) => boolean)
       </div>
       <div className="row gap-3">
         <Btn variant="ghost" size="sm" icon="plus" onClick={() => go('dc/invoice')}>New Invoice</Btn>
+        <ThemeToggle />
         <button className="mms-icobtn" style={{ position: 'relative', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 8, padding: 8, color: 'var(--tx-1)' }}>
           <Icon n="bell" s={18} />
           <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--bad)', border: '2px solid var(--bg-2)' }} />
