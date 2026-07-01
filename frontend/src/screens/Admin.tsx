@@ -230,7 +230,7 @@ export function CompanyScreen({ go: _go, setBrand }: { go: Go; setBrand?: (v: st
   const [accent, setAccent] = useState(document.documentElement.dataset.accent || 'blue')
   const [saving, setSaving] = useState(false)
   const swatches: [string, string, string][] = [['blue', 'Electric Blue', 'oklch(0.62 0.19 256)'], ['orange', 'Garage Orange', 'oklch(0.66 0.18 45)'], ['green', 'Service Green', 'oklch(0.66 0.15 158)'], ['violet', 'Performance Violet', 'oklch(0.6 0.2 290)'], ['red', 'Racing Red', 'oklch(0.6 0.21 22)']]
-  const setTheme = (a: string) => { setAccent(a); document.documentElement.dataset.accent = a }
+  const setTheme = (a: string) => { setAccent(a); document.documentElement.dataset.accent = a; localStorage.setItem('mms-accent', a) }
 
   useEffect(() => { companyApi.get().then((d: any) => { setData((s: any) => ({ ...s, ...d })); if (d?.name) setBrand?.(d.name) }).catch(() => {}) // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

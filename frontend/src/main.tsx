@@ -3,12 +3,14 @@ import { createRoot } from 'react-dom/client'
 import './theme.css'
 import App from './App'
 
-// Apply the saved colour theme before first paint (avoids a flash of the wrong theme).
-// Defaults to dark; falls back to the OS preference only when nothing was saved.
+// Apply the saved theme + accent before first paint (avoids a flash of the wrong theme).
+// Theme defaults to dark; falls back to the OS preference only when nothing was saved.
 ;(() => {
+  const el = document.documentElement
   const saved = localStorage.getItem('mms-theme')
-  const theme = saved ?? (window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
-  document.documentElement.dataset.theme = theme
+  el.dataset.theme = saved ?? (window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+  const accent = localStorage.getItem('mms-accent')
+  if (accent && accent !== 'blue') el.dataset.accent = accent
 })()
 
 createRoot(document.getElementById('root')!).render(
