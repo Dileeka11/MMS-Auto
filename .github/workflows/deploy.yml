@@ -91,6 +91,9 @@ jobs:
           sed -i "s|__DIR__.'/../storage|__DIR__.'/../laravel/storage|g" deploy/api/index.php
           sed -i "s|__DIR__.'/../vendor|__DIR__.'/../laravel/vendor|g" deploy/api/index.php
           sed -i "s|__DIR__.'/../bootstrap|__DIR__.'/../laravel/bootstrap|g" deploy/api/index.php
+          # Fake SCRIPT_NAME so Laravel doesn't strip /api/ from PATH_INFO
+          # (index.php is deployed at /api/index.php but routes are prefixed /api)
+          sed -i "s|<?php|<?php\n\$_SERVER['SCRIPT_NAME'] = '/index.php';\n\$_SERVER['SCRIPT_FILENAME'] = __DIR__ . '/index.php';\n\$_SERVER['PHP_SELF'] = '/index.php';\n|" deploy/api/index.php
 
       - name: Install lftp
         run: sudo apt-get update && sudo apt-get install -y lftp
