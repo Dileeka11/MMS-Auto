@@ -22,9 +22,22 @@ http.interceptors.request.use((cfg) => {
   return cfg
 })
 
+/* ---------- list cache (stale-while-fresh) ----------
+   GET list endpoints are cached for a short window so re-visiting a screen is
+   instant instead of round-tripping the server every time. Any successful write
+   (POST/PUT/DELETE) clears the whole cache, so lists never go stale after a
+   mutation — correctness over cleverness. */
+const LIST_CACHE_TTL = 30_000
+const listCache = new Map<string, { ts: number; data: any[] }>()
+export const clearListCache = (name?: string) => { if (name) listCache.delete(name); else listCache.clear() }
+
 let unauthorizedHandled = false
 http.interceptors.response.use(
-  (r) => r,
+  (r) => {
+    const m = r.config.method?.toLowerCase()
+    if (m && m !== 'get') listCache.clear()
+    return r
+  },
   (err) => {
     const status = err?.response?.status
     if (status === 401 && localStorage.getItem('mms-token') && !unauthorizedHandled) {
@@ -62,7 +75,15 @@ const snakeize = (v: any) => deepMap(v, toSnake)
 /* Generic CRUD helper. All requests/responses are auto-converted. */
 export function resource<T = any>(name: string) {
   return {
-    list: () => http.get(`/${name}`).then((r) => camelize(r.data) as T[]),
+    list: () => {
+      const hit = listCache.get(name)
+      if (hit && Date.now() - hit.ts < LIST_CACHE_TTL) return Promise.resolve(hit.data.slice() as T[])
+      return http.get(`/${name}`).then((r) => {
+        const data = camelize(r.data) as T[]
+        listCache.set(name, { ts: Date.now(), data: data as any[] })
+        return (data as any[]).slice() as T[]
+      })
+    },
     get: (id: string | number) => http.get(`/${name}/${id}`).then((r) => camelize(r.data) as T),
     create: (body: Partial<T>) => http.post(`/${name}`, snakeize(body)).then((r) => camelize(r.data) as T),
     update: (id: string | number, body: Partial<T>) => http.put(`/${name}/${id}`, snakeize(body)).then((r) => camelize(r.data) as T),

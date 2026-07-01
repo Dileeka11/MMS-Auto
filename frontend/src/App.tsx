@@ -1,5 +1,5 @@
 /* NMS-Auto — app router + screen registry (replaces window.SCREENS) */
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import type { ComponentType } from 'react'
 import { Sidebar, Topbar } from './components/Shell'
 import DB from './data'
@@ -8,18 +8,49 @@ import Login from './screens/Login'
 import { auth, type AuthUser } from './api'
 import { canAccessRoute } from './lib/permissions'
 
-import DashScreen from './screens/Dashboard'
+// MASTERS is config (route keys are needed synchronously to register routes),
+// so its module stays eager. Every other screen is code-split via lazy() below —
+// each becomes its own chunk that only downloads when the user first opens it.
 import { DataModule, MASTERS } from './screens/Masters'
-import { ItemMasterScreen, CustomerMasterScreen } from './screens/ItemMaster'
-import { SupplierMasterScreen } from './screens/SupplierMaster'
-import { POScreen, GRNScreen, CostingScreen, TrackingScreen } from './screens/Procurement'
-import { QuoteScreen, InvoiceScreen } from './screens/Sales'
-import { ReturnScreen, ReceiptScreen, ExpenseScreen } from './screens/Sales2'
-import { LiveStockScreen, TransferScreen, AdjustScreen, BinCardScreen, PriceScreen } from './screens/Stores'
-import ReportsScreen from './screens/Reports'
-import { UsersScreen, PermScreen, CompanyScreen, RepsScreen } from './screens/Admin'
+
+const DashScreen = lazy(() => import('./screens/Dashboard'))
+const ReportsScreen = lazy(() => import('./screens/Reports'))
+const named = <M, K extends keyof M>(loader: () => Promise<M>, key: K) =>
+  lazy(() => loader().then((m) => ({ default: m[key] as unknown as ComponentType<any> })))
+
+const ItemMasterScreen = named(() => import('./screens/ItemMaster'), 'ItemMasterScreen')
+const CustomerMasterScreen = named(() => import('./screens/ItemMaster'), 'CustomerMasterScreen')
+const SupplierMasterScreen = named(() => import('./screens/SupplierMaster'), 'SupplierMasterScreen')
+const POScreen = named(() => import('./screens/Procurement'), 'POScreen')
+const GRNScreen = named(() => import('./screens/Procurement'), 'GRNScreen')
+const CostingScreen = named(() => import('./screens/Procurement'), 'CostingScreen')
+const TrackingScreen = named(() => import('./screens/Procurement'), 'TrackingScreen')
+const QuoteScreen = named(() => import('./screens/Sales'), 'QuoteScreen')
+const InvoiceScreen = named(() => import('./screens/Sales'), 'InvoiceScreen')
+const ReturnScreen = named(() => import('./screens/Sales2'), 'ReturnScreen')
+const ReceiptScreen = named(() => import('./screens/Sales2'), 'ReceiptScreen')
+const ExpenseScreen = named(() => import('./screens/Sales2'), 'ExpenseScreen')
+const LiveStockScreen = named(() => import('./screens/Stores'), 'LiveStockScreen')
+const TransferScreen = named(() => import('./screens/Stores'), 'TransferScreen')
+const AdjustScreen = named(() => import('./screens/Stores'), 'AdjustScreen')
+const BinCardScreen = named(() => import('./screens/Stores'), 'BinCardScreen')
+const PriceScreen = named(() => import('./screens/Stores'), 'PriceScreen')
+const UsersScreen = named(() => import('./screens/Admin'), 'UsersScreen')
+const PermScreen = named(() => import('./screens/Admin'), 'PermScreen')
+const CompanyScreen = named(() => import('./screens/Admin'), 'CompanyScreen')
+const RepsScreen = named(() => import('./screens/Admin'), 'RepsScreen')
 
 type ScreenComp = ComponentType<ScreenProps & { setBrand?: (v: string) => void }>
+
+// Shown only for the split-second a screen chunk is downloading on first visit.
+function ScreenLoader() {
+  return (
+    <div className="row center" style={{ padding: 80, color: 'var(--tx-3)', gap: 10 }}>
+      <span className="mms-spin" style={{ width: 18, height: 18, border: '2px solid var(--line)', borderTopColor: 'var(--ac)', borderRadius: '50%', display: 'inline-block' }} />
+      <span style={{ fontSize: 13 }}>Loading…</span>
+    </div>
+  )
+}
 
 const SCREENS: Record<string, ScreenComp> = {
   dash: DashScreen,
@@ -86,7 +117,7 @@ export default function App() {
         <main key={effectiveRoute} className="fade-in" style={{ padding: '24px clamp(16px,3vw,32px) 60px', flex: 1 }}>
           {denied
             ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--bad)' }}>You do not have permission to view this screen.</div>
-            : <Screen go={go} setBrand={setBrand} user={user} />}
+            : <Suspense fallback={<ScreenLoader />}><Screen go={go} setBrand={setBrand} user={user} /></Suspense>}
         </main>
       </div>
     </div>

@@ -5,7 +5,15 @@
                             from the costing template (returns ParsedCostingLine).
                             Also picks up any "extra" label+amount rows below for
                             backward compat. */
-import * as XLSX from 'xlsx'
+// Types only — erased at build time, so importing them costs nothing.
+import type * as XLSXType from 'xlsx'
+
+// The xlsx library is ~900KB raw / ~330KB gzipped. Load it on demand (first time
+// a user actually imports/parses a spreadsheet) instead of on initial page load.
+let _xlsx: typeof import('xlsx') | null = null
+async function loadXlsx(): Promise<typeof import('xlsx')> {
+  return (_xlsx ??= await import('xlsx'))
+}
 
 export interface ParsedLine {
   code: string
@@ -26,8 +34,9 @@ export interface ParsedCosting {
 
 const lower = (s: any) => String(s ?? '').trim().toLowerCase()
 
-function rowsFromSheet(sheet: XLSX.WorkSheet): any[][] {
-  return XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' }) as any[][]
+function rowsFromSheet(sheet: XLSXType.WorkSheet): any[][] {
+  // _xlsx is always populated by readWorkbook() before this runs.
+  return _xlsx!.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' }) as any[][]
 }
 
 interface HeaderIdx {
@@ -120,7 +129,8 @@ function parseRows(rows: any[][]) {
   return { lines, end }
 }
 
-export async function readWorkbook(file: File): Promise<XLSX.WorkBook> {
+export async function readWorkbook(file: File): Promise<XLSXType.WorkBook> {
+  const XLSX = await loadXlsx()
   const buf = await file.arrayBuffer()
   return XLSX.read(buf, { type: 'array' })
 }
@@ -134,7 +144,7 @@ export async function fileToBase64(file: File): Promise<string> {
 }
 
 /** Pick the sheet whose name best matches `prefer` (e.g. "PO"), else first sheet. */
-function pickSheet(wb: XLSX.WorkBook, prefer: RegExp): XLSX.WorkSheet {
+function pickSheet(wb: XLSXType.WorkBook, prefer: RegExp): XLSXType.WorkSheet {
   const match = wb.SheetNames.find((n) => prefer.test(n))
   return wb.Sheets[match || wb.SheetNames[0]]
 }
