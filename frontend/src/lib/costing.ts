@@ -87,6 +87,70 @@ export interface CostedShipment {
 const round2 = (n: number) => Math.round(n * 100) / 100
 const round4 = (n: number) => Math.round(n * 10000) / 10000
 
+/* ---- PO ↔ uploaded-Excel reconciliation -------------------------------
+   When a costing Excel is uploaded against a chosen PO we compare the two,
+   line by line, so the user can spot differences before saving. Matching is
+   by part code (case-insensitive), falling back to the description. */
+
+export type MismatchKind = 'qty' | 'price' | 'both' | 'extra'
+
+export interface LineMismatch {
+  kind: MismatchKind
+  code: string
+  item: string
+  poQty?: number
+  excelQty?: number
+  poCost?: number
+  excelCost?: number
+}
+
+export interface CostingDiff {
+  mismatches: LineMismatch[]
+  matched: number
+  poLineCount: number
+  ok: boolean
+}
+
+const norm = (s: any) => String(s ?? '').trim().toLowerCase()
+const eq2 = (a: number, b: number) => Math.abs((a || 0) - (b || 0)) < 0.005
+
+export interface DiffPoLine { code?: string; item: string; qty: number; cost: number }
+export interface DiffExcelLine { code?: string; item: string; qty: number; cost: number }
+
+export function diffCostingAgainstPo(
+  poLines: DiffPoLine[],
+  excelLines: DiffExcelLine[],
+): CostingDiff {
+  const key = (l: { code?: string; item: string }) => norm(l.code) || norm(l.item)
+  const poMap = new Map(poLines.map((l) => [key(l), l]))
+  const mismatches: LineMismatch[] = []
+  let matched = 0
+
+  // A shipment's costing Excel is typically a SUBSET of the PO (partial
+  // shipments), so PO lines missing from the Excel are NOT flagged — only
+  // lines present in the Excel are reconciled.
+  for (const ex of excelLines) {
+    const po = poMap.get(key(ex))
+    if (!po) {
+      mismatches.push({ kind: 'extra', code: ex.code || '', item: ex.item, excelQty: ex.qty, excelCost: ex.cost })
+      continue
+    }
+    const qtyOff = !eq2(po.qty, ex.qty)
+    const priceOff = !eq2(po.cost, ex.cost)
+    if (qtyOff || priceOff) {
+      mismatches.push({
+        kind: qtyOff && priceOff ? 'both' : qtyOff ? 'qty' : 'price',
+        code: po.code || ex.code || '', item: po.item || ex.item,
+        poQty: po.qty, excelQty: ex.qty, poCost: po.cost, excelCost: ex.cost,
+      })
+    } else {
+      matched++
+    }
+  }
+
+  return { mismatches, matched, poLineCount: poLines.length, ok: mismatches.length === 0 }
+}
+
 function chargeLkr(c: ComplexCharge | null | undefined, bankingRate: number): number {
   if (!c) return 0
   if (c.amountLkr && c.amountLkr > 0) return c.amountLkr

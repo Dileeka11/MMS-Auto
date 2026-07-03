@@ -24,6 +24,27 @@ export interface ParsedLine {
   total: number
 }
 export interface ParsedCostingLine extends ParsedLine {
+  // Per-line allocation columns, read verbatim from the costing template
+  // (no recalculation — whatever the Excel says is what we show/store).
+  fobLkr?: number
+  freightLkr?: number
+  insuranceLkr?: number
+  cid?: number
+  pal?: number
+  cess?: number
+  vat?: number
+  sscl?: number
+  other1?: number
+  other2?: number
+  other3?: number
+  banking?: number
+  clearance?: number
+  slpa?: number
+  demurrage?: number
+  totalPriceWoVat?: number
+  totalPriceWithVat?: number
+  unitCostWithVat?: number
+  unitCostWoVat?: number
   sellingPriceWoVat?: number
   sellingPriceWithVat?: number
 }
@@ -48,6 +69,26 @@ interface HeaderIdx {
   total?: number
   sellingWo?: number
   sellingWith?: number
+  // Costing-template allocation columns (all optional).
+  fobLkr?: number
+  freightLkr?: number
+  insuranceLkr?: number
+  cid?: number
+  pal?: number
+  cess?: number
+  vat?: number
+  sscl?: number
+  other1?: number
+  other2?: number
+  other3?: number
+  banking?: number
+  clearance?: number
+  slpa?: number
+  demurrage?: number
+  totalPriceWoVat?: number
+  totalPriceWithVat?: number
+  unitCostWithVat?: number
+  unitCostWoVat?: number
 }
 
 function detectHeader(rows: any[][]) {
@@ -60,6 +101,10 @@ function detectHeader(rows: any[][]) {
     if (itemCol >= 0 && qtyCol >= 0 && itemCol !== qtyCol) {
       const idx: HeaderIdx = {}
       r.forEach((c, j) => {
+        // `cc` is the header text with all whitespace removed, for exact/robust
+        // matching of the costing-template columns (which are split across two
+        // lines in the template, e.g. "UNIT PRICE\nFOB-USD").
+        const cc = c.replace(/\s+/g, '')
         if (idx.code == null && /(^|\b)(code|part\s*no|part\s*number|part)\b/.test(c)) idx.code = j
         if (idx.hsCode == null && /hs\s*code|h\.s\.?\s*code/.test(c)) idx.hsCode = j
         if (idx.item == null && /description|particular|^item$|name/.test(c)) idx.item = j
@@ -68,6 +113,26 @@ function detectHeader(rows: any[][]) {
         if (idx.total == null && /total\s*amount|^total\b|amount/.test(c)) idx.total = j
         if (idx.sellingWo == null && /selling.*w\/?o.*vat/.test(c)) idx.sellingWo = j
         if (idx.sellingWith == null && /selling.*with.*vat/.test(c)) idx.sellingWith = j
+        // Costing allocation columns — matched verbatim, no computation.
+        if (idx.fobLkr == null && /fob-?lkr|amountfob/.test(cc)) idx.fobLkr = j
+        if (idx.freightLkr == null && /^freight/.test(cc)) idx.freightLkr = j
+        if (idx.insuranceLkr == null && /^insur/.test(cc)) idx.insuranceLkr = j
+        if (idx.cid == null && cc === 'cid') idx.cid = j
+        if (idx.pal == null && cc === 'pal') idx.pal = j
+        if (idx.cess == null && cc === 'cess') idx.cess = j
+        if (idx.vat == null && cc === 'vat') idx.vat = j
+        if (idx.sscl == null && cc === 'sscl') idx.sscl = j
+        if (idx.other1 == null && cc === 'other1') idx.other1 = j
+        if (idx.other2 == null && cc === 'other2') idx.other2 = j
+        if (idx.other3 == null && cc === 'other3') idx.other3 = j
+        if (idx.banking == null && cc === 'banking') idx.banking = j
+        if (idx.clearance == null && cc === 'clearance') idx.clearance = j
+        if (idx.slpa == null && cc === 'slpa') idx.slpa = j
+        if (idx.demurrage == null && cc === 'demurrage') idx.demurrage = j
+        if (idx.totalPriceWithVat == null && /totalpricewithvat/.test(cc)) idx.totalPriceWithVat = j
+        if (idx.totalPriceWoVat == null && /totalpricew\/?ovat/.test(cc)) idx.totalPriceWoVat = j
+        if (idx.unitCostWithVat == null && /unitcostwithvat/.test(cc)) idx.unitCostWithVat = j
+        if (idx.unitCostWoVat == null && /unitcostw\/?ovat/.test(cc)) idx.unitCostWoVat = j
       })
       // PART NO appears twice in the supplier template (numeric # + actual code).
       // Prefer the right-most non-numeric Part column as the code by re-scanning.
@@ -114,6 +179,7 @@ function parseRows(rows: any[][]) {
     const cost = idx.cost != null ? num(r[idx.cost]) : 0
     const total = idx.total != null ? num(r[idx.total]) : qty * cost
     const code = idx.code != null ? String(r[idx.code] ?? '').trim() : ''
+    const col = (i?: number) => (i != null ? num(r[i]) : undefined)
     lines.push({
       code,
       // HS codes are codes, not numbers — preserve as text (Excel may have stripped leading zeros).
@@ -122,6 +188,26 @@ function parseRows(rows: any[][]) {
       qty,
       cost,
       total: total || qty * cost,
+      // Allocation columns, verbatim from the sheet (undefined when absent).
+      fobLkr: col(idx.fobLkr),
+      freightLkr: col(idx.freightLkr),
+      insuranceLkr: col(idx.insuranceLkr),
+      cid: col(idx.cid),
+      pal: col(idx.pal),
+      cess: col(idx.cess),
+      vat: col(idx.vat),
+      sscl: col(idx.sscl),
+      other1: col(idx.other1),
+      other2: col(idx.other2),
+      other3: col(idx.other3),
+      banking: col(idx.banking),
+      clearance: col(idx.clearance),
+      slpa: col(idx.slpa),
+      demurrage: col(idx.demurrage),
+      totalPriceWoVat: col(idx.totalPriceWoVat),
+      totalPriceWithVat: col(idx.totalPriceWithVat),
+      unitCostWithVat: col(idx.unitCostWithVat),
+      unitCostWoVat: col(idx.unitCostWoVat),
       sellingPriceWoVat: idx.sellingWo != null ? num(r[idx.sellingWo]) : undefined,
       sellingPriceWithVat: idx.sellingWith != null ? num(r[idx.sellingWith]) : undefined,
     })

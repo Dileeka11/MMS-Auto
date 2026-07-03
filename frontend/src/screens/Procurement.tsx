@@ -15,7 +15,7 @@ import { ApprovalCounter, ApprovalPanel, canApprove as canApproveR, canReject as
 import DB from '../data'
 import { api } from '../api'
 import { parsePoExcel, parseCostingExcel, fileToBase64, type ParsedLine, type ParsedCostingLine } from '../excel'
-import { computeCosting, type ComplexCharge } from '../lib/costing'
+import { diffCostingAgainstPo, type ComplexCharge, type CostingDiff } from '../lib/costing'
 import type { PurchaseOrder, Shipment, ShipmentLine, GRN, TrackingRow, Supplier } from '../types'
 import type { Go } from './types'
 
@@ -389,6 +389,21 @@ const blankCosting = (): CostingForm => ({
 const blankCharge = (): ComplexCharge => ({ amountUsd: 0, amountLkr: 0, agent: '', invoiceNo: '', policyNo: '', invoiceValue: 0 })
 const num = (s: string | number | undefined) => Number(s || 0) || 0
 
+/* Core costing fields that must be filled before a shipment is generated.
+   OTHER 1/2/3 and the complex charges stay optional. Pairs are [label, formKey]. */
+const REQUIRED_FIELDS: [string, keyof CostingForm][] = [
+  ['Invoice No', 'invoiceNo'], ['BL Number', 'blNumber'], ['No. of Packages', 'noOfPackages'],
+  ['Gross Weight', 'grossWeight'], ['Net Weight', 'netWeight'],
+  ['Shipment Type', 'shipmentType'], ['Shipment Volume', 'shipmentVolume'],
+  ['ETD', 'etd'], ['ETA', 'etaDate'],
+  ['Cusdec No', 'cusdecNo'], ['Cusdec Date', 'cusdecDate'], ['DUTY Date', 'dutyDate'],
+  ['Banking Rate', 'bankingRate'], ['Custom Rate', 'customRate'], ['Settlement Rate', 'settlementRate'],
+  ['CID', 'cidAmount'], ['PAL', 'palAmount'], ['CESS', 'cessAmount'],
+  ['VAT', 'vatAmount'], ['SSCL', 'ssclAmount'],
+]
+/** Label with a red "required" asterisk. */
+const req = (label: string) => <>{label} <span style={{ color: 'var(--bad)' }}>*</span></>
+
 /** A PO is unlocked for downstream flow only after both admins have approved it. */
 const APPROVED_STATUSES = ['Approved', 'Partial GRN', 'Completed']
 const isApproved = (p: { status?: string }) => APPROVED_STATUSES.includes(p.status || '')
@@ -413,6 +428,7 @@ export function CostingScreen({ go, user }: { go: Go; user?: { id: number; role?
 
   const [fileName, setFileName] = useState('')
   const [fileBase64, setFileBase64] = useState('')
+  const [diff, setDiff] = useState<CostingDiff | null>(null)
   const [parsing, setParsing] = useState(false)
   const [err, setErr] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -432,51 +448,44 @@ export function CostingScreen({ go, user }: { go: Go; user?: { id: number; role?
 
   const reset = () => {
     setPo(null); setForm(blankCosting())
-    setLines([]); setFileName(''); setFileBase64(''); setErr('')
+    setLines([]); setFileName(''); setFileBase64(''); setDiff(null); setErr('')
     setFreight(blankCharge()); setInsurance(blankCharge()); setBanking(blankCharge())
     setClearance(blankCharge()); setSlpa(blankCharge()); setDemurrage(blankCharge())
   }
 
-  // Seed lines from PO whenever a PO is picked, so the grid is editable even
-  // without an Excel upload.
-  useEffect(() => {
-    if (!po) return
-    setLines(po.lines.map((l: any) => ({
-      code: l.code, hsCode: l.hsCode, item: l.item,
-      qty: l.balanceQty ?? l.qty, cost: l.cost, total: (l.balanceQty ?? l.qty) * l.cost,
-    })))
-  }, [po])
+  // The costing item grid is driven entirely by the uploaded Excel — it stays
+  // empty until a costing template is loaded (we do NOT seed from PO lines).
 
   const onFile = async (f: File | null) => {
     if (!f || !po) return
-    setErr(''); setParsing(true); setFileName(f.name)
+    setErr(''); setParsing(true); setFileName(f.name); setDiff(null)
     try {
       const parsed = await parseCostingExcel(f)
-      if (parsed.lines.length) setLines(parsed.lines)
+      if (parsed.lines.length) {
+        // Reconcile the uploaded lines against the chosen PO so the user can
+        // review any qty / price / missing / extra differences before saving.
+        setDiff(diffCostingAgainstPo(
+          po.lines.map((l: any) => ({ code: l.code, item: l.item, qty: l.qty, cost: l.cost })),
+          parsed.lines.map((l) => ({ code: l.code, item: l.item, qty: l.qty, cost: l.cost })),
+        ))
+        setLines(parsed.lines)
+      } else {
+        setErr('No item rows found in the uploaded Excel.')
+      }
       setFileBase64(await fileToBase64(f))
     } catch (e: any) {
       setErr(e?.message || 'Could not read Excel')
     } finally { setParsing(false) }
   }
 
-  const computed = useMemo(() => computeCosting({
-    bankingRate: num(form.bankingRate),
-    freight, insurance, banking, clearance, slpa, demurrage,
-    cidAmount: num(form.cidAmount), palAmount: num(form.palAmount),
-    dutyAmount: num(form.dutyAmount), cessAmount: num(form.cessAmount),
-    vatAmount: num(form.vatAmount), ssclAmount: num(form.ssclAmount),
-    other1Amount: num(form.other1Amount), other2Amount: num(form.other2Amount), other3Amount: num(form.other3Amount),
-    lines: lines.map((l) => ({
-      code: l.code, hsCode: l.hsCode, item: l.item, qty: l.qty, cost: l.cost,
-      sellingPriceWoVat: l.sellingPriceWoVat, sellingPriceWithVat: l.sellingPriceWithVat,
-    })),
-  }), [form, freight, insurance, banking, clearance, slpa, demurrage, lines])
-
   const updLine = (i: number, patch: Partial<ParsedCostingLine>) =>
     setLines((ls) => ls.map((l, j) => j === i ? { ...l, ...patch } : l))
 
   const submit = async () => {
     if (!po || !lines.length) return
+    // All core costing fields are mandatory before a shipment can be generated.
+    const missing = REQUIRED_FIELDS.filter(([, k]) => !String((form as any)[k] ?? '').trim()).map(([label]) => label)
+    if (missing.length) { setErr('Please fill all required fields: ' + missing.join(', ')); return }
     setSubmitting(true); setErr('')
     try {
       const out = await api.shipments.create({
@@ -498,9 +507,19 @@ export function CostingScreen({ go, user }: { go: Go; user?: { id: number; role?
         other1Amount: num(form.other1Amount), other2Amount: num(form.other2Amount), other3Amount: num(form.other3Amount),
         freight, insurance, banking, clearance, slpa, demurrage,
         costFileName: fileName || null, costFileData: fileBase64 || null,
+        // Send every costing column verbatim so the backend stores the Excel
+        // values as-is (no server-side recomputation).
         lines: lines.map((l) => ({
           code: l.code, hsCode: l.hsCode, item: l.item,
-          qty: l.qty, cost: l.cost,
+          qty: l.qty, cost: l.cost, total: l.total,
+          fobLkr: l.fobLkr ?? 0,
+          freightLkr: l.freightLkr ?? 0, insuranceLkr: l.insuranceLkr ?? 0,
+          cid: l.cid ?? 0, pal: l.pal ?? 0, cess: l.cess ?? 0, vat: l.vat ?? 0, sscl: l.sscl ?? 0,
+          other1: l.other1 ?? 0, other2: l.other2 ?? 0, other3: l.other3 ?? 0,
+          bankingAlloc: l.banking ?? 0, clearanceAlloc: l.clearance ?? 0,
+          slpaAlloc: l.slpa ?? 0, demurrageAlloc: l.demurrage ?? 0,
+          totalPriceWoVat: l.totalPriceWoVat ?? 0, totalPriceWithVat: l.totalPriceWithVat ?? 0,
+          unitCostWoVat: l.unitCostWoVat ?? 0, unitCostWithVat: l.unitCostWithVat ?? 0,
           sellingPriceWoVat: l.sellingPriceWoVat || 0,
           sellingPriceWithVat: l.sellingPriceWithVat || 0,
         })),
@@ -508,7 +527,11 @@ export function CostingScreen({ go, user }: { go: Go; user?: { id: number; role?
       setCreated(out as any)
       await reload()
     } catch (e: any) {
-      setErr(e?.response?.data?.message || 'Save failed')
+      // Surface the specific field errors (e.g. "PO not fully approved")
+      // instead of Laravel's generic "The given data was invalid".
+      const errs = e?.response?.data?.errors
+      const detail = errs ? Object.values(errs).flat().join(' · ') : ''
+      setErr(detail || e?.response?.data?.message || 'Save failed')
     } finally { setSubmitting(false) }
   }
 
@@ -639,38 +662,36 @@ export function CostingScreen({ go, user }: { go: Go; user?: { id: number; role?
           <div className="col gap-3">
             <Section title="Shipping & Weight">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-                <Field label="Invoice No"><Input value={form.invoiceNo} onChange={(e) => setForm({ ...form, invoiceNo: e.target.value })} /></Field>
-                <Field label="BL Number"><Input value={form.blNumber} onChange={(e) => setForm({ ...form, blNumber: e.target.value })} /></Field>
-                <Field label="No. of Packages"><Input type="number" value={form.noOfPackages} onChange={(e) => setForm({ ...form, noOfPackages: e.target.value })} /></Field>
-                <Field label="Shipment Date"><DateInput value={form.date} onChange={(v) => setForm({ ...form, date: v })} /></Field>
-                <Field label="Gross Weight (kg)"><Input type="number" value={form.grossWeight} onChange={(e) => setForm({ ...form, grossWeight: e.target.value })} /></Field>
-                <Field label="Net Weight (kg)"><Input type="number" value={form.netWeight} onChange={(e) => setForm({ ...form, netWeight: e.target.value })} /></Field>
-                <Field label="Shipment Type"><Select value={form.shipmentType} onChange={(e) => setForm({ ...form, shipmentType: e.target.value })}>{SHIPMENT_TYPES.map((t) => <option key={t}>{t}</option>)}</Select></Field>
-                <Field label="Shipment Volume"><Select value={form.shipmentVolume} onChange={(e) => setForm({ ...form, shipmentVolume: e.target.value })}>{SHIPMENT_VOLUMES.map((t) => <option key={t}>{t}</option>)}</Select></Field>
-                <Field label="ETD"><DateInput value={form.etd} onChange={(v) => setForm({ ...form, etd: v })} /></Field>
-                <Field label="ETA"><DateInput value={form.etaDate} onChange={(v) => setForm({ ...form, etaDate: v })} /></Field>
+                <Field label={req('Invoice No')}><Input value={form.invoiceNo} onChange={(e) => setForm({ ...form, invoiceNo: e.target.value })} /></Field>
+                <Field label={req('BL Number')}><Input value={form.blNumber} onChange={(e) => setForm({ ...form, blNumber: e.target.value })} /></Field>
+                <Field label={req('No. of Packages')}><Input type="number" value={form.noOfPackages} onChange={(e) => setForm({ ...form, noOfPackages: e.target.value })} /></Field>
+                <Field label={req('Gross Weight (kg)')}><Input type="number" value={form.grossWeight} onChange={(e) => setForm({ ...form, grossWeight: e.target.value })} /></Field>
+                <Field label={req('Net Weight (kg)')}><Input type="number" value={form.netWeight} onChange={(e) => setForm({ ...form, netWeight: e.target.value })} /></Field>
+                <Field label={req('Shipment Type')}><Select value={form.shipmentType} onChange={(e) => setForm({ ...form, shipmentType: e.target.value })}>{SHIPMENT_TYPES.map((t) => <option key={t}>{t}</option>)}</Select></Field>
+                <Field label={req('Shipment Volume')}><Select value={form.shipmentVolume} onChange={(e) => setForm({ ...form, shipmentVolume: e.target.value })}>{SHIPMENT_VOLUMES.map((t) => <option key={t}>{t}</option>)}</Select></Field>
+                <Field label={req('ETD')}><DateInput value={form.etd} onChange={(v) => setForm({ ...form, etd: v })} /></Field>
+                <Field label={req('ETA')}><DateInput value={form.etaDate} onChange={(v) => setForm({ ...form, etaDate: v })} /></Field>
               </div>
             </Section>
 
             <Section title="Tax & Custom">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
-                <Field label="Cusdec No"><Input value={form.cusdecNo} onChange={(e) => setForm({ ...form, cusdecNo: e.target.value })} /></Field>
-                <Field label="Cusdec Date"><DateInput value={form.cusdecDate} onChange={(v) => setForm({ ...form, cusdecDate: v })} /></Field>
-                <Field label="Banking Rate"><Input type="number" value={form.bankingRate} onChange={(e) => setForm({ ...form, bankingRate: e.target.value })} /></Field>
-                <Field label="Custom Rate"><Input type="number" value={form.customRate} onChange={(e) => setForm({ ...form, customRate: e.target.value })} /></Field>
-                <Field label="Settlement Rate"><Input type="number" value={form.settlementRate} onChange={(e) => setForm({ ...form, settlementRate: e.target.value })} /></Field>
+                <Field label={req('Cusdec No')}><Input value={form.cusdecNo} onChange={(e) => setForm({ ...form, cusdecNo: e.target.value })} /></Field>
+                <Field label={req('Cusdec Date')}><DateInput value={form.cusdecDate} onChange={(v) => setForm({ ...form, cusdecDate: v })} /></Field>
+                <Field label={req('DUTY Date')}><DateInput value={form.dutyDate} onChange={(v) => setForm({ ...form, dutyDate: v })} /></Field>
+                <Field label={req('Banking Rate')}><Input type="number" value={form.bankingRate} onChange={(e) => setForm({ ...form, bankingRate: e.target.value })} /></Field>
+                <Field label={req('Custom Rate')}><Input type="number" value={form.customRate} onChange={(e) => setForm({ ...form, customRate: e.target.value })} /></Field>
+                <Field label={req('Settlement Rate')}><Input type="number" value={form.settlementRate} onChange={(e) => setForm({ ...form, settlementRate: e.target.value })} /></Field>
               </div>
             </Section>
 
             <Section title="Costing Expenses">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
-                <Field label="CID (LKR)"><Input type="number" value={form.cidAmount} onChange={(e) => setForm({ ...form, cidAmount: e.target.value })} /></Field>
-                <Field label="PAL (LKR)"><Input type="number" value={form.palAmount} onChange={(e) => setForm({ ...form, palAmount: e.target.value })} /></Field>
-                <Field label="DUTY (LKR)"><Input type="number" value={form.dutyAmount} onChange={(e) => setForm({ ...form, dutyAmount: e.target.value })} /></Field>
-                <Field label="DUTY Date"><DateInput value={form.dutyDate} onChange={(v) => setForm({ ...form, dutyDate: v })} /></Field>
-                <Field label="CESS (LKR)"><Input type="number" value={form.cessAmount} onChange={(e) => setForm({ ...form, cessAmount: e.target.value })} /></Field>
-                <Field label="VAT (LKR)"><Input type="number" value={form.vatAmount} onChange={(e) => setForm({ ...form, vatAmount: e.target.value })} /></Field>
-                <Field label="SSCL (LKR)"><Input type="number" value={form.ssclAmount} onChange={(e) => setForm({ ...form, ssclAmount: e.target.value })} /></Field>
+                <Field label={req('CID (LKR)')}><Input type="number" value={form.cidAmount} onChange={(e) => setForm({ ...form, cidAmount: e.target.value })} /></Field>
+                <Field label={req('PAL (LKR)')}><Input type="number" value={form.palAmount} onChange={(e) => setForm({ ...form, palAmount: e.target.value })} /></Field>
+                <Field label={req('CESS (LKR)')}><Input type="number" value={form.cessAmount} onChange={(e) => setForm({ ...form, cessAmount: e.target.value })} /></Field>
+                <Field label={req('VAT (LKR)')}><Input type="number" value={form.vatAmount} onChange={(e) => setForm({ ...form, vatAmount: e.target.value })} /></Field>
+                <Field label={req('SSCL (LKR)')}><Input type="number" value={form.ssclAmount} onChange={(e) => setForm({ ...form, ssclAmount: e.target.value })} /></Field>
                 <Field label="OTHER 1"><Input type="number" value={form.other1Amount} onChange={(e) => setForm({ ...form, other1Amount: e.target.value })} /></Field>
                 <Field label="OTHER 2"><Input type="number" value={form.other2Amount} onChange={(e) => setForm({ ...form, other2Amount: e.target.value })} /></Field>
                 <Field label="OTHER 3"><Input type="number" value={form.other3Amount} onChange={(e) => setForm({ ...form, other3Amount: e.target.value })} /></Field>
@@ -682,18 +703,20 @@ export function CostingScreen({ go, user }: { go: Go; user?: { id: number; role?
               <ChargeRow label="Insurance" v={insurance} set={setInsurance} withAgent policy />
               <ChargeRow label="Banking" v={banking} set={setBanking} />
               <ChargeRow label="Clearance" v={clearance} set={setClearance} withAgent />
-              <ChargeRow label="SLPA" v={slpa} set={setSlpa} withAgent />
-              <ChargeRow label="Demurrage" v={demurrage} set={setDemurrage} withAgent />
+              <ChargeRow label="SLPA" v={slpa} set={setSlpa} />
+              <ChargeRow label="Demurrage" v={demurrage} set={setDemurrage} />
             </Section>
 
-            <Section title="Items · Excel Upload (optional)">
+            <Section title="Items · Costing Excel Upload">
               <ExcelDrop onPick={onFile} fileName={fileName} parsing={parsing} fileRef={fileRef}
-                hint="Optional — upload the costing template to override line qty/price. Otherwise the PO lines are used." />
+                hint="Upload the costing template — the item grid below is loaded from this file." />
             </Section>
 
             {err && <ErrBox text={err} />}
 
-            <CostingGrid lines={lines} computed={computed} updLine={updLine} />
+            {diff && <MismatchPanel diff={diff} />}
+
+            {lines.length > 0 && <CostingGrid lines={lines} updLine={updLine} />}
           </div>
         )}
       </Modal>
@@ -747,44 +770,117 @@ function ChargeRow({ label, v, set, withAgent, policy }: {
   )
 }
 
-function CostingGrid({ lines, computed, updLine }: {
+const MISMATCH_LABEL: Record<string, string> = {
+  qty: 'Qty differs', price: 'Unit price differs', both: 'Qty & price differ',
+  extra: 'Not in PO',
+}
+const MISMATCH_TONE: Record<string, 'amber' | 'red'> = {
+  qty: 'amber', price: 'amber', both: 'amber', extra: 'red',
+}
+
+/** Reconciles the uploaded costing Excel against the selected PO. Only the
+    lines present in the Excel are checked — a shipment is usually a subset of
+    the PO (partial shipments), so PO lines absent from the Excel are ignored.
+    Purely informational: the user may still save. */
+function MismatchPanel({ diff }: { diff: CostingDiff }) {
+  if (diff.ok) {
+    return (
+      <div className="row gap-2" style={{ padding: '10px 14px', background: 'var(--ok-dim)', color: 'var(--ok)', border: '1px solid var(--ok)', borderRadius: 'var(--r-s)', fontSize: 12.5 }}>
+        <Icon n="check" s={16} /><span>All {diff.matched} uploaded line{diff.matched === 1 ? '' : 's'} match the PO qty &amp; price.</span>
+      </div>
+    )
+  }
+  return (
+    <div style={{ border: '1px solid var(--warn)', borderRadius: 'var(--r-m)', overflow: 'hidden' }}>
+      <div className="row gap-2" style={{ padding: '8px 12px', background: 'var(--warn-dim, var(--bg-0))', color: 'var(--warn)', fontSize: 12, fontWeight: 600 }}>
+        <Icon n="alert" s={15} />
+        <span>PO vs Excel — {diff.mismatches.length} of {diff.matched + diff.mismatches.length} uploaded line{diff.matched + diff.mismatches.length === 1 ? '' : 's'} differ ({diff.matched} match). Review before saving.</span>
+      </div>
+      <div style={{ maxHeight: 220, overflow: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead><tr style={{ background: 'var(--bg-0)', position: 'sticky', top: 0 }}>
+            {['Part No', 'Description', 'Issue', 'PO Qty', 'Excel Qty', 'PO Price', 'Excel Price'].map((h, i) => (
+              <th key={i} style={{ padding: '6px 8px', textAlign: i > 1 ? 'right' : 'left', fontSize: 9.5, color: 'var(--tx-2)', textTransform: 'uppercase', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap' }}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>{diff.mismatches.map((m, i) => (
+            <tr key={i}>
+              <td style={tdSty} className="mono t-2">{m.code || '—'}</td>
+              <td style={tdSty}>{m.item}</td>
+              <td style={tdSty}><Badge tone={MISMATCH_TONE[m.kind]}>{MISMATCH_LABEL[m.kind]}</Badge></td>
+              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{m.poQty ?? '—'}</td>
+              <td style={{ ...tdSty, textAlign: 'right', color: m.kind === 'qty' || m.kind === 'both' ? 'var(--warn)' : undefined }} className="mono">{m.excelQty ?? '—'}</td>
+              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{m.poCost != null ? fmtMoney(m.poCost) : '—'}</td>
+              <td style={{ ...tdSty, textAlign: 'right', color: m.kind === 'price' || m.kind === 'both' ? 'var(--warn)' : undefined }} className="mono">{m.excelCost != null ? fmtMoney(m.excelCost) : '—'}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/* Columns of the costing grid, in the exact order of the uploaded-Excel
+   template. Values are read VERBATIM from the parsed Excel — nothing is
+   recalculated. `sum` marks the amount columns that get a footer total
+   (per-unit columns like Unit Price / Unit Cost are not summed). */
+type CGCol = { label: string; get: (l: ParsedCostingLine) => number; sum?: boolean; bold?: boolean; accent?: boolean }
+const v0 = (n?: number) => n ?? 0
+const COSTING_COLS: CGCol[] = [
+  { label: 'Unit Price FOB-USD', get: (l) => v0(l.cost) },
+  { label: 'Total Amount FOB-USD', get: (l) => v0(l.total), sum: true },
+  { label: 'Amount FOB-LKR @ Banking Rate', get: (l) => v0(l.fobLkr), sum: true },
+  { label: 'Freight in LKR', get: (l) => v0(l.freightLkr), sum: true },
+  { label: 'Insurance in LKR', get: (l) => v0(l.insuranceLkr), sum: true },
+  { label: 'CID', get: (l) => v0(l.cid), sum: true },
+  { label: 'PAL', get: (l) => v0(l.pal), sum: true },
+  { label: 'CESS', get: (l) => v0(l.cess), sum: true },
+  { label: 'VAT', get: (l) => v0(l.vat), sum: true },
+  { label: 'SSCL', get: (l) => v0(l.sscl), sum: true },
+  { label: 'Other 1', get: (l) => v0(l.other1), sum: true },
+  { label: 'Other 2', get: (l) => v0(l.other2), sum: true },
+  { label: 'Other 3', get: (l) => v0(l.other3), sum: true },
+  { label: 'Banking', get: (l) => v0(l.banking), sum: true },
+  { label: 'Clearance', get: (l) => v0(l.clearance), sum: true },
+  { label: 'SLPA', get: (l) => v0(l.slpa), sum: true },
+  { label: 'Demurrage', get: (l) => v0(l.demurrage), sum: true },
+  { label: 'Total Price W/O VAT', get: (l) => v0(l.totalPriceWoVat), sum: true },
+  { label: 'Total Price With VAT', get: (l) => v0(l.totalPriceWithVat), sum: true, bold: true },
+  { label: 'Unit Cost With VAT', get: (l) => v0(l.unitCostWithVat), accent: true, bold: true },
+  { label: 'Unit Cost W/O VAT', get: (l) => v0(l.unitCostWoVat), accent: true },
+]
+
+function CostingGrid({ lines, updLine }: {
   lines: ParsedCostingLine[]
-  computed: ReturnType<typeof computeCosting>
   updLine: (i: number, p: Partial<ParsedCostingLine>) => void
 }) {
+  const thSty = { padding: '6px 8px', fontSize: 9.5, color: 'var(--tx-2)', textTransform: 'uppercase' as const, borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap' as const }
+  const totalQty = lines.reduce((a, l) => a + (l.qty || 0), 0)
   return (
     <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-m)', overflow: 'hidden' }}>
       <div style={{ padding: '8px 12px', background: 'var(--bg-0)', fontSize: 11.5, fontWeight: 600, color: 'var(--tx-2)', textTransform: 'uppercase', letterSpacing: '.06em', borderBottom: '1px solid var(--line)' }}>Costing Item Grid</div>
       <div style={{ maxHeight: 380, overflow: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <table style={{ borderCollapse: 'collapse', fontSize: 12, whiteSpace: 'nowrap' }}>
           <thead><tr style={{ background: 'var(--bg-0)', position: 'sticky', top: 0 }}>
-            {['Part No', 'Description', 'Qty', 'Unit FOB', 'Total FOB', 'FOB LKR', 'Freight', 'Ins.', 'CID', 'PAL', 'Duty', 'CESS', 'SSCL', 'Other', 'Other Chg', 'Tot W/O VAT', 'Tot W/ VAT', 'U.Cost W/O', 'U.Cost W/', 'Sell W/O', 'Sell W/'].map((h, i) => <th key={i} style={{ padding: '6px 8px', textAlign: i > 1 ? 'right' : 'left', fontSize: 9.5, color: 'var(--tx-2)', textTransform: 'uppercase', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap' }}>{h}</th>)}
+            <th style={{ ...thSty, textAlign: 'left' }}>Part No</th>
+            <th style={{ ...thSty, textAlign: 'left' }}>Description</th>
+            <th style={{ ...thSty, textAlign: 'right' }}>Shipment Quantity</th>
+            {COSTING_COLS.map((col, i) => <th key={i} style={{ ...thSty, textAlign: 'right' }}>{col.label}</th>)}
+            <th style={{ ...thSty, textAlign: 'right' }}>Selling Price W/O VAT</th>
+            <th style={{ ...thSty, textAlign: 'right' }}>Selling Price With VAT</th>
           </tr></thead>
-          <tbody>{computed.lines.map((c, i) => (
+          <tbody>{lines.map((l, i) => (
             <tr key={i}>
-              <td style={tdSty} className="mono t-2">{c.code}</td>
-              <td style={tdSty}>{c.item}</td>
+              <td style={tdSty} className="mono t-2">{l.code}</td>
+              <td style={tdSty}>{l.item}</td>
               <td style={{ ...tdSty, textAlign: 'right' }} className="mono">
                 <input type="number" value={lines[i]?.qty || 0}
                   onChange={(e) => updLine(i, { qty: Number(e.target.value) || 0 })}
                   style={{ ...inputStyle, width: 60, padding: '3px 6px', textAlign: 'right' }} />
               </td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.cost)}</td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.total)}</td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.fobLkr)}</td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.freightLkr)}</td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.insuranceLkr)}</td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.cid)}</td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.pal)}</td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.duty)}</td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.cess)}</td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.sscl)}</td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.other1 + c.other2 + c.other3)}</td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.bankingAlloc + c.clearanceAlloc + c.slpaAlloc + c.demurrageAlloc)}</td>
-              <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(c.totalPriceWoVat)}</td>
-              <td style={{ ...tdSty, textAlign: 'right', fontWeight: 600 }} className="mono">{fmtMoney(c.totalPriceWithVat)}</td>
-              <td style={{ ...tdSty, textAlign: 'right', color: 'var(--ac-bright)' }} className="mono">{fmtMoney(c.unitCostWoVat)}</td>
-              <td style={{ ...tdSty, textAlign: 'right', color: 'var(--ac-bright)', fontWeight: 600 }} className="mono">{fmtMoney(c.unitCostWithVat)}</td>
+              {COSTING_COLS.map((col, k) => (
+                <td key={k} style={{ ...tdSty, textAlign: 'right', fontWeight: col.bold ? 600 : undefined, color: col.accent ? 'var(--ac-bright)' : undefined }} className="mono">{fmtMoney(col.get(l))}</td>
+              ))}
               <td style={tdSty}>
                 <input type="number" value={lines[i]?.sellingPriceWoVat ?? ''}
                   onChange={(e) => updLine(i, { sellingPriceWoVat: Number(e.target.value) || 0 })}
@@ -799,12 +895,15 @@ function CostingGrid({ lines, computed, updLine }: {
           ))}</tbody>
           <tfoot>
             <tr style={{ background: 'var(--bg-0)' }}>
-              <td colSpan={4} style={{ ...tdSty, fontWeight: 700, textAlign: 'right' }}>Totals</td>
-              <td style={{ ...tdSty, textAlign: 'right', fontWeight: 700 }} className="mono">{fmtMoney(computed.itemsTotalUsd)}</td>
-              <td style={{ ...tdSty, textAlign: 'right', fontWeight: 700 }} className="mono">{fmtMoney(computed.itemsTotalLkr)}</td>
-              <td colSpan={9} style={{ ...tdSty, textAlign: 'right', fontWeight: 700 }} className="mono">Charges {fmtMoney(computed.chargesTotalLkr)}</td>
-              <td colSpan={2} style={{ ...tdSty, textAlign: 'right', fontWeight: 700, color: 'var(--ac-bright)' }} className="mono">Landed {fmtMoney(computed.landedTotal)}</td>
-              <td colSpan={4} />
+              <td style={{ ...tdSty, fontWeight: 700 }}>Grand Total</td>
+              <td style={tdSty} />
+              <td style={{ ...tdSty, textAlign: 'right', fontWeight: 700 }} className="mono">{totalQty}</td>
+              {COSTING_COLS.map((col, k) => (
+                <td key={k} style={{ ...tdSty, textAlign: 'right', fontWeight: 700 }} className="mono">
+                  {col.sum ? fmtMoney(lines.reduce((a, l) => a + col.get(l), 0)) : ''}
+                </td>
+              ))}
+              <td style={tdSty} /><td style={tdSty} />
             </tr>
           </tfoot>
         </table>

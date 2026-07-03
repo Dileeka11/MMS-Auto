@@ -79,7 +79,22 @@
       "PowerShell(winget install --id GitHub.cli -e --accept-source-agreements --accept-package-agreements 2>&1)",
       "PowerShell($gh = \"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\"; if \\(Test-Path $gh\\) { & $gh --version } else { Write-Output \"not at default path\" })",
       "PowerShell(& \"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" auth status 2>&1)",
-      "PowerShell($input = \"protocol=https`nhost=github.com`n`n\"; $out = $input | git credential fill 2>$null; $token = \\($out | Select-String '^password='\\).ToString\\(\\) -replace '^password=',''; if \\($token\\) { Write-Output \"GOT_TOKEN len=$\\($token.Length\\)\" } else { Write-Output \"NO_TOKEN\" })"
+      "PowerShell($input = \"protocol=https`nhost=github.com`n`n\"; $out = $input | git credential fill 2>$null; $token = \\($out | Select-String '^password='\\).ToString\\(\\) -replace '^password=',''; if \\($token\\) { Write-Output \"GOT_TOKEN len=$\\($token.Length\\)\" } else { Write-Output \"NO_TOKEN\" })",
+      "Bash(python -c \"import openpyxl\")",
+      "Bash(node -e \"console.log\\(require\\('xlsx'\\) && 'has xlsx'\\)\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(php -l database/migrations/2026_07_03_000001_drop_legacy_shipment_columns.php)",
+      "Bash(xargs -I{} tail -60 {})",
+      "Bash(xargs -I{} grep -a \"\\\\\"status\\\\\":422\\\\|shipments.*422\\\\|POST.*shipments\" {})",
+      "Bash(xargs -I{} grep -a \"POST.*api/shipments\" {})",
+      "Bash(xargs -I{} grep -a \"db27c540-241b-449b-ac47-38ca70bc1d96\" {})",
+      "Bash(cd \"d:/My Projects/NMS-Auto/backend\" && ls -t storage/logs/*.log | head -1 | xargs -I{} grep -a \"db27c540-241b-449b-ac47-38ca70bc1d96\" {} > /tmp/nms_line.txt; wc -c /tmp/nms_line.txt)",
+      "Read(//tmp/**)",
+      "Bash(cp /tmp/nms_line.txt /tmp/nms_line2.txt)",
+      "Bash(NMS_LINE=\"/tmp/nms_line.txt\" php revalidate_tmp.php)",
+      "Bash(cd \"d:/My Projects/NMS-Auto/backend\")",
+      "Bash(cp /tmp/nms_line.txt __TRACKED_VAR__/nms_line.txt)",
+      "Bash(NMS_LINE=__TRACKED_VAR__/nms_line.txt php revalidate_tmp.php)"
     ]
   }
 }

@@ -6,7 +6,6 @@ use App\Http\Controllers\Concerns\HandlesApprovals;
 use App\Http\Controllers\Controller;
 use App\Models\PurchaseOrder;
 use App\Models\Shipment;
-use App\Support\Costing;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -45,8 +44,9 @@ class ShipmentController extends Controller
      * Create a shipment (costing) against a PO.
      * Payload mirrors the Costing screen: shipping/weight, rates, tax & custom
      * fields, simple charge amounts, complex charges (freight/insurance/banking/
-     * clearance/slpa/demurrage) and the per-line item grid. All allocation is
-     * done server-side in App\Support\Costing for a single source of truth.
+     * clearance/slpa/demurrage) and the per-line item grid. The per-line
+     * allocation columns are taken VERBATIM from the uploaded costing Excel —
+     * no server-side recomputation; totals are sums of the line values.
      */
     public function store(Request $request)
     {
@@ -98,6 +98,28 @@ class ShipmentController extends Controller
             'lines.*.item' => 'required|string',
             'lines.*.qty' => 'required|numeric|min:0',
             'lines.*.cost' => 'required|numeric',
+            // Verbatim allocation columns from the uploaded costing Excel.
+            'lines.*.total' => 'nullable|numeric',
+            'lines.*.fob_lkr' => 'nullable|numeric',
+            'lines.*.freight_lkr' => 'nullable|numeric',
+            'lines.*.insurance_lkr' => 'nullable|numeric',
+            'lines.*.cid' => 'nullable|numeric',
+            'lines.*.pal' => 'nullable|numeric',
+            'lines.*.cess' => 'nullable|numeric',
+            'lines.*.vat' => 'nullable|numeric',
+            'lines.*.sscl' => 'nullable|numeric',
+            'lines.*.duty' => 'nullable|numeric',
+            'lines.*.other1' => 'nullable|numeric',
+            'lines.*.other2' => 'nullable|numeric',
+            'lines.*.other3' => 'nullable|numeric',
+            'lines.*.banking_alloc' => 'nullable|numeric',
+            'lines.*.clearance_alloc' => 'nullable|numeric',
+            'lines.*.slpa_alloc' => 'nullable|numeric',
+            'lines.*.demurrage_alloc' => 'nullable|numeric',
+            'lines.*.total_price_wo_vat' => 'nullable|numeric',
+            'lines.*.total_price_with_vat' => 'nullable|numeric',
+            'lines.*.unit_cost_wo_vat' => 'nullable|numeric',
+            'lines.*.unit_cost_with_vat' => 'nullable|numeric',
             'lines.*.selling_price_wo_vat' => 'nullable|numeric',
             'lines.*.selling_price_with_vat' => 'nullable|numeric',
         ]);
@@ -116,35 +138,77 @@ class ShipmentController extends Controller
 
             // Link lines to PO lines by code (fallback by item name).
             $poLines = $po->lines()->get()->keyBy(fn ($l) => $l->code ?: $l->item);
-            $linesPayload = [];
+
+            // Store the uploaded costing values VERBATIM — no recomputation. The
+            // shipment totals are simple sums of the per-line Excel columns
+            // (mirroring the template's GRAND TOTAL row).
+            $n = fn ($v) => (float) ($v ?? 0);
+            $computedLines = [];
+            $itemsTotalUsd = 0.0;
+            $itemsTotalLkr = 0.0;
+            $landedTotal = 0.0;
             foreach ($data['lines'] as $l) {
                 $key = ($l['code'] ?? '') ?: $l['item'];
                 $poLine = $poLines->get($key);
-                $linesPayload[] = array_merge($l, [
-                    'purchase_order_line_id' => optional($poLine)->id,
+                $qty = $n($l['qty'] ?? null);
+                $unit = $n($l['cost'] ?? null);
+                $totalUsd = $n($l['total'] ?? null) ?: round($qty * $unit, 2);
+                $fobLkr = $n($l['fob_lkr'] ?? null);
+                $charges = $n($l['freight_lkr'] ?? null) + $n($l['insurance_lkr'] ?? null)
+                    + $n($l['cid'] ?? null) + $n($l['pal'] ?? null) + $n($l['cess'] ?? null)
+                    + $n($l['vat'] ?? null) + $n($l['sscl'] ?? null) + $n($l['duty'] ?? null)
+                    + $n($l['other1'] ?? null) + $n($l['other2'] ?? null) + $n($l['other3'] ?? null)
+                    + $n($l['banking_alloc'] ?? null) + $n($l['clearance_alloc'] ?? null)
+                    + $n($l['slpa_alloc'] ?? null) + $n($l['demurrage_alloc'] ?? null);
+                $totalWithVat = $n($l['total_price_with_vat'] ?? null) ?: round($fobLkr + $charges, 2);
+                $totalWoVat = $n($l['total_price_wo_vat'] ?? null) ?: round($fobLkr + $charges - $n($l['vat'] ?? null), 2);
+
+                $itemsTotalUsd += $totalUsd;
+                $itemsTotalLkr += $fobLkr;
+                $landedTotal += $totalWithVat;
+
+                $computedLines[] = [
+                    'code' => $l['code'] ?? null,
                     'hs_code' => $l['hs_code'] ?? optional($poLine)->hs_code,
-                ]);
+                    'item' => $l['item'] ?? '',
+                    'purchase_order_line_id' => optional($poLine)->id,
+                    'qty' => $qty,
+                    'cost' => $unit,
+                    'total' => $totalUsd,
+                    'fob_lkr' => $fobLkr,
+                    'freight_lkr' => $n($l['freight_lkr'] ?? null),
+                    'insurance_lkr' => $n($l['insurance_lkr'] ?? null),
+                    'cid' => $n($l['cid'] ?? null),
+                    'pal' => $n($l['pal'] ?? null),
+                    'cess' => $n($l['cess'] ?? null),
+                    'vat' => $n($l['vat'] ?? null),
+                    'sscl' => $n($l['sscl'] ?? null),
+                    'duty' => $n($l['duty'] ?? null),
+                    'other1' => $n($l['other1'] ?? null),
+                    'other2' => $n($l['other2'] ?? null),
+                    'other3' => $n($l['other3'] ?? null),
+                    'banking_alloc' => $n($l['banking_alloc'] ?? null),
+                    'clearance_alloc' => $n($l['clearance_alloc'] ?? null),
+                    'slpa_alloc' => $n($l['slpa_alloc'] ?? null),
+                    'demurrage_alloc' => $n($l['demurrage_alloc'] ?? null),
+                    'total_price_wo_vat' => $totalWoVat,
+                    'total_price_with_vat' => $totalWithVat,
+                    'unit_cost_wo_vat' => $n($l['unit_cost_wo_vat'] ?? null),
+                    'unit_cost_with_vat' => $n($l['unit_cost_with_vat'] ?? null),
+                    'selling_price_wo_vat' => $n($l['selling_price_wo_vat'] ?? null),
+                    'selling_price_with_vat' => $n($l['selling_price_with_vat'] ?? null),
+                    'landed_cost' => $n($l['unit_cost_with_vat'] ?? null),
+                    'landed_total' => $totalWithVat,
+                ];
             }
 
-            $computed = Costing::compute([
-                'banking_rate' => $data['banking_rate'] ?? 0,
-                'freight' => $data['freight'] ?? null,
-                'insurance' => $data['insurance'] ?? null,
-                'banking' => $data['banking'] ?? null,
-                'clearance' => $data['clearance'] ?? null,
-                'slpa' => $data['slpa'] ?? null,
-                'demurrage' => $data['demurrage'] ?? null,
-                'cid_amount' => $data['cid_amount'] ?? 0,
-                'pal_amount' => $data['pal_amount'] ?? 0,
-                'duty_amount' => $data['duty_amount'] ?? 0,
-                'cess_amount' => $data['cess_amount'] ?? 0,
-                'vat_amount' => $data['vat_amount'] ?? 0,
-                'sscl_amount' => $data['sscl_amount'] ?? 0,
-                'other1_amount' => $data['other1_amount'] ?? 0,
-                'other2_amount' => $data['other2_amount'] ?? 0,
-                'other3_amount' => $data['other3_amount'] ?? 0,
-                'lines' => $linesPayload,
-            ]);
+            $computed = [
+                'items_total_usd' => round($itemsTotalUsd, 2),
+                'items_total_lkr' => round($itemsTotalLkr, 2),
+                'charges_total_lkr' => round($landedTotal - $itemsTotalLkr, 2),
+                'landed_total' => round($landedTotal, 2),
+                'lines' => $computedLines,
+            ];
 
             $shipment = Shipment::create([
                 'code' => $code,
