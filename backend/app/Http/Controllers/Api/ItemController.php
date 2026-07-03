@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Item;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ItemController extends Controller
 {
@@ -121,10 +122,18 @@ class ItemController extends Controller
         // starting ITM-NNN counter once — instead of a lookup (and a full-table
         // scan for blank codes) on every row. Turns an O(N) import into O(1)
         // queries for the setup plus the unavoidable per-row writes.
-        $existingByCode = Item::all()->keyBy('code');
+        //
+        // Keys are normalised (trim + lowercase) because the `items_code_unique`
+        // index is case-insensitive: "36DU4212" and "36du4212" collide in MySQL
+        // but are distinct PHP strings, so an exact-match keyBy would let the
+        // second one fall through to Item::create() and blow up the whole import
+        // with a 1062 duplicate-key error. Normalising makes our de-dup match the DB.
+        $norm = fn ($c) => mb_strtolower(trim((string) $c));
+        $existingByCode = Item::all()->keyBy(fn ($it) => $norm($it->code));
         $maxCode = 0;
-        foreach ($existingByCode->keys() as $c) {
-            if (is_string($c) && str_starts_with($c, 'ITM-')) {
+        foreach ($existingByCode as $it) {
+            $c = (string) $it->code;
+            if (str_starts_with($c, 'ITM-')) {
                 $n = (int) preg_replace('/[^0-9]/', '', $c);
                 if ($n > $maxCode) { $maxCode = $n; }
             }
@@ -133,31 +142,36 @@ class ItemController extends Controller
 
         $created = 0;
         $updated = 0;
-        foreach ($data['items'] as $row) {
-            $row['unit'] = $row['unit'] ?? 'Pcs';
-            $row['group'] = $row['group'] ?? 'OEM';
-            $row['qty'] = $row['qty'] ?? 0;
-            $row['reorder'] = $row['reorder'] ?? 12;
-            $row['status'] = $this->stockStatus($row['qty'], $row['reorder']);
-            $code = trim((string) ($row['code'] ?? ''));
-            if ($code === '') {
-                $row['code'] = $nextCode();
-                Item::create($row);
-                $created++;
-                continue;
+        DB::transaction(function () use ($data, &$created, &$updated, $existingByCode, $nextCode, $norm) {
+            foreach ($data['items'] as $row) {
+                $row['unit'] = $row['unit'] ?? 'Pcs';
+                $row['group'] = $row['group'] ?? 'OEM';
+                $row['qty'] = $row['qty'] ?? 0;
+                $row['reorder'] = $row['reorder'] ?? 12;
+                $row['status'] = $this->stockStatus($row['qty'], $row['reorder']);
+                $code = trim((string) ($row['code'] ?? ''));
+                if ($code === '') {
+                    $row['code'] = $nextCode();
+                    $item = Item::create($row);
+                    $existingByCode->put($norm($item->code), $item);
+                    $created++;
+                    continue;
+                }
+                $row['code'] = $code;
+                $existing = $existingByCode->get($norm($code));
+                if ($existing) {
+                    // A later row in the same sheet updates the earlier one rather
+                    // than trying (and failing) to insert a case-variant duplicate.
+                    $existing->fill($row);
+                    $existing->save();
+                    $updated++;
+                } else {
+                    $item = Item::create($row);
+                    $existingByCode->put($norm($code), $item); // guard against dupes within the same file
+                    $created++;
+                }
             }
-            $row['code'] = $code;
-            $existing = $existingByCode->get($code);
-            if ($existing) {
-                $existing->fill($row);
-                $existing->save();
-                $updated++;
-            } else {
-                $item = Item::create($row);
-                $existingByCode->put($code, $item); // guard against dupes within the same file
-                $created++;
-            }
-        }
+        });
 
         return response()->json(['created' => $created, 'updated' => $updated]);
     }

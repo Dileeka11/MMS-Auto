@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { api } from '../api'
+import { useNotify } from '../components/Notify'
 import { brands as brandSeed, categories as catSeed, groups as grpSeed, money } from '../data'
 import { parseItemMasterExcel } from '../excel'
 import type { Item, Customer } from '../types'
@@ -17,10 +18,11 @@ export function downloadXls(filename: string, headers: string[], rows: (string |
 }
 
 export function ItemMasterScreen({ go }: { go: Go }) {
+  const notify = useNotify()
   const [rows, setRows] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState(''); const [cat, setCat] = useState(''); const [brand, setBrand] = useState(''); const [stat, setStat] = useState('')
-  const [modal, setModal] = useState<null | 'add' | 'edit'>(null); const [form, setForm] = useState<any>({}); const [toast, setToast] = useState('')
+  const [modal, setModal] = useState<null | 'add' | 'edit'>(null); const [form, setForm] = useState<any>({})
   const [codeErr, setCodeErr] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -35,14 +37,12 @@ export function ItemMasterScreen({ go }: { go: Go }) {
     setImporting(true)
     try {
       const parsed = await parseItemMasterExcel(file)
-      if (!parsed.length) { setToast('No items detected in the sheet'); setTimeout(() => setToast(''), 3500); return }
+      if (!parsed.length) { notify.warning('Nothing imported', 'No items detected in the sheet'); return }
       const res: any = await (api.items as any).bulk(parsed)
       await refresh()
-      setToast(`Imported ${parsed.length} items · ${res?.created || 0} new, ${res?.updated || 0} updated`)
-      setTimeout(() => setToast(''), 4500)
+      notify.success('Import complete', `${parsed.length} items · ${res?.created || 0} new, ${res?.updated || 0} updated`)
     } catch (e: any) {
-      setToast('Import failed: ' + (e?.response?.data?.message || e?.message || 'unknown'))
-      setTimeout(() => setToast(''), 4500)
+      notify.error('Import failed', e?.response?.data?.message || e?.message || 'unknown error')
     } finally {
       setImporting(false)
       if (importRef.current) importRef.current.value = ''
@@ -50,15 +50,14 @@ export function ItemMasterScreen({ go }: { go: Go }) {
   }
 
   const clearAll = async () => {
-    if (!confirm(`Delete ALL ${rows.length} items? This cannot be undone.`)) return
+    const ok = await notify.confirm({ title: `Delete ALL ${rows.length} items?`, msg: 'This cannot be undone.', danger: true, okText: 'Delete all' })
+    if (!ok) return
     try {
       const res: any = await (api.items as any).clearAll()
       await refresh()
-      setToast(`Cleared ${res?.deleted ?? 0} items`)
-      setTimeout(() => setToast(''), 3500)
+      notify.success('Items cleared', `${res?.deleted ?? 0} items removed`)
     } catch (e: any) {
-      setToast('Clear failed: ' + (e?.response?.data?.message || e?.message || 'unknown'))
-      setTimeout(() => setToast(''), 4500)
+      notify.error('Clear failed', e?.response?.data?.message || e?.message || 'unknown error')
     }
   }
 
@@ -79,15 +78,18 @@ export function ItemMasterScreen({ go }: { go: Go }) {
     try {
       if (modal === 'add') await api.items.create({ ...form, code, qty: Number(form.qty || 0) })
       else await api.items.update(form.id, { ...form, code })
+      const wasAdd = modal === 'add'
       setModal(null); setCodeErr(''); refresh()
-      setToast(modal === 'add' ? 'Item created' : 'Item updated'); setTimeout(() => setToast(''), 2500)
+      notify.success(wasAdd ? 'Item created' : 'Item updated', code)
     } catch (e: any) {
       setCodeErr(e?.response?.data?.message || 'Failed to save')
     } finally { setSaving(false) }
   }
   const remove = async (id: any) => {
-    if (!confirm('Delete this item?')) return
-    await api.items.remove(id); refresh()
+    const ok = await notify.confirm({ title: 'Delete this item?', danger: true, okText: 'Delete' })
+    if (!ok) return
+    try { await api.items.remove(id); refresh(); notify.success('Item deleted') }
+    catch (e: any) { notify.error('Delete failed', e?.response?.data?.message || undefined) }
   }
   const f = rows.filter((r) => (!q || (r.name + r.code).toLowerCase().includes(q.toLowerCase())) && (!cat || r.category === cat) && (!brand || r.brand === brand) && (!stat || r.status === stat))
 
@@ -95,7 +97,7 @@ export function ItemMasterScreen({ go }: { go: Go }) {
     const headers = ['Item Code', 'HS Code', 'Item Name', 'Brand', 'Category', 'Group', 'Unit', 'Rack', 'Avg Cost (Rs)', 'FIFO Cost (Rs)', 'Selling Price (Rs)']
     const data = f.map((i) => [i.code, i.hsCode || '', i.name, i.brand, i.category, i.group, i.unit, i.rack, i.avgCost, i.fifoCost, i.price])
     downloadXls('NMS-Auto_Item_Master_PriceList.xls', headers, data)
-    setToast('Exported ' + f.length + ' items'); setTimeout(() => setToast(''), 3200)
+    notify.info('Export ready', f.length + ' items downloaded')
   }
 
   const stTone: Record<string, 'green' | 'amber' | 'red'> = { in: 'green', low: 'amber', out: 'red' }
@@ -192,12 +194,6 @@ export function ItemMasterScreen({ go }: { go: Go }) {
           <Field label="Opening Qty"><Input type="number" value={form.qty || ''} onChange={(e) => setForm((s: any) => ({ ...s, qty: e.target.value }))} /></Field>
         </div>
       </Modal>
-
-      {toast && (
-        <div className="toast row gap-2" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 300, background: 'var(--bg-1)', border: '1px solid var(--ok)', borderRadius: 'var(--r-m)', padding: '12px 16px', boxShadow: 'var(--sh-3)', color: 'var(--ok)' }}>
-          <Icon n="check" s={18} /><span style={{ fontSize: 13, color: 'var(--tx-0)' }}>{toast}</span>
-        </div>
-      )}
     </div>
   )
 }
