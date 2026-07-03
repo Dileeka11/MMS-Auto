@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './theme.css'
 import App from './App'
+import { NotifyProvider } from './components/Notify'
 
 // Apply the saved theme + accent before first paint (avoids a flash of the wrong theme).
 // Theme defaults to dark; falls back to the OS preference only when nothing was saved.
@@ -15,6 +16,8 @@ import App from './App'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <NotifyProvider>
+      <App />
+    </NotifyProvider>
   </StrictMode>,
 )

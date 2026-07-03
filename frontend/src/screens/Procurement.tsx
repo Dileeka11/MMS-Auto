@@ -12,6 +12,7 @@ import {
 import { Icon } from '../components/Icon'
 import { StatRow } from '../components/doc'
 import { ApprovalCounter, ApprovalPanel, canApprove as canApproveR, canReject as canRejectR, runApprovalAction } from '../components/Approval'
+import { useNotify } from '../components/Notify'
 import DB from '../data'
 import { api } from '../api'
 import { parsePoExcel, parseCostingExcel, fileToBase64, type ParsedLine, type ParsedCostingLine } from '../excel'
@@ -45,6 +46,7 @@ const INCO_TERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'CFR', 'DAP', 'DDP']
 const CURRENCIES = ['USD', 'LKR', 'EUR', 'JPY', 'GBP', 'CNY', 'INR']
 
 export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: string } | null }) {
+  const notify = useNotify()
   const isAdmin = user?.role === 'admin'
   const [rows, setRows] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
@@ -153,14 +155,15 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
     }
   }
   const approvePo = async (po: PurchaseOrder) => {
-    const ok = await runApprovalAction(() => api.purchaseOrders.approve(po.id))
-    if (ok) await refresh()
+    const ok = await runApprovalAction(() => api.purchaseOrders.approve(po.id), notify.error)
+    if (ok) { await refresh(); notify.success('Purchase order approved', po.code) }
   }
   const rejectPo = async (po: PurchaseOrder) => {
     const reason = prompt('Reject reason (optional):') ?? ''
-    if (!confirm('Reject this PO? This cannot be undone.')) return
-    const ok = await runApprovalAction(() => api.purchaseOrders.reject(po.id, reason))
-    if (ok) await refresh()
+    const confirmed = await notify.confirm({ title: 'Reject this PO?', msg: 'This cannot be undone.', danger: true, okText: 'Reject' })
+    if (!confirmed) return
+    const ok = await runApprovalAction(() => api.purchaseOrders.reject(po.id, reason), notify.error)
+    if (ok) { await refresh(); notify.warning('Purchase order rejected', po.code) }
   }
   const canApprove = (po: PurchaseOrder) => canApproveR(po, isAdmin, user?.id)
   const canReject  = (po: PurchaseOrder) => canRejectR(po, isAdmin)
@@ -409,6 +412,7 @@ const APPROVED_STATUSES = ['Approved', 'Partial GRN', 'Completed']
 const isApproved = (p: { status?: string }) => APPROVED_STATUSES.includes(p.status || '')
 
 export function CostingScreen({ go, user }: { go: Go; user?: { id: number; role?: string } | null }) {
+  const notify = useNotify()
   const isAdmin = user?.role === 'admin'
   const [viewShip, setViewShip] = useState<Shipment | null>(null)
   const [pos, setPos] = useState<PurchaseOrder[]>([])
@@ -546,14 +550,15 @@ export function CostingScreen({ go, user }: { go: Go; user?: { id: number; role?
     }
   }
   const approveShip = async (s: Shipment) => {
-    const ok = await runApprovalAction(() => api.shipments.approve(s.id!))
-    if (ok) await refreshShipments()
+    const ok = await runApprovalAction(() => api.shipments.approve(s.id!), notify.error)
+    if (ok) { await refreshShipments(); notify.success('Shipment approved', s.code) }
   }
   const rejectShip = async (s: Shipment) => {
     const reason = prompt('Reject reason (optional):') ?? ''
-    if (!confirm('Reject this shipment? This cannot be undone.')) return
-    const ok = await runApprovalAction(() => api.shipments.reject(s.id!, reason))
-    if (ok) await refreshShipments()
+    const confirmed = await notify.confirm({ title: 'Reject this shipment?', msg: 'This cannot be undone.', danger: true, okText: 'Reject' })
+    if (!confirmed) return
+    const ok = await runApprovalAction(() => api.shipments.reject(s.id!, reason), notify.error)
+    if (ok) { await refreshShipments(); notify.warning('Shipment rejected', s.code) }
   }
 
   return (
@@ -923,6 +928,7 @@ interface RecvRow {
 }
 
 export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role?: string } | null }) {
+  const notify = useNotify()
   const isAdmin = user?.role === 'admin'
   const [rows, setRows] = useState<GRN[]>([])
   const [pos, setPos] = useState<PurchaseOrder[]>([])
@@ -961,14 +967,15 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
     }
   }
   const approveGrn = async (g: GRN) => {
-    const ok = await runApprovalAction(() => api.grns.approve(g.id))
-    if (ok) await refreshGrns()
+    const ok = await runApprovalAction(() => api.grns.approve(g.id), notify.error)
+    if (ok) { await refreshGrns(); notify.success('GRN approved', g.id) }
   }
   const rejectGrn = async (g: GRN) => {
     const reason = prompt('Reject reason (optional):') ?? ''
-    if (!confirm('Reject this GRN? This cannot be undone.')) return
-    const ok = await runApprovalAction(() => api.grns.reject(g.id, reason))
-    if (ok) await refreshGrns()
+    const confirmed = await notify.confirm({ title: 'Reject this GRN?', msg: 'This cannot be undone.', danger: true, okText: 'Reject' })
+    if (!confirmed) return
+    const ok = await runApprovalAction(() => api.grns.reject(g.id, reason), notify.error)
+    if (ok) { await refreshGrns(); notify.warning('GRN rejected', g.id) }
   }
 
   const choosePO = (p: PurchaseOrder) => { setPo(p); setStep(2) }

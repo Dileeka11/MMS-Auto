@@ -1,8 +1,9 @@
 /* NMS-Auto — app shell (sidebar, topbar), ported from shell.jsx */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Icon } from './Icon'
 import { Btn } from './ui'
+import { NotificationBell, useNotify } from './Notify'
 import DB from '../data'
 import { auth, type AuthUser } from '../api'
 import { canAccessRoute } from '../lib/permissions'
@@ -159,6 +160,9 @@ export function ThemeToggle() {
 }
 
 export function Topbar({ setOpen, go }: { setOpen: (fn: (o: boolean) => boolean) => void; route: string; go: (r: string) => void }) {
+  const notify = useNotify()
+  // Let notification-center clicks navigate via the app router.
+  useEffect(() => { notify.setRouter(go) }, [notify, go])
   const headStyle: CSSProperties = { height: 'var(--topbar-h)', padding: '0 20px', borderBottom: '1px solid var(--line)', background: 'var(--top-bg)', backdropFilter: 'blur(10px)', position: 'sticky', top: 0, zIndex: 50 }
   return (
     <header className="mms-top row between" style={headStyle}>
@@ -173,10 +177,7 @@ export function Topbar({ setOpen, go }: { setOpen: (fn: (o: boolean) => boolean)
       <div className="row gap-3">
         <Btn variant="ghost" size="sm" icon="plus" onClick={() => go('dc/invoice')}>New Invoice</Btn>
         <ThemeToggle />
-        <button className="mms-icobtn" style={{ position: 'relative', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 8, padding: 8, color: 'var(--tx-1)' }}>
-          <Icon n="bell" s={18} />
-          <span style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: '50%', background: 'var(--bad)', border: '2px solid var(--bg-2)' }} />
-        </button>
+        <NotificationBell />
         <div className="row gap-2" style={{ paddingLeft: 6, borderLeft: '1px solid var(--line)' }}>
           <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--bg-3)', border: '1px solid var(--line)', display: 'grid', placeItems: 'center', fontFamily: 'Saira', fontWeight: 700, fontSize: 13, color: 'var(--ac-bright)' }}>AD</div>
           <div className="hide-sm" style={{ lineHeight: 1.2 }}>

@@ -5,6 +5,7 @@ import { Icon } from '../components/Icon'
 import { Gauge } from '../components/charts'
 import { api, company as companyApi, permissionsApi, type PermissionMatrix } from '../api'
 import { branches as branchSeed, moneyK } from '../data'
+import { useNotify } from '../components/Notify'
 import type { Go } from './types'
 
 const ROLE_OPTIONS = ['admin', 'manager', 'storekeeper', 'accountant', 'salesrep', 'cashier', 'user'] as const
@@ -15,6 +16,7 @@ interface UserRow { id: number; name: string; email: string; role: string; branc
 const blankUserForm = (): Partial<UserRow & { password: string }> => ({ role: 'user', status: 'Active', branch: '' })
 
 export function UsersScreen({ go: _go, user: me }: { go: Go; user?: { id: number; role?: string } | null }) {
+  const notify = useNotify()
   const [rows, setRows] = useState<UserRow[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -46,16 +48,18 @@ export function UsersScreen({ go: _go, user: me }: { go: Go; user?: { id: number
         await api.users.create({ name: form.name, email: form.email, role: form.role, branch: form.branch || null, status: form.status || 'Active', password: form.password } as any)
       }
       close(); refresh()
+      notify.success(editing ? 'User updated' : 'User created', form.name || undefined)
     } catch (ex: any) {
       setErr(ex?.response?.data?.message || ex?.response?.data?.errors?.email?.[0] || 'Save failed')
     } finally { setBusy(false) }
   }
 
   const remove = async (u: UserRow) => {
-    if (u.id === me?.id) { alert('You cannot delete your own account.'); return }
-    if (!confirm(`Delete user "${u.name}"?`)) return
-    try { await api.users.remove(u.id); refresh() }
-    catch (ex: any) { alert(ex?.response?.data?.message || 'Delete failed') }
+    if (u.id === me?.id) { notify.error('Cannot delete', 'You cannot delete your own account.'); return }
+    const ok = await notify.confirm({ title: `Delete user "${u.name}"?`, msg: 'This action cannot be undone.', danger: true, okText: 'Delete' })
+    if (!ok) return
+    try { await api.users.remove(u.id); refresh(); notify.success('User deleted', u.name) }
+    catch (ex: any) { notify.error('Delete failed', ex?.response?.data?.message || undefined) }
   }
 
   return (

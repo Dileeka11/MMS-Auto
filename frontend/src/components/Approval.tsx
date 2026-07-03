@@ -80,15 +80,21 @@ function Slot({ label, user, at }: { label: string; user?: { name: string } | nu
   )
 }
 
-/** Common alert-on-error wrapper used for approve/reject API calls. */
-export async function runApprovalAction<T>(fn: () => Promise<T>): Promise<T | null> {
+/** Common error-handling wrapper used for approve/reject API calls.
+   Pass `onError` (e.g. notify.error) to surface failures as a toast;
+   falls back to a native alert when no handler is provided. */
+export async function runApprovalAction<T>(
+  fn: () => Promise<T>,
+  onError?: (title: string, msg?: string) => void,
+): Promise<T | null> {
   try { return await fn() }
   catch (ex: any) {
     const msg = ex?.response?.data?.message
       || ex?.response?.data?.errors?.status?.[0]
       || ex?.response?.data?.errors?.po?.[0]
       || 'Action failed'
-    alert(msg)
+    if (onError) onError('Action failed', msg)
+    else alert(msg)
     return null
   }
 }
