@@ -117,6 +117,20 @@ class ItemController extends Controller
             'items.*.rack' => 'nullable|string',
         ]);
 
+        // Preload every existing item keyed by code in ONE query, and compute the
+        // starting ITM-NNN counter once — instead of a lookup (and a full-table
+        // scan for blank codes) on every row. Turns an O(N) import into O(1)
+        // queries for the setup plus the unavoidable per-row writes.
+        $existingByCode = Item::all()->keyBy('code');
+        $maxCode = 0;
+        foreach ($existingByCode->keys() as $c) {
+            if (is_string($c) && str_starts_with($c, 'ITM-')) {
+                $n = (int) preg_replace('/[^0-9]/', '', $c);
+                if ($n > $maxCode) { $maxCode = $n; }
+            }
+        }
+        $nextCode = fn () => 'ITM-' . str_pad((string) (++$maxCode), 3, '0', STR_PAD_LEFT);
+
         $created = 0;
         $updated = 0;
         foreach ($data['items'] as $row) {
@@ -127,19 +141,20 @@ class ItemController extends Controller
             $row['status'] = $this->stockStatus($row['qty'], $row['reorder']);
             $code = trim((string) ($row['code'] ?? ''));
             if ($code === '') {
-                $row['code'] = $this->nextCode();
+                $row['code'] = $nextCode();
                 Item::create($row);
                 $created++;
                 continue;
             }
             $row['code'] = $code;
-            $existing = Item::where('code', $code)->first();
+            $existing = $existingByCode->get($code);
             if ($existing) {
                 $existing->fill($row);
                 $existing->save();
                 $updated++;
             } else {
-                Item::create($row);
+                $item = Item::create($row);
+                $existingByCode->put($code, $item); // guard against dupes within the same file
                 $created++;
             }
         }

@@ -1,3 +1,11 @@
+# Gzip-compress text responses (JSON API payloads, HTML, CSS, JS). Typically
+# shrinks responses 70-85% over the wire — the single biggest transport win.
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/json application/javascript \
+        text/html text/plain text/css text/xml application/xml \
+        image/svg+xml application/vnd.ms-fontobject application/x-font-ttf font/opentype
+</IfModule>
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes

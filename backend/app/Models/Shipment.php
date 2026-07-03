@@ -13,6 +13,11 @@ class Shipment extends Model
 
     protected $appends = ['approvals_count', 'approvals_required'];
 
+    // The original costing Excel is stored base64-encoded (can be hundreds of KB)
+    // but is never read back by the client — it's write-only. Keep it out of every
+    // JSON response so shipment/PO lists and details stay lightweight and fast.
+    protected $hidden = ['cost_file_data'];
+
     protected $casts = [
         'approver1_at' => 'datetime',
         'approver2_at' => 'datetime',

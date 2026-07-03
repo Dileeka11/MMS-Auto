@@ -94,7 +94,11 @@
       "Bash(NMS_LINE=\"/tmp/nms_line.txt\" php revalidate_tmp.php)",
       "Bash(cd \"d:/My Projects/NMS-Auto/backend\")",
       "Bash(cp /tmp/nms_line.txt __TRACKED_VAR__/nms_line.txt)",
-      "Bash(NMS_LINE=__TRACKED_VAR__/nms_line.txt php revalidate_tmp.php)"
+      "Bash(NMS_LINE=__TRACKED_VAR__/nms_line.txt php revalidate_tmp.php)",
+      "Bash(grep -rn \"cost_file\" routes/)",
+      "Bash(grep -rn \"cost_file_data\" database/migrations/)",
+      "Bash(php -l app/Models/Shipment.php)",
+      "Bash(php -l app/Http/Controllers/Api/ItemController.php)"
     ]
   }
 }
