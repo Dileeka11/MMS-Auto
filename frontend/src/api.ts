@@ -164,7 +164,11 @@ export const api = {
   },
   tracking: () => http.get('/po-tracking').then((r) => camelize(r.data)),
   quotations: resource('quotations'),
-  invoices: resource('invoices'),
+  invoices: {
+    ...resource('invoices'),
+    pay: (id: string | number, body: { amount: number; mode?: string; reference?: string }) =>
+      http.post(`/invoices/${id}/pay`, snakeize(body)).then((r) => camelize(r.data)),
+  },
   returns: resource('sales-returns'),
   receipts: resource('receipts'),
   expenses: resource('expenses'),

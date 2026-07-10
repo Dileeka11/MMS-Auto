@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Item;
 use App\Models\Quotation;
+use App\Models\Receipt;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -51,10 +53,11 @@ class InvoiceController extends Controller
             $costing = count($methods) > 1 ? 'Mixed' : array_key_first($methods);
 
             $inv = Invoice::create([
-                'code' => 'INV-' . (5500 + Invoice::count() + 1),
+                'code' => Invoice::nextCode(),
                 'quotation' => $data['quotation'] ?? null,
                 'customer' => $data['customer'],
                 'rep' => $data['rep'] ?? null,
+                'source' => 'web',
                 'date' => $data['date'] ?? now()->toDateString(),
                 'total' => $total,
                 'paid' => 0,
@@ -90,6 +93,48 @@ class InvoiceController extends Controller
             }
 
             return response()->json($inv->load('lines'), 201);
+        });
+    }
+
+    /**
+     * Record a payment against an invoice. Creates a receipt, updates the
+     * invoice paid/due/status, and settles the customer outstanding.
+     */
+    public function pay(Request $request, Invoice $invoice)
+    {
+        $data = $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'mode' => 'nullable|string',
+            'reference' => 'nullable|string',
+        ]);
+
+        return DB::transaction(function () use ($data, $invoice) {
+            // never accept more than what is still due
+            $amount = round(min($data['amount'], (float) $invoice->due), 2);
+
+            $invoice->paid = round((float) $invoice->paid + $amount, 2);
+            $invoice->due = round(max(0, (float) $invoice->total - $invoice->paid), 2);
+            $invoice->status = $invoice->due <= 0 ? 'Paid' : 'Partial';
+            $invoice->save();
+
+            Receipt::create([
+                'code' => 'RCP-' . (6600 + Receipt::count() + 1),
+                'customer' => $invoice->customer,
+                'date' => now()->toDateString(),
+                'amount' => $amount,
+                'mode' => $data['mode'] ?? 'Cash',
+                'against' => $invoice->code,
+                'reference' => $data['reference'] ?? null,
+            ]);
+
+            $cust = Customer::where('name', $invoice->customer)->first();
+            if ($cust) {
+                $cust->outstanding = max(0, $cust->outstanding - $amount);
+                $cust->status = $cust->outstanding > $cust->limit * 0.7 ? 'risk' : 'ok';
+                $cust->save();
+            }
+
+            return response()->json($invoice->load('lines'));
         });
     }
 

@@ -56,8 +56,14 @@ class DashboardController extends Controller
                 ->get();
 
             // ---- 12-month sales trend ---------------------------------------
+            // DATE_FORMAT is MySQL-only; SQLite (local dev) needs strftime.
+            /** @var \Illuminate\Database\Connection $conn */
+            $conn = DB::connection();
+            $ymExpr = $conn->getDriverName() === 'sqlite'
+                ? "strftime('%Y-%m', date)"
+                : 'DATE_FORMAT(date, "%Y-%m")';
             $trendRows = DB::table('invoices')
-                ->selectRaw('DATE_FORMAT(date, "%Y-%m") AS ym, SUM(total) AS total')
+                ->selectRaw("$ymExpr AS ym, SUM(total) AS total")
                 ->where('date', '>=', Carbon::now()->subMonths(11)->startOfMonth())
                 ->groupBy('ym')
                 ->orderBy('ym')
@@ -85,7 +91,7 @@ class DashboardController extends Controller
                 'stock_by_category' => $stockByCategory,
                 'sales_trend' => $trend,
                 'low_stock' => Item::where('status', '!=', 'in')
-                    ->orderByRaw('FIELD(status, "out", "low")')
+                    ->orderByRaw("CASE status WHEN 'out' THEN 0 WHEN 'low' THEN 1 ELSE 2 END")
                     ->limit(6)
                     ->get(),
                 'top_items' => Item::orderByRaw('(price * qty) DESC')

@@ -137,7 +137,9 @@ export interface Quotation {
   id: string; customer: string; rep: string; date: string; total: number; items: number; status: string; cost: string
 }
 export interface Invoice {
-  id: string; customer: string; rep: string; date: string; total: number; paid: number; due: number; items: number; cost: string; status: string
+  id: string; code?: string; customer: string; rep: string; date: string; total: number; paid: number; due: number; items: number; cost: string; status: string
+  source?: string // 'web' (admin) | 'app' (rep mobile app)
+  lines?: Array<{ id?: number; code?: string; name: string; qty: number; rate: number }>
 }
 export interface SalesReturn {
   id: string; invoice: string; customer: string; rep: string; date: string; amount: number; items: number; reason: string; status: string; raisedBy: string

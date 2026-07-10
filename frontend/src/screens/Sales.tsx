@@ -127,6 +127,9 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   const [step, setStep] = useState(0)
   const [src, setSrc] = useState<any>(null); const [lines, setLines] = useState<EditorLine[]>([]); const [cust, setCust] = useState('')
   const [saving, setSaving] = useState(false)
+  const [payFor, setPayFor] = useState<Invoice | null>(null)
+  const [payAmt, setPayAmt] = useState(''); const [payMode, setPayMode] = useState('Cash'); const [payRef, setPayRef] = useState(''); const [paying, setPaying] = useState(false)
+  const [tab, setTab] = useState<'web' | 'app'>('web')
 
   const refresh = () => { setLoading(true); api.invoices.list().then((d) => setRows(d as any)).finally(() => setLoading(false)) }
   useEffect(() => {
@@ -134,6 +137,53 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
     api.customers.list().then((d) => setCustomers(d as any)).catch(() => {})
     api.quotations.list().then((d: any[]) => setOpenQuotes(d.filter((q) => q.status === 'Open'))).catch(() => {})
   }, [])
+
+  const openPay = (r: Invoice) => { setPayFor(r); setPayAmt(String(r.due || 0)); setPayMode('Cash'); setPayRef('') }
+  const submitPay = async () => {
+    if (!payFor) return
+    const amt = parseFloat(payAmt)
+    if (!amt || amt <= 0) return
+    setPaying(true)
+    try {
+      await api.invoices.pay(payFor.id, { amount: amt, mode: payMode, reference: payRef || undefined })
+      setPayFor(null); refresh()
+    } finally { setPaying(false) }
+  }
+
+  const printInvoice = (r: Invoice) => {
+    const no = r.code || r.id
+    const items = (r.lines || []).map((l) => `<tr><td>${l.code || ''}</td><td>${l.name}</td><td class="r">${l.qty}</td><td class="r">${money(l.rate)}</td><td class="r">${money(l.qty * l.rate)}</td></tr>`).join('')
+    const w = window.open('', '_blank', 'width=800,height=900')
+    if (!w) return
+    w.document.write(`<!doctype html><html><head><title>Invoice ${no}</title><meta charset="utf-8">
+      <style>
+        *{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
+        body{margin:32px;color:#111}
+        h1{margin:0;font-size:22px}
+        .muted{color:#666;font-size:12px}
+        .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:16px}
+        table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+        th,td{padding:8px 10px;border-bottom:1px solid #ddd;text-align:left}
+        th{background:#f4f4f4;text-transform:uppercase;font-size:11px;letter-spacing:.5px}
+        .r{text-align:right}
+        .totals{margin-top:16px;width:280px;margin-left:auto;font-size:13px}
+        .totals div{display:flex;justify-content:space-between;padding:4px 0}
+        .totals .grand{font-weight:700;font-size:15px;border-top:2px solid #111;margin-top:6px;padding-top:8px}
+      </style></head><body>
+      <div class="head">
+        <div><h1>NMS-Auto</h1><div class="muted">Spare Parts Distribution</div></div>
+        <div class="r"><h1 style="font-size:16px">SALES INVOICE</h1><div class="muted">${no}</div><div class="muted">${fmtDate(r.date)}</div></div>
+      </div>
+      <div><strong>Bill To:</strong> ${r.customer || ''}${r.rep ? ` &nbsp;·&nbsp; <span class="muted">Rep: ${r.rep}</span>` : ''}</div>
+      <table><thead><tr><th>Code</th><th>Item</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${items || '<tr><td colspan="5" class="muted">No line items</td></tr>'}</tbody></table>
+      <div class="totals">
+        <div><span>Total</span><span>${money(r.total || 0)}</span></div>
+        <div><span>Paid</span><span>${money(r.paid || 0)}</span></div>
+        <div class="grand"><span>Balance Due</span><span>${money(r.due || 0)}</span></div>
+      </div>
+      </body></html>`)
+    w.document.close(); w.focus(); w.print()
+  }
 
   const fromQuote = (q: any) => {
     setSrc(q); setCust(q.customer)
@@ -156,29 +206,38 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   }
 
   if (step === 2) return <InvoiceBuilder {...{ src, cust, setCust, lines, setLines, total, cogs, profit, post, back: () => setStep(0), customers, saving }} />
+  const appRows = rows.filter((r) => r.source === 'app')
+  const shown = tab === 'app' ? appRows : rows.filter((r) => r.source !== 'app')
   return (
     <div>
-      <PageHead crumbs="Data Capture" title="Sales Invoice" icon="receipt" sub={`${rows.length} invoices · ${money(rows.reduce((a, r) => a + (r.due || 0), 0))} receivable`}
+      <PageHead crumbs="Data Capture" title="Sales Invoice" icon="receipt" sub={`${shown.length} invoices · ${money(shown.reduce((a, r) => a + (r.due || 0), 0))} receivable`}
         actions={<><Btn variant="solid" icon="doc" onClick={() => setStep(1)}>From Quotation</Btn><Btn variant="primary" icon="plus" onClick={blank}>New Invoice</Btn></>} />
+      <div className="row gap-2" style={{ marginBottom: 14 }}>
+        <Btn variant={tab === 'web' ? 'primary' : 'ghost'} icon="receipt" onClick={() => setTab('web')}>Sales Invoice</Btn>
+        <Btn variant={tab === 'app' ? 'primary' : 'ghost'} icon="phone" onClick={() => setTab('app')}>App Invoice{appRows.length ? ` (${appRows.length})` : ''}</Btn>
+      </div>
       <StatRow items={[
-        { icon: 'receipt', label: 'Invoices (MTD)', value: rows.length, c: 'ac' },
-        { icon: 'check', label: 'Paid', value: rows.filter((r) => r.status === 'Paid').length, c: 'green' },
-        { icon: 'clock', label: 'Partial / Unpaid', value: rows.filter((r) => r.status !== 'Paid').length, c: 'warn' },
-        { icon: 'coins', label: 'Sales Value', value: moneyK(rows.reduce((a, r) => a + (r.total || 0), 0)), c: 'green' },
+        { icon: 'receipt', label: 'Invoices (MTD)', value: shown.length, c: 'ac' },
+        { icon: 'check', label: 'Paid', value: shown.filter((r) => r.status === 'Paid').length, c: 'green' },
+        { icon: 'clock', label: 'Partial / Unpaid', value: shown.filter((r) => r.status !== 'Paid').length, c: 'warn' },
+        { icon: 'coins', label: 'Sales Value', value: moneyK(shown.reduce((a, r) => a + (r.total || 0), 0)), c: 'green' },
       ]} />
       <Card pad={0}>
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
         <Table cols={[{ label: 'Invoice No' }, { label: 'Customer' }, { label: 'Rep' }, { label: 'Date' }, { label: 'Costing', align: 'center' }, { label: 'Total', align: 'right' }, { label: 'Due', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 60 }]}
-          rows={rows}
+          rows={shown}
           render={(r) => <>
-            <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.id}</Td>
+            <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.code || r.id}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.customer}</Td>
             <Td>{r.rep}</Td><Td mono>{fmtDate(r.date)}</Td>
             <Td align="center"><Badge tone="blue">{r.cost}</Badge></Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{money(r.total || 0)}</Td>
             <Td align="right" mono c={(r.due || 0) > 0 ? 'var(--warn)' : 'var(--tx-3)'}>{(r.due || 0) > 0 ? money(r.due) : '—'}</Td>
             <Td align="center"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></Td>
-            <Td align="right"><button className="mms-act"><Icon n="print" s={15} /></button></Td>
+            <Td align="right"><div className="row gap-2" style={{ justifyContent: 'flex-end' }}>
+              {(r.due || 0) > 0 && <button className="mms-act" title="Add payment" onClick={() => openPay(r)}><Icon n="coins" s={15} /></button>}
+              <button className="mms-act" title="Print invoice" onClick={() => printInvoice(r)}><Icon n="print" s={15} /></button>
+            </div></Td>
           </>} />}
       </Card>
       <Modal open={step === 1} onClose={() => setStep(0)} width={680} title="Select Quotation to Invoice" sub="Convert an open quotation into a sales invoice">
@@ -194,6 +253,27 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
             </button>
           ))}
         </div>
+      </Modal>
+      <Modal open={!!payFor} onClose={() => setPayFor(null)} width={440} title="Add Payment" sub={payFor ? `${payFor.code || payFor.id} · ${payFor.customer}` : ''}>
+        {payFor && (
+          <div className="col gap-3">
+            <div className="row between" style={{ padding: '10px 12px', background: 'var(--bg-0)', border: '1px solid var(--line)', borderRadius: 'var(--r-s)' }}>
+              <span className="t-2">Balance Due</span>
+              <span className="num" style={{ fontWeight: 700, color: 'var(--warn)' }}>{money(payFor.due || 0)}</span>
+            </div>
+            <Field label="Amount"><Input type="number" value={payAmt} onChange={(e: any) => setPayAmt(e.target.value)} placeholder="0.00" /></Field>
+            <Field label="Mode">
+              <Select value={payMode} onChange={(e: any) => setPayMode(e.target.value)}>
+                <option>Cash</option><option>Cheque</option><option>Bank Transfer</option><option>Card</option>
+              </Select>
+            </Field>
+            <Field label="Reference (optional)"><Input value={payRef} onChange={(e: any) => setPayRef(e.target.value)} placeholder="Cheque / txn no." /></Field>
+            <div className="row gap-2" style={{ justifyContent: 'flex-end' }}>
+              <Btn onClick={() => setPayFor(null)}>Cancel</Btn>
+              <Btn variant="primary" icon="check" onClick={submitPay} disabled={paying || !parseFloat(payAmt)}>{paying ? 'Saving…' : 'Record Payment'}</Btn>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

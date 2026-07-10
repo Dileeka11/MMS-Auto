@@ -308,12 +308,19 @@ export function RepsScreen({ go: _go }: { go: Go }) {
   useEffect(() => { refresh() }, [])
 
   const add = async () => {
-    const pw = 'Mms@' + Math.floor(1000 + Math.random() * 9000)
     const created: any = await api.reps.create({
-      name: form.name, zone: form.zone, target: +form.target || 500000,
-      achieved: 0, visits: 0, invoices: 0, avatar: (form.name || 'NA').split(' ').map((w: string) => w[0]).join('').slice(0, 2), appEnabled: true,
+      name: form.name, zone: form.zone, phone: form.phone, branch: form.branch,
+      email: form.email || undefined, password: form.password || undefined,
+      target: +form.target || 500000,
+      achieved: 0, visits: 0, invoices: 0,
+      avatar: (form.name || 'NA').split(' ').map((w: string) => w[0]).join('').slice(0, 2), appEnabled: true,
     } as any)
-    setCred({ name: form.name, login: created?.login || (form.name || 'rep').toLowerCase().replace(/[^a-z]/g, '.') + '@mms', pw }); setModal(false); setForm({}); refresh()
+    setCred({
+      name: form.name,
+      login: created?.email || created?.login || '—',
+      pw: created?.plainPassword || form.password || '(set by admin)',
+    })
+    setModal(false); setForm({}); refresh()
   }
   return (
     <div>
@@ -354,14 +361,16 @@ export function RepsScreen({ go: _go }: { go: Go }) {
           </>} />}
       </Card>
 
-      <Modal open={modal} onClose={() => setModal(false)} width={560} title="Add Sales Rep" sub="A mobile-app login is generated automatically"
+      <Modal open={modal} onClose={() => setModal(false)} width={560} title="Add Sales Rep" sub="Set the mobile-app login email & password for this rep"
         footer={<><Btn variant="plain" onClick={() => setModal(false)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={add} disabled={!form.name}>Create Rep &amp; Login</Btn></>}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <Field label="Full Name" full><Input value={form.name || ''} onChange={(e) => setForm((s: any) => ({ ...s, name: e.target.value }))} /></Field>
+          <Field label="Login Email"><Input type="email" value={form.email || ''} onChange={(e) => setForm((s: any) => ({ ...s, email: e.target.value }))} placeholder="rep@mms.lk (auto if blank)" /></Field>
+          <Field label="Password"><Input type="text" value={form.password || ''} onChange={(e) => setForm((s: any) => ({ ...s, password: e.target.value }))} placeholder="min 6 chars (auto if blank)" /></Field>
           <Field label="Sales Zone"><Input value={form.zone || ''} onChange={(e) => setForm((s: any) => ({ ...s, zone: e.target.value }))} placeholder="Colombo West" /></Field>
           <Field label="Monthly Target (Rs)"><Input type="number" value={form.target || ''} onChange={(e) => setForm((s: any) => ({ ...s, target: e.target.value }))} placeholder="500000" /></Field>
-          <Field label="Mobile No"><Input placeholder="07X XXX XXXX" /></Field>
-          <Field label="Branch"><Select>{branchSeed.map((b) => <option key={b}>{b}</option>)}</Select></Field>
+          <Field label="Mobile No"><Input value={form.phone || ''} onChange={(e) => setForm((s: any) => ({ ...s, phone: e.target.value }))} placeholder="07X XXX XXXX" /></Field>
+          <Field label="Branch"><Select value={form.branch || ''} onChange={(e) => setForm((s: any) => ({ ...s, branch: e.target.value }))}>{branchSeed.map((b) => <option key={b}>{b}</option>)}</Select></Field>
         </div>
       </Modal>
 

@@ -11,6 +11,8 @@ use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\MasterController;
 use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\PurchaseOrderController;
+use App\Http\Controllers\Api\RepAuthController;
+use App\Http\Controllers\Api\RepController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ShipmentController;
 use App\Http\Controllers\Api\TrackingController;
@@ -34,6 +36,18 @@ use Illuminate\Support\Facades\Route;
 // --- Public auth ---
 Route::middleware('throttle:5,1')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
+    Route::post('rep/login', [RepAuthController::class, 'login']);
+});
+
+// --- Mobile rep app (Sanctum token belongs to a SalesRep) ---
+Route::middleware(['auth:sanctum', 'rep', 'throttle:120,1'])->prefix('rep')->group(function () {
+    Route::get('me', [RepAuthController::class, 'me']);
+    Route::post('logout', [RepAuthController::class, 'logout']);
+    Route::get('dashboard', [RepController::class, 'dashboard']);
+    Route::get('stock', [RepController::class, 'stock']);
+    Route::get('customers', [RepController::class, 'customers']);
+    Route::get('orders', [RepController::class, 'orders']);
+    Route::post('orders', [RepController::class, 'storeOrder']);
 });
 
 // --- One-time setup (remove after first run) ---
@@ -98,6 +112,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
     // Sales
     Route::apiResource('quotations', QuotationController::class);
     Route::apiResource('invoices', InvoiceController::class);
+    Route::post('invoices/{invoice}/pay', [InvoiceController::class, 'pay']);
     Route::apiResource('sales-returns', SalesReturnController::class)->only(['index', 'store', 'destroy']);
     Route::post('sales-returns/{salesReturn}/approve', [SalesReturnController::class, 'approve']);
     Route::post('sales-returns/{salesReturn}/reject', [SalesReturnController::class, 'reject']);

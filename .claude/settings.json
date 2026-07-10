@@ -3,7 +3,11 @@
     "allow": [
       "Bash(echo \"EXIT=$?\")",
       "Bash(composer install *)",
-      "PowerShell($src = \"d:\\\\My Projects\\\\NMS-Auto\\\\backend\\\\vendor\"; $dst = \"d:\\\\My Projects\\\\NMS-Auto\\\\backend\\\\vendor-php74.zip\"; if \\(Test-Path $dst\\) { Remove-Item $dst }; Compress-Archive -Path $src -DestinationPath $dst; Get-Item $dst | Select-Object Name, @{n='SizeMB';e={[math]::Round\\($_.Length/1MB,2\\)}})"
+      "PowerShell($src = \"d:\\\\My Projects\\\\NMS-Auto\\\\backend\\\\vendor\"; $dst = \"d:\\\\My Projects\\\\NMS-Auto\\\\backend\\\\vendor-php74.zip\"; if \\(Test-Path $dst\\) { Remove-Item $dst }; Compress-Archive -Path $src -DestinationPath $dst; Get-Item $dst | Select-Object Name, @{n='SizeMB';e={[math]::Round\\($_.Length/1MB,2\\)}})",
+      "Bash(php -l app/Http/Controllers/Api/RepController.php)",
+      "PowerShell(php -l \"d:\\\\My Projects\\\\NMS-Auto\\\\backend\\\\app\\\\Models\\\\Invoice.php\")",
+      "PowerShell(php -l \"d:\\\\My Projects\\\\NMS-Auto\\\\backend\\\\app\\\\Http\\\\Controllers\\\\Api\\\\RepController.php\")",
+      "PowerShell(php -l \"d:\\\\My Projects\\\\NMS-Auto\\\\backend\\\\app\\\\Http\\\\Controllers\\\\Api\\\\InvoiceController.php\")"
     ]
   }
 }
