@@ -32,7 +32,7 @@ class SalesOrderController extends Controller
      * edited (e.g. 10 ordered but only 9 available). Reserves the dispatched
      * quantity against each item.
      */
-    public function dispatch(Request $request, SalesOrder $salesOrder)
+    public function dispatchOrder(Request $request, SalesOrder $salesOrder)
     {
         if ($salesOrder->status !== 'pending') {
             throw ValidationException::withMessages([

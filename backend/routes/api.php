@@ -113,7 +113,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
     // Sales
     Route::apiResource('quotations', QuotationController::class);
     Route::get('sales-orders', [SalesOrderController::class, 'index']);
-    Route::post('sales-orders/{salesOrder}/dispatch', [SalesOrderController::class, 'dispatch']);
+    Route::post('sales-orders/{salesOrder}/dispatch', [SalesOrderController::class, 'dispatchOrder']);
     Route::post('sales-orders/{salesOrder}/invoice', [SalesOrderController::class, 'invoice']);
     Route::delete('sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy']);
     Route::apiResource('invoices', InvoiceController::class);
