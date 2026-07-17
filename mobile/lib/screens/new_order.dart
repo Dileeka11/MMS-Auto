@@ -83,7 +83,9 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
           name: '${item['name']}',
           unit: '${item['unit'] ?? ''}',
           price: (item['price'] as num?)?.toDouble() ?? 0,
-          available: (item['qty'] as num?)?.toInt() ?? 0,
+          // `available` = on-hand minus stock reserved by dispatch notes.
+          available: (item['available'] as num?)?.toInt() ??
+              (item['qty'] as num?)?.toInt() ?? 0,
         ));
       });
     }
@@ -389,11 +391,15 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
     try {
       final res = await Api.get(
           'stock${q.isEmpty ? '' : '?q=${Uri.encodeQueryComponent(q)}'}');
-      // Only show items that are actually in stock (qty > 0) — you can't sell
-      // what you don't have.
+      // Only show items with available stock (on-hand − reserved) — you can't
+      // sell what you don't have or what's already reserved.
       final inStock = (res as List)
           .cast<Map>()
-          .where((it) => ((it['qty'] as num?)?.toInt() ?? 0) > 0)
+          .where((it) =>
+              ((it['available'] as num?)?.toInt() ??
+                  (it['qty'] as num?)?.toInt() ??
+                  0) >
+              0)
           .toList();
       setState(() {
         _items = inStock;
@@ -468,7 +474,9 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                                 const SizedBox(height: 8),
                             itemBuilder: (_, i) {
                               final it = _items[i];
-                              final qty = (it['qty'] as num?)?.toInt() ?? 0;
+                              final qty = (it['available'] as num?)?.toInt() ??
+                                  (it['qty'] as num?)?.toInt() ??
+                                  0;
                               final out = qty <= 0;
                               return Material(
                                 color: AppColors.surface,

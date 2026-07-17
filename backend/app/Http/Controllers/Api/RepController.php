@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Item;
+use App\Models\SalesOrder;
 use App\Models\SalesRep;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -91,7 +92,13 @@ class RepController extends Controller
             })
             ->orderBy('name')
             ->limit(400)
-            ->get(['id', 'code', 'name', 'brand', 'category', 'unit', 'price', 'qty', 'reorder', 'status', 'rack']);
+            ->get(['id', 'code', 'name', 'brand', 'category', 'unit', 'price', 'qty', 'reserved', 'reorder', 'status', 'rack']);
+
+        // `available` = on-hand minus stock already reserved by pending dispatch
+        // notes — reps must not sell what is spoken for.
+        $items->each(function ($it) {
+            $it->available = max(0, (int) $it->qty - (int) $it->reserved);
+        });
 
         return $items;
     }
@@ -107,20 +114,25 @@ class RepController extends Controller
             ->get(['id', 'code', 'name', 'contact', 'city', 'limit', 'outstanding', 'rep', 'status']);
     }
 
-    /** The rep's own sales orders. */
+    /** The rep's own sales orders (pending → dispatched → invoiced). */
     public function orders(Request $request)
     {
         $rep = $request->user();
 
-        return Invoice::with('lines')
-            ->where('rep', $rep->name)
-            ->orWhere('rep', $rep->code)
+        return SalesOrder::with('lines')
+            ->where(function ($q) use ($rep) {
+                $q->where('rep', $rep->name)->orWhere('rep', $rep->code);
+            })
             ->orderByDesc('id')
             ->limit(200)
             ->get();
     }
 
-    /** Create a sales order (invoice) for the logged-in rep. */
+    /**
+     * Create a sales order for the logged-in rep. This does NOT post an
+     * invoice or touch stock — the order is dispatched and invoiced later
+     * from the admin panel.
+     */
     public function storeOrder(Request $request)
     {
         $rep = $request->user();
@@ -138,30 +150,24 @@ class RepController extends Controller
 
         return DB::transaction(function () use ($data, $rep) {
             $total = 0;
-            $methods = [];
             foreach ($data['lines'] as $l) {
                 $total += $l['qty'] * $l['rate'];
-                $methods[$l['method'] ?? 'FIFO'] = true;
             }
-            $costing = count($methods) > 1 ? 'Mixed' : array_key_first($methods);
 
-            $inv = Invoice::create([
-                'code' => Invoice::nextCode(),
+            $order = SalesOrder::create([
+                'code' => SalesOrder::nextCode(),
                 'customer' => $data['customer'],
                 'rep' => $rep->name,
                 'source' => 'app',
                 'date' => $data['date'] ?? now()->toDateString(),
                 'total' => $total,
-                'paid' => 0,
-                'due' => $total,
                 'items' => count($data['lines']),
-                'cost' => $costing,
-                'status' => 'Unpaid',
+                'status' => 'pending',
             ]);
 
             foreach ($data['lines'] as $l) {
                 $item = ! empty($l['code']) ? Item::where('code', $l['code'])->first() : null;
-                $inv->lines()->create([
+                $order->lines()->create([
                     'code' => $l['code'] ?? null,
                     'name' => $l['name'],
                     'qty' => $l['qty'],
@@ -170,18 +176,9 @@ class RepController extends Controller
                     'avg_cost' => $item->avg_cost ?? 0,
                     'method' => $l['method'] ?? 'FIFO',
                 ]);
-                if ($item) {
-                    $item->qty = max(0, $item->qty - $l['qty']);
-                    $item->status = $item->qty <= 0 ? 'out' : ($item->qty <= $item->reorder ? 'low' : 'in');
-                    $item->save();
-                }
             }
 
-            // keep rep aggregates fresh
-            $rep->increment('invoices');
-            $rep->increment('achieved', $total);
-
-            return response()->json($inv->load('lines'), 201);
+            return response()->json($order->load('lines'), 201);
         });
     }
 }

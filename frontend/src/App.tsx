@@ -27,6 +27,8 @@ const CostingScreen = named(() => import('./screens/Procurement'), 'CostingScree
 const TrackingScreen = named(() => import('./screens/Procurement'), 'TrackingScreen')
 const QuoteScreen = named(() => import('./screens/Sales'), 'QuoteScreen')
 const InvoiceScreen = named(() => import('./screens/Sales'), 'InvoiceScreen')
+const DispatchScreen = named(() => import('./screens/Dispatch'), 'DispatchScreen')
+const SettlementScreen = named(() => import('./screens/Dispatch'), 'SettlementScreen')
 const ReturnScreen = named(() => import('./screens/Sales2'), 'ReturnScreen')
 const ReceiptScreen = named(() => import('./screens/Sales2'), 'ReceiptScreen')
 const ExpenseScreen = named(() => import('./screens/Sales2'), 'ExpenseScreen')
@@ -62,7 +64,9 @@ const SCREENS: Record<string, ScreenComp> = {
   'dc/grn': GRNScreen,
   'dc/tracking': TrackingScreen,
   'dc/quote': QuoteScreen,
+  'dc/dispatch': DispatchScreen,
   'dc/invoice': InvoiceScreen,
+  'dc/settlement': SettlementScreen,
   'dc/return': ReturnScreen,
   'dc/receipt': ReceiptScreen,
   'dc/expense': ExpenseScreen,

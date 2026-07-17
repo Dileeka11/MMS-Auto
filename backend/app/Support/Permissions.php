@@ -19,7 +19,7 @@ class Permissions
         'Services', 'Department', 'Employee Master', 'Payment Master', 'Bank Master',
         'Country Master', 'Branch Master', 'Expense Type', 'Credit Period', 'Invoice Remark',
         'Purchase Order', 'Costing & Shipment', 'GRN', 'PO Tracking',
-        'Quotation', 'Sales Invoice', 'Sales Return', 'Payment Receipt', 'Expense',
+        'Quotation', 'Dispatch Notes', 'Sales Invoice', 'Outstanding Settlement', 'Sales Return', 'Payment Receipt', 'Expense',
         'Stock Transfer', 'Stock Adjustment', 'BIN Card', 'Live Stock', 'Price Control',
         'Reports',
         'Sales Reps', 'User Management', 'User Permission', 'Company Profile',

@@ -129,7 +129,6 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   const [saving, setSaving] = useState(false)
   const [payFor, setPayFor] = useState<Invoice | null>(null)
   const [payAmt, setPayAmt] = useState(''); const [payMode, setPayMode] = useState('Cash'); const [payRef, setPayRef] = useState(''); const [paying, setPaying] = useState(false)
-  const [tab, setTab] = useState<'web' | 'app'>('web')
 
   const refresh = () => { setLoading(true); api.invoices.list().then((d) => setRows(d as any)).finally(() => setLoading(false)) }
   useEffect(() => {
@@ -174,7 +173,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
         <div><h1>NMS-Auto</h1><div class="muted">Spare Parts Distribution</div></div>
         <div class="r"><h1 style="font-size:16px">SALES INVOICE</h1><div class="muted">${no}</div><div class="muted">${fmtDate(r.date)}</div></div>
       </div>
-      <div><strong>Bill To:</strong> ${r.customer || ''}${r.rep ? ` &nbsp;·&nbsp; <span class="muted">Rep: ${r.rep}</span>` : ''}</div>
+      <div><strong>Bill To:</strong> ${r.customer || ''}${r.rep ? ` &nbsp;·&nbsp; <span class="muted">Rep: ${r.rep}</span>` : ''}${r.terms ? ` &nbsp;·&nbsp; <span class="muted">Terms: ${r.terms}</span>` : ''}</div>
       <table><thead><tr><th>Code</th><th>Item</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${items || '<tr><td colspan="5" class="muted">No line items</td></tr>'}</tbody></table>
       <div class="totals">
         <div><span>Total</span><span>${money(r.total || 0)}</span></div>
@@ -206,16 +205,11 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   }
 
   if (step === 2) return <InvoiceBuilder {...{ src, cust, setCust, lines, setLines, total, cogs, profit, post, back: () => setStep(0), customers, saving }} />
-  const appRows = rows.filter((r) => r.source === 'app')
-  const shown = tab === 'app' ? appRows : rows.filter((r) => r.source !== 'app')
+  const shown = rows
   return (
     <div>
       <PageHead crumbs="Data Capture" title="Sales Invoice" icon="receipt" sub={`${shown.length} invoices · ${money(shown.reduce((a, r) => a + (r.due || 0), 0))} receivable`}
         actions={<><Btn variant="solid" icon="doc" onClick={() => setStep(1)}>From Quotation</Btn><Btn variant="primary" icon="plus" onClick={blank}>New Invoice</Btn></>} />
-      <div className="row gap-2" style={{ marginBottom: 14 }}>
-        <Btn variant={tab === 'web' ? 'primary' : 'ghost'} icon="receipt" onClick={() => setTab('web')}>Sales Invoice</Btn>
-        <Btn variant={tab === 'app' ? 'primary' : 'ghost'} icon="phone" onClick={() => setTab('app')}>App Invoice{appRows.length ? ` (${appRows.length})` : ''}</Btn>
-      </div>
       <StatRow items={[
         { icon: 'receipt', label: 'Invoices (MTD)', value: shown.length, c: 'ac' },
         { icon: 'check', label: 'Paid', value: shown.filter((r) => r.status === 'Paid').length, c: 'green' },
@@ -224,12 +218,13 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
       ]} />
       <Card pad={0}>
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
-        <Table cols={[{ label: 'Invoice No' }, { label: 'Customer' }, { label: 'Rep' }, { label: 'Date' }, { label: 'Costing', align: 'center' }, { label: 'Total', align: 'right' }, { label: 'Due', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 60 }]}
+        <Table cols={[{ label: 'Invoice No' }, { label: 'Customer' }, { label: 'Rep' }, { label: 'Date' }, { label: 'Terms', align: 'center' }, { label: 'Costing', align: 'center' }, { label: 'Total', align: 'right' }, { label: 'Due', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 60 }]}
           rows={shown}
           render={(r) => <>
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.code || r.id}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.customer}</Td>
             <Td>{r.rep}</Td><Td mono>{fmtDate(r.date)}</Td>
+            <Td align="center"><Badge tone="neutral">{r.terms || 'Cash'}</Badge></Td>
             <Td align="center"><Badge tone="blue">{r.cost}</Badge></Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{money(r.total || 0)}</Td>
             <Td align="right" mono c={(r.due || 0) > 0 ? 'var(--warn)' : 'var(--tx-3)'}>{(r.due || 0) > 0 ? money(r.due) : '—'}</Td>

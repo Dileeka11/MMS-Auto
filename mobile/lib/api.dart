@@ -7,10 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// The base URL points at the live server by default. To test against a local
 /// Laravel dev server use `http://10.0.2.2:8000/api` on the Android emulator.
 class Api {
-  // Live server (production) — must be HTTPS; the host 301-redirects http→https
-  // which drops the POST body and breaks login.
-  static const String baseUrl = 'https://nms-auto.sourcecode.lk/api';
-  // Emulator → local Laravel dev server: 'http://10.0.2.2:8000/api'
+  // Emulator → local Laravel dev server (10.0.2.2 = host machine's localhost).
+  static const String baseUrl = 'http://10.0.2.2:8000/api';
+  // Live server (production): 'https://nms-auto.sourcecode.lk/api'
+  // (must be HTTPS — host 301-redirects http→https which drops the POST body).
 
   static String? _token;
   static Map<String, dynamic>? rep;

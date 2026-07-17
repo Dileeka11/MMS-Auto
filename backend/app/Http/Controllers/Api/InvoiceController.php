@@ -106,6 +106,8 @@ class InvoiceController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'mode' => 'nullable|string',
             'reference' => 'nullable|string',
+            'cheque_no' => 'nullable|string|max:48',
+            'bank_acc' => 'nullable|string|max:48',
         ]);
 
         return DB::transaction(function () use ($data, $invoice) {
@@ -125,6 +127,8 @@ class InvoiceController extends Controller
                 'mode' => $data['mode'] ?? 'Cash',
                 'against' => $invoice->code,
                 'reference' => $data['reference'] ?? null,
+                'cheque_no' => $data['cheque_no'] ?? null,
+                'bank_acc' => $data['bank_acc'] ?? null,
             ]);
 
             $cust = Customer::where('name', $invoice->customer)->first();

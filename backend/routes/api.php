@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\ShipmentController;
 use App\Http\Controllers\Api\TrackingController;
 use App\Http\Controllers\Api\QuotationController;
 use App\Http\Controllers\Api\ReceiptController;
+use App\Http\Controllers\Api\SalesOrderController;
 use App\Http\Controllers\Api\SalesRepController;
 use App\Http\Controllers\Api\SalesReturnController;
 use App\Http\Controllers\Api\StockAdjustmentController;
@@ -111,6 +112,10 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
 
     // Sales
     Route::apiResource('quotations', QuotationController::class);
+    Route::get('sales-orders', [SalesOrderController::class, 'index']);
+    Route::post('sales-orders/{salesOrder}/dispatch', [SalesOrderController::class, 'dispatch']);
+    Route::post('sales-orders/{salesOrder}/invoice', [SalesOrderController::class, 'invoice']);
+    Route::delete('sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy']);
     Route::apiResource('invoices', InvoiceController::class);
     Route::post('invoices/{invoice}/pay', [InvoiceController::class, 'pay']);
     Route::apiResource('sales-returns', SalesReturnController::class)->only(['index', 'store', 'destroy']);

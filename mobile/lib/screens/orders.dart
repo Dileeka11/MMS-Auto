@@ -46,12 +46,31 @@ class OrdersScreenState extends State<OrdersScreen> {
 
   Color _statusColor(String s) {
     switch (s) {
+      case 'invoiced':
       case 'Paid':
         return AppColors.ok;
+      case 'dispatched':
       case 'Partial':
         return AppColors.warn;
+      case 'pending':
+        return AppColors.brand;
       default:
         return AppColors.danger;
+    }
+  }
+
+  String _statusLabel(String s) {
+    switch (s) {
+      case 'pending':
+        return 'Pending';
+      case 'dispatched':
+        return 'Dispatched';
+      case 'invoiced':
+        return 'Invoiced';
+      case 'cancelled':
+        return 'Cancelled';
+      default:
+        return s;
     }
   }
 
@@ -85,7 +104,7 @@ class OrdersScreenState extends State<OrdersScreen> {
         itemBuilder: (_, i) {
           final o = _orders[i];
           final lines = (o['lines'] as List?)?.length ?? o['items'] ?? 0;
-          final status = '${o['status'] ?? 'Unpaid'}';
+          final status = '${o['status'] ?? 'pending'}';
           final color = _statusColor(status);
           return Container(
             padding: const EdgeInsets.all(16),
@@ -109,7 +128,7 @@ class OrdersScreenState extends State<OrdersScreen> {
                         color: color.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(status,
+                      child: Text(_statusLabel(status),
                           style: TextStyle(
                               color: color,
                               fontSize: 11,

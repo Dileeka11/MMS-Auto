@@ -8,7 +8,18 @@
       "PowerShell(php -l \"d:\\\\My Projects\\\\NMS-Auto\\\\backend\\\\app\\\\Models\\\\Invoice.php\")",
       "PowerShell(php -l \"d:\\\\My Projects\\\\NMS-Auto\\\\backend\\\\app\\\\Http\\\\Controllers\\\\Api\\\\RepController.php\")",
       "PowerShell(php -l \"d:\\\\My Projects\\\\NMS-Auto\\\\backend\\\\app\\\\Http\\\\Controllers\\\\Api\\\\InvoiceController.php\")",
-      "Bash(where flutter *)"
+      "Bash(where flutter *)",
+      "Bash(openssl s_client -connect nms-auto.sourcecode.lk:443 -servername nms-auto.sourcecode.lk)",
+      "Bash(openssl x509 *)",
+      "Bash(openssl s_client -connect nms-auto.sourcecode.lk:443 -servername nms-auto.sourcecode.lk -tls1_2)",
+      "Bash(nslookup nms-auto.sourcecode.lk)",
+      "Bash(nslookup www.nms-auto.sourcecode.lk)",
+      "Bash(npm run *)",
+      "Bash(php -l app/Http/Controllers/Api/SalesOrderController.php)",
+      "Bash(php -l app/Models/SalesOrder.php)",
+      "Bash(php -l database/migrations/2026_07_17_000001_create_sales_orders_and_dispatch_flow.php)",
+      "Bash(cat .env .env.local .env.development)",
+      "Bash(grep -A6 \"proxy\" vite.config.ts)"
     ]
   }
 }

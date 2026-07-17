@@ -164,9 +164,18 @@ export const api = {
   },
   tracking: () => http.get('/po-tracking').then((r) => camelize(r.data)),
   quotations: resource('quotations'),
+  salesOrders: {
+    list: (status?: string) =>
+      http.get('/sales-orders', { params: status ? { status } : {} }).then((r) => camelize(r.data) as any[]),
+    dispatch: (id: string | number, body: { date?: string; lines: any[] }) =>
+      http.post(`/sales-orders/${id}/dispatch`, snakeize(body)).then((r) => camelize(r.data)),
+    invoice: (id: string | number, body: { terms?: string; date?: string }) =>
+      http.post(`/sales-orders/${id}/invoice`, snakeize(body)).then((r) => camelize(r.data)),
+    remove: (id: string | number) => http.delete(`/sales-orders/${id}`).then((r) => r.data),
+  },
   invoices: {
     ...resource('invoices'),
-    pay: (id: string | number, body: { amount: number; mode?: string; reference?: string }) =>
+    pay: (id: string | number, body: { amount: number; mode?: string; reference?: string; chequeNo?: string; bankAcc?: string }) =>
       http.post(`/invoices/${id}/pay`, snakeize(body)).then((r) => camelize(r.data)),
   },
   returns: resource('sales-returns'),
