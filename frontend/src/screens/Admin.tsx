@@ -245,6 +245,8 @@ export function CompanyScreen({ go: _go, setBrand, setLogoUrl }: { go: Go; setBr
       const updated = await companyApi.update(data)
       setData((s: any) => ({ ...s, ...updated }))
       setBrand?.(data.name || 'NMS-Auto')
+      const cached = JSON.parse(localStorage.getItem('mms-company') || '{}')
+      localStorage.setItem('mms-company', JSON.stringify({ ...cached, name: data.name || 'NMS-Auto' }))
     } finally { setSaving(false) }
   }
   const set = (k: string, v: any) => setData((s: any) => ({ ...s, [k]: v }))
@@ -259,7 +261,12 @@ export function CompanyScreen({ go: _go, setBrand, setLogoUrl }: { go: Go; setBr
     try {
       const res = await companyApi.uploadLogo(file)
       set('logoPath', res.logoPath)
-      if (res.logoUrl) { set('logoUrl', res.logoUrl); setLogoUrl?.(res.logoUrl) }
+      if (res.logoUrl) {
+        set('logoUrl', res.logoUrl)
+        setLogoUrl?.(res.logoUrl)
+        const cached = JSON.parse(localStorage.getItem('mms-company') || '{}')
+        localStorage.setItem('mms-company', JSON.stringify({ ...cached, logoUrl: res.logoUrl }))
+      }
     } catch (err) {
       alert('Logo upload failed')
     } finally {

@@ -105,6 +105,7 @@ export default function App() {
         companyApi.get().then((d: any) => {
           if (d?.name) setBrand(d.name)
           if (d?.logoUrl) setLogoUrl(d.logoUrl)
+          localStorage.setItem('mms-company', JSON.stringify({ name: d?.name, logoUrl: d?.logoUrl }))
         }).catch(() => {})
       })
       .catch(() => auth.setToken(null))

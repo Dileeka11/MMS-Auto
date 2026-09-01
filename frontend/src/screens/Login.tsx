@@ -3,12 +3,19 @@ import { Icon } from '../components/Icon'
 import { Btn } from '../components/ui'
 import { auth, type AuthUser } from '../api'
 
+function loadCachedCompany() {
+  try { return JSON.parse(localStorage.getItem('mms-company') || '{}') } catch { return {} }
+}
+
 export default function Login({ onAuth }: { onAuth: (user: AuthUser) => void }) {
   const [email, setEmail] = useState('admin@mms-auto.lk')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const cached = loadCachedCompany()
+  const companyName: string = cached.name || 'NMS-Auto'
+  const logoUrl: string = cached.logoUrl || ''
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -41,11 +48,11 @@ export default function Login({ onAuth }: { onAuth: (user: AuthUser) => void }) 
         boxShadow: '0 30px 60px -30px rgba(0,0,0,0.6)',
       }}>
         <div className="row gap-3" style={{ alignItems: 'center', marginBottom: 4 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--ac)', display: 'grid', placeItems: 'center', color: '#fff', boxShadow: '0 2px 12px -2px var(--ac-line)' }}>
-            <Icon n="wrench" s={20} />
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--ac)', display: 'grid', placeItems: 'center', color: '#fff', boxShadow: '0 2px 12px -2px var(--ac-line)', overflow: 'hidden' }}>
+            {logoUrl ? <img src={logoUrl} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Icon n="wrench" s={20} />}
           </div>
           <div style={{ lineHeight: 1.2 }}>
-            <div style={{ fontFamily: 'Saira', fontWeight: 800, fontSize: 18 }}>NMS-Auto</div>
+            <div style={{ fontFamily: 'Saira', fontWeight: 800, fontSize: 18 }}>{companyName}</div>
             <div className="eyebrow" style={{ fontSize: 10 }}>Sign in to continue</div>
           </div>
         </div>
