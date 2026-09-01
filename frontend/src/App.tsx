@@ -5,7 +5,7 @@ import { Sidebar, Topbar } from './components/Shell'
 import DB from './data'
 import type { Go, ScreenProps } from './screens/types'
 import Login from './screens/Login'
-import { auth, type AuthUser } from './api'
+import { auth, company as companyApi, type AuthUser } from './api'
 import { canAccessRoute } from './lib/permissions'
 
 // MASTERS is config (route keys are needed synchronously to register routes),
@@ -42,7 +42,7 @@ const PermScreen = named(() => import('./screens/Admin'), 'PermScreen')
 const CompanyScreen = named(() => import('./screens/Admin'), 'CompanyScreen')
 const RepsScreen = named(() => import('./screens/Admin'), 'RepsScreen')
 
-type ScreenComp = ComponentType<ScreenProps & { setBrand?: (v: string) => void }>
+type ScreenComp = ComponentType<ScreenProps & { setBrand?: (v: string) => void; setLogoUrl?: (v: string) => void }>
 
 // Shown only for the split-second a screen chunk is downloading on first visit.
 function ScreenLoader() {
@@ -90,6 +90,7 @@ export default function App() {
   const [route, setRoute] = useState<string>(() => localStorage.getItem('mms-route') || 'dash')
   const [open, setOpen] = useState(false)
   const [brand, setBrand] = useState(DB.company.name)
+  const [logoUrl, setLogoUrl] = useState('')
   const [user, setUser] = useState<AuthUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const go: Go = (r) => { setRoute(r); localStorage.setItem('mms-route', r); window.scrollTo(0, 0) }
@@ -99,7 +100,13 @@ export default function App() {
     const token = auth.getToken()
     if (!token) { setAuthReady(true); return }
     auth.me()
-      .then((u) => setUser(u))
+      .then((u) => {
+        setUser(u)
+        companyApi.get().then((d: any) => {
+          if (d?.name) setBrand(d.name)
+          if (d?.logoUrl) setLogoUrl(d.logoUrl)
+        }).catch(() => {})
+      })
       .catch(() => auth.setToken(null))
       .finally(() => setAuthReady(true))
   }, [])
@@ -115,13 +122,13 @@ export default function App() {
   const denied = !canAccessRoute(user, route)
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <Sidebar route={effectiveRoute} go={go} open={open} setOpen={setOpen} company={brand} user={user} />
+      <Sidebar route={effectiveRoute} go={go} open={open} setOpen={setOpen} company={brand} logoUrl={logoUrl} user={user} />
       <div className="mms-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar setOpen={setOpen} route={effectiveRoute} go={go} />
         <main key={effectiveRoute} className="fade-in" style={{ padding: '24px clamp(16px,3vw,32px) 60px', flex: 1 }}>
           {denied
             ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--bad)' }}>You do not have permission to view this screen.</div>
-            : <Suspense fallback={<ScreenLoader />}><Screen go={go} setBrand={setBrand} user={user} /></Suspense>}
+            : <Suspense fallback={<ScreenLoader />}><Screen go={go} setBrand={setBrand} setLogoUrl={setLogoUrl} user={user} /></Suspense>}
         </main>
       </div>
     </div>

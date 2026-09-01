@@ -229,14 +229,14 @@ export function PermScreen({ go: _go }: { go: Go }) {
   )
 }
 
-export function CompanyScreen({ go: _go, setBrand }: { go: Go; setBrand?: (v: string) => void }) {
+export function CompanyScreen({ go: _go, setBrand, setLogoUrl }: { go: Go; setBrand?: (v: string) => void; setLogoUrl?: (v: string) => void }) {
   const [data, setData] = useState<any>({ name: 'NMS-Auto', tagline: 'Spare Parts Distribution', address: '', phone: '', email: '', taxNo: '', currency: 'LKR — Sri Lankan Rupee' })
   const [accent, setAccent] = useState(document.documentElement.dataset.accent || 'blue')
   const [saving, setSaving] = useState(false)
   const swatches: [string, string, string][] = [['blue', 'Electric Blue', 'oklch(0.62 0.19 256)'], ['orange', 'Garage Orange', 'oklch(0.66 0.18 45)'], ['green', 'Service Green', 'oklch(0.66 0.15 158)'], ['violet', 'Performance Violet', 'oklch(0.6 0.2 290)'], ['red', 'Racing Red', 'oklch(0.6 0.21 22)']]
   const setTheme = (a: string) => { setAccent(a); document.documentElement.dataset.accent = a; localStorage.setItem('mms-accent', a) }
 
-  useEffect(() => { companyApi.get().then((d: any) => { setData((s: any) => ({ ...s, ...d })); if (d?.name) setBrand?.(d.name) }).catch(() => {}) // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { companyApi.get().then((d: any) => { setData((s: any) => ({ ...s, ...d })); if (d?.name) setBrand?.(d.name); if (d?.logoUrl) setLogoUrl?.(d.logoUrl) }).catch(() => {}) // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const save = async () => {
@@ -259,7 +259,7 @@ export function CompanyScreen({ go: _go, setBrand }: { go: Go; setBrand?: (v: st
     try {
       const res = await companyApi.uploadLogo(file)
       set('logoPath', res.logoPath)
-      if (res.logoUrl) set('logoUrl', res.logoUrl)
+      if (res.logoUrl) { set('logoUrl', res.logoUrl); setLogoUrl?.(res.logoUrl) }
     } catch (err) {
       alert('Logo upload failed')
     } finally {

@@ -86,7 +86,7 @@ function NavItem({ item, active, sub, onClick }: { item: NavLeaf; active: boolea
   )
 }
 
-export function Sidebar({ route, go, open, setOpen, company, user }: { route: string; go: (r: string) => void; open: boolean; setOpen: (b: boolean) => void; company: string; user?: AuthUser | null }) {
+export function Sidebar({ route, go, open, setOpen, company, logoUrl, user }: { route: string; go: (r: string) => void; open: boolean; setOpen: (b: boolean) => void; company: string; logoUrl?: string; user?: AuthUser | null }) {
   // Filter NAV by permission: drop hidden leaves and collapse empty sections.
   const visibleNav: NavNode[] = NAV
     .map((n) => {
@@ -111,7 +111,9 @@ export function Sidebar({ route, go, open, setOpen, company, user }: { route: st
       <div onClick={() => setOpen(false)} className="sb-scrim" style={{ display: open ? 'block' : 'none' }} />
       <aside className={'mms-sb' + (open ? ' open' : '')} style={{ width: 'var(--sb-w)' }}>
         <div className="row gap-3" style={{ padding: '16px 18px', borderBottom: '1px solid var(--line)', minHeight: 'var(--topbar-h)' }}>
-          <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--ac)', display: 'grid', placeItems: 'center', color: '#fff', flexShrink: 0, boxShadow: '0 2px 12px -2px var(--ac-line)' }}><Icon n="wrench" s={19} /></div>
+          <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--ac)', display: 'grid', placeItems: 'center', color: '#fff', flexShrink: 0, boxShadow: '0 2px 12px -2px var(--ac-line)', overflow: 'hidden' }}>
+              {logoUrl ? <img src={logoUrl} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Icon n="wrench" s={19} />}
+            </div>
           <div style={{ lineHeight: 1.15 }}>
             <div style={{ fontFamily: 'Saira', fontWeight: 800, fontSize: 17, letterSpacing: '-0.01em' }} id="brand-name">{company}</div>
             <div className="eyebrow" style={{ fontSize: 9 }}>{DB.company.tagline}</div>
