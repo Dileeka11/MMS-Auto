@@ -268,7 +268,12 @@ export function CompanyScreen({ go: _go, setBrand }: { go: Go; setBrand?: (v: st
 
   const getLogoUrl = () => {
     if (!data.logoPath) return ''
-    const base = import.meta.env.VITE_API_URL?.replace(/\/api\/?$/, '') || ''
+    const apiUrl = import.meta.env.VITE_API_URL || '/api'
+    // If apiUrl is absolute (e.g. https://example.com/api), strip /api suffix
+    // If it's relative (e.g. /api), use window.location.origin as the base
+    const base = apiUrl.startsWith('http')
+      ? apiUrl.replace(/\/api\/?$/, '')
+      : window.location.origin
     return `${base}/storage/${data.logoPath}`
   }
 
