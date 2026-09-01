@@ -182,7 +182,7 @@ export const api = {
   },
   invoices: {
     ...resource('invoices'),
-    pay: (id: string | number, body: { amount: number; mode?: string; reference?: string; chequeNo?: string; bankAcc?: string }) =>
+    pay: (id: string | number, body: { amount: number; mode?: string; reference?: string; chequeNo?: string; bankAcc?: string; chequeBankName?: string; chequeDate?: string }) =>
       http.post(`/invoices/${id}/pay`, snakeize(body)).then((r) => camelize(r.data)),
     approveDiscount: (id: string | number) => http.post(`/invoices/${id}/approve-discount`).then((r) => camelize(r.data)),
     rejectDiscount: (id: string | number) => http.post(`/invoices/${id}/reject-discount`).then((r) => camelize(r.data)),
