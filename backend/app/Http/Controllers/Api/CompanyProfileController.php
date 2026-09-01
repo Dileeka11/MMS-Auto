@@ -10,7 +10,7 @@ class CompanyProfileController extends Controller
 {
     public function show()
     {
-        return CompanyProfile::firstOrCreate(['id' => 1], [
+        $profile = CompanyProfile::firstOrCreate(['id' => 1], [
             'name' => 'NMS-Auto',
             'tagline' => 'Spare Parts Distribution',
             'address' => 'No. 142, Galle Road, Colombo 03',
@@ -18,6 +18,12 @@ class CompanyProfileController extends Controller
             'email' => 'sales@mms-auto.lk',
             'accent' => 'blue',
         ]);
+
+        $data = $profile->toArray();
+        if (!empty($data['logo_path'])) {
+            $data['logo_url'] = asset('storage/' . $data['logo_path']);
+        }
+        return response()->json($data);
     }
 
     public function update(Request $request)
@@ -38,10 +44,11 @@ class CompanyProfileController extends Controller
         ]);
 
         $path = $request->file('logo')->store('logos', 'public');
-        
+
         $profile = CompanyProfile::firstOrCreate(['id' => 1]);
         $profile->update(['logo_path' => $path]);
 
-        return response()->json(['logo_path' => $path]);
+        $url = asset('storage/' . $path);
+        return response()->json(['logo_path' => $path, 'logo_url' => $url]);
     }
 }

@@ -259,6 +259,7 @@ export function CompanyScreen({ go: _go, setBrand }: { go: Go; setBrand?: (v: st
     try {
       const res = await companyApi.uploadLogo(file)
       set('logoPath', res.logoPath)
+      if (res.logoUrl) set('logoUrl', res.logoUrl)
     } catch (err) {
       alert('Logo upload failed')
     } finally {
@@ -268,9 +269,10 @@ export function CompanyScreen({ go: _go, setBrand }: { go: Go; setBrand?: (v: st
 
   const getLogoUrl = () => {
     if (!data.logoPath) return ''
+    // Prefer the full URL returned directly by the backend (avoids URL construction bugs in production)
+    if (data.logoUrl) return data.logoUrl
+    // Fallback: reconstruct from origin + storage path
     const apiUrl = import.meta.env.VITE_API_URL || '/api'
-    // If apiUrl is absolute (e.g. https://example.com/api), strip /api suffix
-    // If it's relative (e.g. /api), use window.location.origin as the base
     const base = apiUrl.startsWith('http')
       ? apiUrl.replace(/\/api\/?$/, '')
       : window.location.origin
