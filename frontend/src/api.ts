@@ -133,6 +133,13 @@ export const auth = {
 export const company = {
   get: () => http.get('/company-profile').then((r) => camelize(r.data)),
   update: (body: any) => http.put('/company-profile', snakeize(body)).then((r) => camelize(r.data)),
+  uploadLogo: (file: File) => {
+    const formData = new FormData()
+    formData.append('logo', file)
+    return http.post('/company-profile/logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }).then((r) => camelize(r.data))
+  },
 }
 
 export const api = {
@@ -177,6 +184,8 @@ export const api = {
     ...resource('invoices'),
     pay: (id: string | number, body: { amount: number; mode?: string; reference?: string; chequeNo?: string; bankAcc?: string }) =>
       http.post(`/invoices/${id}/pay`, snakeize(body)).then((r) => camelize(r.data)),
+    approveDiscount: (id: string | number) => http.post(`/invoices/${id}/approve-discount`).then((r) => camelize(r.data)),
+    rejectDiscount: (id: string | number) => http.post(`/invoices/${id}/reject-discount`).then((r) => camelize(r.data)),
   },
   returns: resource('sales-returns'),
   receipts: resource('receipts'),

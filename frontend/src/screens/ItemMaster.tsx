@@ -243,8 +243,16 @@ export function CustomerMasterScreen({ go: _go }: { go: Go }) {
             <Td>{c.city}</Td><Td mono>{c.contact}</Td><Td>{c.rep}</Td>
             <Td align="center" mono>{c.credit}d</Td>
             <Td align="right" mono>{(c.limit || 0).toLocaleString()}</Td>
-            <Td align="right" mono c={(c.outstanding || 0) > (c.limit || 0) * 0.7 ? 'var(--bad)' : 'var(--tx-1)'} style={{ fontWeight: 600 }}>{(c.outstanding || 0).toLocaleString()}</Td>
-            <Td align="center"><Badge tone={c.status === 'risk' ? 'red' : 'green'} dot>{c.status === 'risk' ? 'Over Limit' : 'Good'}</Badge></Td>
+            <Td align="right" mono c={(c.outstanding || 0) >= (c.limit || 0) * 0.8 && c.limit > 0 ? ((c.outstanding || 0) >= c.limit ? 'var(--bad)' : 'var(--warn)') : 'var(--tx-1)'} style={{ fontWeight: 600 }}>{(c.outstanding || 0).toLocaleString()}</Td>
+            <Td align="center">
+              {c.limit > 0 && (c.outstanding || 0) >= c.limit ? (
+                <Badge tone="red" dot>Over Limit</Badge>
+              ) : c.limit > 0 && (c.outstanding || 0) >= c.limit * 0.8 ? (
+                <Badge tone="amber" dot>Close to limit</Badge>
+              ) : (
+                <Badge tone="green" dot>Good</Badge>
+              )}
+            </Td>
             <Td align="right"><div className="row gap-1" style={{ justifyContent: 'flex-end' }}>
               <button className="mms-act" onClick={() => open(c)}><Icon n="edit" s={15} /></button>
               <button className="mms-act" onClick={() => remove(c.id)}><Icon n="trash" s={15} /></button>

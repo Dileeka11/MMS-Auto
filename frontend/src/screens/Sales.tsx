@@ -129,6 +129,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   const [saving, setSaving] = useState(false)
   const [payFor, setPayFor] = useState<Invoice | null>(null)
   const [payAmt, setPayAmt] = useState(''); const [payMode, setPayMode] = useState('Cash'); const [payRef, setPayRef] = useState(''); const [paying, setPaying] = useState(false)
+  const [chequeBank, setChequeBank] = useState(''); const [chequeNo, setChequeNo] = useState(''); const [chequeDate, setChequeDate] = useState('')
 
   const refresh = () => { setLoading(true); api.invoices.list().then((d) => setRows(d as any)).finally(() => setLoading(false)) }
   useEffect(() => {
@@ -137,14 +138,21 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
     api.quotations.list().then((d: any[]) => setOpenQuotes(d.filter((q) => q.status === 'Open'))).catch(() => {})
   }, [])
 
-  const openPay = (r: Invoice) => { setPayFor(r); setPayAmt(String(r.due || 0)); setPayMode('Cash'); setPayRef('') }
+  const openPay = (r: Invoice) => { setPayFor(r); setPayAmt(String(r.due || 0)); setPayMode('Cash'); setPayRef(''); setChequeBank(''); setChequeNo(''); setChequeDate('') }
   const submitPay = async () => {
     if (!payFor) return
     const amt = parseFloat(payAmt)
     if (!amt || amt <= 0) return
     setPaying(true)
     try {
-      await api.invoices.pay(payFor.id, { amount: amt, mode: payMode, reference: payRef || undefined })
+      await api.invoices.pay(payFor.id, { 
+        amount: amt, 
+        mode: payMode, 
+        reference: payRef || undefined,
+        chequeNo: payMode === 'Cheque' ? chequeNo : undefined,
+        chequeBankName: payMode === 'Cheque' ? chequeBank : undefined,
+        chequeDate: payMode === 'Cheque' ? chequeDate : undefined
+      })
       setPayFor(null); refresh()
     } finally { setPaying(false) }
   }
@@ -228,9 +236,22 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
             <Td align="center"><Badge tone="blue">{r.cost}</Badge></Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{money(r.total || 0)}</Td>
             <Td align="right" mono c={(r.due || 0) > 0 ? 'var(--warn)' : 'var(--tx-3)'}>{(r.due || 0) > 0 ? money(r.due) : '—'}</Td>
-            <Td align="center"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></Td>
+            <Td align="center">
+              <div className="col gap-1">
+                <Badge tone={statusTone(r.status)} dot>{r.status}</Badge>
+                {r.discountStatus === 'pending' && <Badge tone="amber">Pending Discount ({r.discountPct}%)</Badge>}
+                {r.discountStatus === 'approved' && <Badge tone="green">Discount Approved</Badge>}
+                {r.discountStatus === 'rejected' && <Badge tone="red">Discount Rejected</Badge>}
+              </div>
+            </Td>
             <Td align="right"><div className="row gap-2" style={{ justifyContent: 'flex-end' }}>
-              {(r.due || 0) > 0 && <button className="mms-act" title="Add payment" onClick={() => openPay(r)}><Icon n="coins" s={15} /></button>}
+              {(r.due || 0) > 0 && r.discountStatus !== 'pending' && <button className="mms-act" title="Add payment" onClick={() => openPay(r)}><Icon n="coins" s={15} /></button>}
+              {r.discountStatus === 'pending' && (
+                <>
+                  <button className="mms-act" title="Approve Discount" onClick={() => { if (confirm('Approve this discount?')) api.invoices.approveDiscount(r.id).then(refresh) }}><Icon n="check" s={15} c="var(--ok)" /></button>
+                  <button className="mms-act" title="Reject Discount" onClick={() => { if (confirm('Reject this discount?')) api.invoices.rejectDiscount(r.id).then(refresh) }}><Icon n="x" s={15} c="var(--bad)" /></button>
+                </>
+              )}
               <button className="mms-act" title="Print invoice" onClick={() => printInvoice(r)}><Icon n="print" s={15} /></button>
             </div></Td>
           </>} />}
@@ -262,8 +283,15 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
                 <option>Cash</option><option>Cheque</option><option>Bank Transfer</option><option>Card</option>
               </Select>
             </Field>
-            <Field label="Reference (optional)"><Input value={payRef} onChange={(e: any) => setPayRef(e.target.value)} placeholder="Cheque / txn no." /></Field>
-            <div className="row gap-2" style={{ justifyContent: 'flex-end' }}>
+            <Field label="Reference (optional)"><Input value={payRef} onChange={(e: any) => setPayRef(e.target.value)} placeholder="Txn no. / Note" /></Field>
+            {payMode === 'Cheque' && (
+              <>
+                <Field label="Bank Name"><Input value={chequeBank} onChange={(e: any) => setChequeBank(e.target.value)} placeholder="e.g. BOC" /></Field>
+                <Field label="Cheque No"><Input value={chequeNo} onChange={(e: any) => setChequeNo(e.target.value)} placeholder="123456" /></Field>
+                <Field label="Cheque Date"><DateInput value={chequeDate} onChange={(e: any) => setChequeDate(e.target.value)} /></Field>
+              </>
+            )}
+            <div className="row gap-2" style={{ justifyContent: 'flex-end', marginTop: 10 }}>
               <Btn onClick={() => setPayFor(null)}>Cancel</Btn>
               <Btn variant="primary" icon="check" onClick={submitPay} disabled={paying || !parseFloat(payAmt)}>{paying ? 'Saving…' : 'Record Payment'}</Btn>
             </div>

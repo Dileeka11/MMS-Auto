@@ -37,6 +37,20 @@ function RepReport({ reps }: { reps: any[] }) {
     </Card>
   )
 }
+function CustomerReport({ invoices }: { invoices: any[] }) {
+  const byCust = invoices.reduce((a, r) => { a[r.customer] = (a[r.customer] || 0) + (r.total || 0); return a }, {} as Record<string, number>)
+  const sorted = Object.entries(byCust).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 30)
+  return (
+    <Card>
+      <h3 style={{ fontSize: 18, marginBottom: 18 }}>Sales by Dealer / Customer</h3>
+      {sorted.length === 0 && <div className="t-3" style={{ padding: 10 }}>No sales data</div>}
+      {sorted.map(([name, total]) => <div key={name} className="row between" style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>
+        <span className="t-1" style={{ fontWeight: 500 }}>{name}</span>
+        <span className="num" style={{ fontWeight: 600 }}>{moneyK(total as number)}</span>
+      </div>)}
+    </Card>
+  )
+}
 function AgeingReport({ customers }: { customers: any[] }) {
   return (
     <Card>
@@ -78,7 +92,7 @@ export default function ReportsScreen({ go: _go }: { go: Go }) {
   }, [])
 
   const cats: { g: string; items: [string, string, string][] }[] = [
-    { g: 'Sales', items: [['sales', 'Sales Summary', 'chart'], ['salesRep', 'Sales by Rep', 'target']] },
+    { g: 'Sales', items: [['sales', 'Sales Summary', 'chart'], ['salesRep', 'Sales by Rep', 'target'], ['salesCustomer', 'Sales by Dealer', 'users']] },
     { g: 'Inventory', items: [['stockVal', 'Stock Valuation', 'box']] },
     { g: 'Finance', items: [['receivable', 'Receivables Ageing', 'wallet']] },
   ]
@@ -112,6 +126,7 @@ export default function ReportsScreen({ go: _go }: { go: Go }) {
           </Card>
           {active === 'sales' && <SalesReport invoices={invoices} />}
           {active === 'salesRep' && <RepReport reps={reps} />}
+          {active === 'salesCustomer' && <CustomerReport invoices={invoices} />}
           {active === 'receivable' && <AgeingReport customers={customers} />}
           {active === 'stockVal' && <StockValReport items={items} />}
         </div>

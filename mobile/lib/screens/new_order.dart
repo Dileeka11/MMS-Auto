@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../api.dart';
 import '../theme.dart';
 
@@ -101,9 +102,31 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
       return;
     }
     setState(() => _submitting = true);
+    
+    double? lat;
+    double? lng;
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (serviceEnabled) {
+        LocationPermission permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+          Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+          lat = position.latitude;
+          lng = position.longitude;
+        }
+      }
+    } catch (e) {
+      debugPrint('Location error: $e');
+    }
+
     try {
       await Api.post('orders', {
         'customer': _customer,
+        'lat': lat,
+        'lng': lng,
         'lines': _lines
             .map((l) => {
                   'code': l.code,

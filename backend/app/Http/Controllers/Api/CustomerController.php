@@ -37,7 +37,7 @@ class CustomerController extends Controller
     public function update(Request $request, Customer $customer)
     {
         $customer->fill($request->only(['name', 'contact', 'city', 'credit', 'limit', 'rep']));
-        $customer->status = $customer->outstanding > $customer->limit * 0.7 ? 'risk' : 'ok';
+        $customer->status = $customer->limit > 0 && $customer->outstanding >= $customer->limit * 0.8 ? 'risk' : 'ok';
         $customer->save();
 
         return $customer;

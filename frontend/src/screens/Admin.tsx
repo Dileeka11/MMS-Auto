@@ -1,5 +1,5 @@
 /* NMS-Auto — Administration (API-backed) */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, inputStyle } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { Gauge } from '../components/charts'
@@ -249,6 +249,29 @@ export function CompanyScreen({ go: _go, setBrand }: { go: Go; setBrand?: (v: st
   }
   const set = (k: string, v: any) => setData((s: any) => ({ ...s, [k]: v }))
 
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const logoInputRef = useRef<HTMLInputElement>(null)
+
+  const handleLogoChange = async (e: any) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingLogo(true)
+    try {
+      const res = await companyApi.uploadLogo(file)
+      set('logoPath', res.logoPath)
+    } catch (err) {
+      alert('Logo upload failed')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  const getLogoUrl = () => {
+    if (!data.logoPath) return ''
+    const base = import.meta.env.VITE_API_URL?.replace(/\/api\/?$/, '') || ''
+    return `${base}/storage/${data.logoPath}`
+  }
+
   return (
     <div>
       <PageHead crumbs="Administration" title="Company Profile" icon="building" sub="Branding, identity & system theme"
@@ -258,6 +281,21 @@ export function CompanyScreen({ go: _go, setBrand }: { go: Go; setBrand?: (v: st
           <Card>
             <div className="eyebrow" style={{ marginBottom: 16 }}>Company Details</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <Field label="Company Logo" full>
+                <div className="row gap-3" style={{ alignItems: 'center' }}>
+                  {data.logoPath ? (
+                    <img src={getLogoUrl()} alt="Logo" style={{ height: 48, width: 48, objectFit: 'contain', borderRadius: 8, background: 'var(--bg-0)', border: '1px solid var(--line)' }} />
+                  ) : (
+                    <div style={{ height: 48, width: 48, borderRadius: 8, background: 'var(--bg-2)', border: '1px dashed var(--line)', display: 'grid', placeItems: 'center', color: 'var(--tx-3)' }}>
+                      <Icon n="image" s={20} />
+                    </div>
+                  )}
+                  <Btn variant="solid" size="sm" onClick={() => logoInputRef.current?.click()} disabled={uploadingLogo}>
+                    {uploadingLogo ? 'Uploading...' : (data.logoPath ? 'Change Logo' : 'Upload Logo')}
+                  </Btn>
+                  <input type="file" ref={logoInputRef} onChange={handleLogoChange} style={{ display: 'none' }} accept="image/*" />
+                </div>
+              </Field>
               <Field label="Company Name" full><Input value={data.name || ''} onChange={(e) => set('name', e.target.value)} /></Field>
               <Field label="Tagline" full><Input value={data.tagline || ''} onChange={(e) => set('tagline', e.target.value)} /></Field>
               <Field label="Address" full><textarea value={data.address || ''} onChange={(e) => set('address', e.target.value)} rows={2} style={{ ...inputStyle, resize: 'vertical' }} /></Field>
@@ -286,7 +324,13 @@ export function CompanyScreen({ go: _go, setBrand }: { go: Go; setBrand?: (v: st
             <div className="eyebrow" style={{ marginBottom: 14 }}>Live Preview</div>
             <div style={{ background: 'var(--bg-0)', border: '1px solid var(--line)', borderRadius: 'var(--r-m)', padding: 18 }}>
               <div className="row gap-3" style={{ marginBottom: 16 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 9, background: 'var(--ac)', display: 'grid', placeItems: 'center', color: '#fff' }}><Icon n="wrench" s={21} /></div>
+                <div style={{ width: 40, height: 40, borderRadius: 9, background: 'var(--ac)', display: 'grid', placeItems: 'center', color: '#fff' }}>
+                  {data.logoPath ? (
+                    <img src={getLogoUrl()} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 9, background: '#fff' }} />
+                  ) : (
+                    <Icon n="wrench" s={21} />
+                  )}
+                </div>
                 <div><div style={{ fontFamily: 'Saira', fontWeight: 800, fontSize: 18 }}>{data.name || 'NMS-Auto'}</div><div className="eyebrow" style={{ fontSize: 9 }}>{data.tagline}</div></div>
               </div>
               <Btn variant="primary" style={{ width: '100%', marginBottom: 8 }}>Primary Button</Btn>

@@ -30,4 +30,18 @@ class CompanyProfileController extends Controller
 
         return $profile;
     }
+
+    public function uploadLogo(Request $request)
+    {
+        $request->validate([
+            'logo' => 'required|image|max:2048',
+        ]);
+
+        $path = $request->file('logo')->store('logos', 'public');
+        
+        $profile = CompanyProfile::firstOrCreate(['id' => 1]);
+        $profile->update(['logo_path' => $path]);
+
+        return response()->json(['logo_path' => $path]);
+    }
 }

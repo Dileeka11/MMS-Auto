@@ -21,8 +21,10 @@ class ReceiptController extends Controller
             'customer' => 'required|string',
             'amount' => 'required|numeric|min:0.01',
             'mode' => 'nullable|string',
-            'against' => 'nullable|string',
             'reference' => 'nullable|string',
+            'cheque_no' => 'nullable|string|max:48',
+            'cheque_bank_name' => 'nullable|string|max:100',
+            'cheque_date' => 'nullable|date',
         ]);
 
         return DB::transaction(function () use ($data) {
@@ -34,6 +36,9 @@ class ReceiptController extends Controller
                 'mode' => $data['mode'] ?? 'Cash',
                 'against' => $data['against'] ?? 'On Account',
                 'reference' => $data['reference'] ?? null,
+                'cheque_no' => $data['cheque_no'] ?? null,
+                'cheque_bank_name' => $data['cheque_bank_name'] ?? null,
+                'cheque_date' => $data['cheque_date'] ?? null,
             ]);
             // settle customer outstanding
             $cust = Customer::where('name', $data['customer'])->first();

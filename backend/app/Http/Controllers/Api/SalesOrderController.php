@@ -130,6 +130,8 @@ class SalesOrderController extends Controller
                 'items' => $salesOrder->lines->count(),
                 'cost' => $costing,
                 'status' => 'Unpaid',
+                'discount_pct' => $salesOrder->discount_pct ?? 0,
+                'discount_status' => $salesOrder->discount_status,
             ]);
 
             foreach ($salesOrder->lines as $l) {

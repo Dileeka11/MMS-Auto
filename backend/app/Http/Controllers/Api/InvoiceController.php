@@ -41,6 +41,7 @@ class InvoiceController extends Controller
             'lines.*.qty' => 'required|integer|min:1',
             'lines.*.rate' => 'required|numeric',
             'lines.*.method' => 'nullable|in:FIFO,Average',
+            'discount_pct' => 'nullable|numeric|min:0|max:100',
         ]);
 
         return DB::transaction(function () use ($data) {
@@ -65,6 +66,8 @@ class InvoiceController extends Controller
                 'items' => count($data['lines']),
                 'cost' => $costing,
                 'status' => 'Unpaid',
+                'discount_pct' => $data['discount_pct'] ?? 0,
+                'discount_status' => !empty($data['discount_pct']) && $data['discount_pct'] > 0 ? 'pending' : null,
             ]);
 
             foreach ($data['lines'] as $l) {
@@ -107,6 +110,8 @@ class InvoiceController extends Controller
             'mode' => 'nullable|string',
             'reference' => 'nullable|string',
             'cheque_no' => 'nullable|string|max:48',
+            'cheque_bank_name' => 'nullable|string|max:100',
+            'cheque_date' => 'nullable|date',
             'bank_acc' => 'nullable|string|max:48',
         ]);
 
@@ -128,6 +133,8 @@ class InvoiceController extends Controller
                 'against' => $invoice->code,
                 'reference' => $data['reference'] ?? null,
                 'cheque_no' => $data['cheque_no'] ?? null,
+                'cheque_bank_name' => $data['cheque_bank_name'] ?? null,
+                'cheque_date' => $data['cheque_date'] ?? null,
                 'bank_acc' => $data['bank_acc'] ?? null,
             ]);
 
@@ -140,6 +147,24 @@ class InvoiceController extends Controller
 
             return response()->json($invoice->load('lines'));
         });
+    }
+
+    public function approveDiscount(Invoice $invoice)
+    {
+        $invoice->discount_status = 'approved';
+        // recalculate total and due based on discount
+        $totalBeforeDiscount = $invoice->lines()->sum(DB::raw('qty * rate'));
+        $invoice->total = round($totalBeforeDiscount * (1 - ($invoice->discount_pct / 100)), 2);
+        $invoice->due = round(max(0, $invoice->total - $invoice->paid), 2);
+        $invoice->save();
+        return $invoice->load('lines');
+    }
+
+    public function rejectDiscount(Invoice $invoice)
+    {
+        $invoice->discount_status = 'rejected';
+        $invoice->save();
+        return $invoice->load('lines');
     }
 
     public function destroy(Invoice $invoice)

@@ -117,6 +117,8 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
     Route::post('sales-orders/{salesOrder}/invoice', [SalesOrderController::class, 'invoice']);
     Route::delete('sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy']);
     Route::apiResource('invoices', InvoiceController::class);
+    Route::post('invoices/{invoice}/approve-discount', [InvoiceController::class, 'approveDiscount'])->middleware('admin');
+    Route::post('invoices/{invoice}/reject-discount', [InvoiceController::class, 'rejectDiscount'])->middleware('admin');
     Route::post('invoices/{invoice}/pay', [InvoiceController::class, 'pay']);
     Route::apiResource('sales-returns', SalesReturnController::class)->only(['index', 'store', 'destroy']);
     Route::post('sales-returns/{salesReturn}/approve', [SalesReturnController::class, 'approve']);
@@ -131,6 +133,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
     // Administration
     Route::get('company-profile', [CompanyProfileController::class, 'show']);
     Route::put('company-profile', [CompanyProfileController::class, 'update']);
+    Route::post('company-profile/logo', [CompanyProfileController::class, 'uploadLogo']);
 
     // User & permission management (admin-only)
     Route::middleware('admin')->group(function () {

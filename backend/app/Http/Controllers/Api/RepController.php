@@ -146,6 +146,9 @@ class RepController extends Controller
             'lines.*.qty' => 'required|integer|min:1',
             'lines.*.rate' => 'required|numeric|min:0',
             'lines.*.method' => 'nullable|in:FIFO,Average',
+            'lat' => 'nullable|numeric',
+            'lng' => 'nullable|numeric',
+            'discount_pct' => 'nullable|numeric|min:0|max:100',
         ]);
 
         return DB::transaction(function () use ($data, $rep) {
@@ -163,6 +166,10 @@ class RepController extends Controller
                 'total' => $total,
                 'items' => count($data['lines']),
                 'status' => 'pending',
+                'lat' => $data['lat'] ?? null,
+                'lng' => $data['lng'] ?? null,
+                'discount_pct' => $data['discount_pct'] ?? 0,
+                'discount_status' => !empty($data['discount_pct']) && $data['discount_pct'] > 0 ? 'pending' : null,
             ]);
 
             foreach ($data['lines'] as $l) {

@@ -140,6 +140,8 @@ export interface Invoice {
   id: string; code?: string; customer: string; rep: string; date: string; total: number; paid: number; due: number; items: number; cost: string; status: string
   source?: string // 'web' (admin) | 'app' (rep mobile app)
   terms?: string  // Cash | Cheque | Credit (30 days)
+  discountPct?: number
+  discountStatus?: 'pending' | 'approved' | 'rejected' | null
   lines?: Array<{ id?: number; code?: string; name: string; qty: number; rate: number }>
 }
 export interface SalesOrder {

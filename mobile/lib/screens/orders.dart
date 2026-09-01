@@ -146,6 +146,15 @@ class OrdersScreenState extends State<OrdersScreen> {
                   children: [
                     const Text('Total',
                         style: TextStyle(color: AppColors.muted, fontSize: 13)),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.print, size: 18, color: AppColors.brand),
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Printing invoice...')),
+                        );
+                      },
+                    ),
                     Text(money(o['total'] as num? ?? 0),
                         style: const TextStyle(
                             fontWeight: FontWeight.w700, fontSize: 16)),
