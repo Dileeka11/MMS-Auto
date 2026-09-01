@@ -54,6 +54,31 @@ if (($_GET['action'] ?? '') === 'test-login') {
     exit;
 }
 
+// Action: storage-link — create /api/storage/ symlink → /laravel/storage/app/public/
+if (($_GET['action'] ?? '') === 'storage-link') {
+    $link = __DIR__ . '/storage';
+    $publicDir = __DIR__ . '/../laravel/storage/app/public';
+    if (!is_dir($publicDir)) {
+        mkdir($publicDir, 0755, true);
+    }
+    $target = realpath($publicDir);
+    if (is_link($link)) {
+        $result['storage_link'] = 'already_exists';
+        $result['points_to'] = readlink($link);
+    } elseif (is_dir($link)) {
+        $result['storage_link'] = 'skipped_directory_exists';
+    } elseif ($target && symlink($target, $link)) {
+        $result['storage_link'] = 'created';
+        $result['points_to'] = $target;
+    } else {
+        $result['storage_link'] = 'failed';
+        $result['error'] = error_get_last();
+    }
+    header('Content-Type: application/json');
+    echo json_encode($result, JSON_PRETTY_PRINT);
+    exit;
+}
+
 // 1. OPcache reset
 $result['opcache_reset'] = function_exists('opcache_reset') ? opcache_reset() : false;
 clearstatcache(true);

@@ -21,7 +21,8 @@ class CompanyProfileController extends Controller
 
         $data = $profile->toArray();
         if (!empty($data['logo_path'])) {
-            $data['logo_url'] = asset('storage/' . $data['logo_path']);
+            $host = request()->getSchemeAndHttpHost();
+            $data['logo_url'] = $host . '/api/storage/' . $data['logo_path'];
         }
         return response()->json($data);
     }
@@ -48,7 +49,8 @@ class CompanyProfileController extends Controller
         $profile = CompanyProfile::firstOrCreate(['id' => 1]);
         $profile->update(['logo_path' => $path]);
 
-        $url = asset('storage/' . $path);
+        $host = request()->getSchemeAndHttpHost();
+        $url = $host . '/api/storage/' . $path;
         return response()->json(['logo_path' => $path, 'logo_url' => $url]);
     }
 }
