@@ -38,8 +38,8 @@ class InvoiceController extends Controller
             'lines' => 'required|array|min:1',
             'lines.*.code' => 'nullable|string',
             'lines.*.name' => 'required|string',
-            'lines.*.qty' => 'required|integer|min:1',
-            'lines.*.rate' => 'required|numeric',
+            'lines.*.qty' => 'required|integer|min:1|max:100000',
+            'lines.*.rate' => 'required|numeric|min:0|max:10000000',
             'lines.*.method' => 'nullable|in:FIFO,Average',
             'discount_pct' => 'nullable|numeric|min:0|max:100',
         ]);
