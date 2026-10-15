@@ -211,11 +211,13 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false); const [form, setForm] = useState<any>({})
+  const [types, setTypes] = useState<any[]>([])
 
   const refresh = () => { setLoading(true); api.expenses.list().then((d) => setRows(d as any)).finally(() => setLoading(false)) }
-  useEffect(() => { refresh() }, [])
+  useEffect(() => { refresh(); api.master('expenseType').list().then((d: any[]) => setTypes(d.filter((t) => t.status !== 'Inactive'))).catch(() => {}) }, [])
 
   const save = async () => {
+    if (!form.type) { alert('Select an expense type'); return }
     await api.expenses.create({ type: form.type, date: form.date || new Date().toISOString().slice(0, 10), amount: +form.amount || 0, branch: form.branch || 'Main Store', note: form.note || '' } as any)
     setModal(false); setForm({}); refresh()
   }
@@ -246,7 +248,7 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
       <Modal open={modal} onClose={() => setModal(false)} width={520} title="Add Expense"
         footer={<><Btn variant="plain" onClick={() => setModal(false)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save}>Save</Btn></>}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <Field label="Expense Type"><Select value={form.type || ''} onChange={(e) => setForm((s: any) => ({ ...s, type: e.target.value }))}><option value="">Select…</option>{['Fuel', 'Salary', 'Rent', 'Utilities', 'Transport', 'Maintenance', 'Misc'].map((t) => <option key={t}>{t}</option>)}</Select></Field>
+          <Field label="Expense Type"><Select value={form.type || ''} onChange={(e) => setForm((s: any) => ({ ...s, type: e.target.value }))}><option value="">{types.length ? 'Select…' : 'No expense types — add in Master Files'}</option>{types.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}</Select></Field>
           <Field label="Branch"><Select value={form.branch || ''} onChange={(e) => setForm((s: any) => ({ ...s, branch: e.target.value }))}>{branchSeed.map((b) => <option key={b}>{b}</option>)}</Select></Field>
           <Field label="Amount (Rs)"><Input type="number" value={form.amount || ''} onChange={(e) => setForm((s: any) => ({ ...s, amount: e.target.value }))} /></Field>
           <Field label="Date"><DateInput value={form.date || ''} onChange={(v) => setForm((s: any) => ({ ...s, date: v }))} /></Field>
