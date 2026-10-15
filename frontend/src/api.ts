@@ -193,6 +193,37 @@ export const api = {
   stockTransfers: resource('stock-transfers'),
   stockAdjustments: resource('stock-adjustments'),
   master: (type: string) => resource(`masters/${type}`),
+  accounting: {
+    stats: () => http.get('/accounting/stats').then((r) => camelize(r.data)),
+    chart: () => http.get('/accounting/chart').then((r) => camelize(r.data) as any[]),
+    categories: () => http.get('/accounting/categories').then((r) => camelize(r.data) as any[]),
+    groups: () => http.get('/accounting/groups').then((r) => camelize(r.data) as any[]),
+    accounts: {
+      list: () => http.get('/accounting/accounts').then((r) => camelize(r.data) as any[]),
+      create: (body: any) => http.post('/accounting/accounts', snakeize(body)).then((r) => camelize(r.data)),
+      update: (id: number, body: any) => http.put(`/accounting/accounts/${id}`, snakeize(body)).then((r) => camelize(r.data)),
+      remove: (id: number) => http.delete(`/accounting/accounts/${id}`).then((r) => r.data),
+    },
+    journal: {
+      list: () => http.get('/accounting/journal-entries').then((r) => camelize(r.data) as any[]),
+      get: (id: number) => http.get(`/accounting/journal-entries/${id}`).then((r) => camelize(r.data)),
+      create: (body: any) => http.post('/accounting/journal-entries', snakeize(body)).then((r) => camelize(r.data)),
+    },
+    ledger: (params: { accountId: number; from?: string; to?: string }) =>
+      http.get('/accounting/general-ledger', { params: snakeize(params) }).then((r) => camelize(r.data)),
+    trialBalance: (params: { from?: string; to?: string }) =>
+      http.get('/accounting/trial-balance', { params }).then((r) => camelize(r.data)),
+    years: {
+      list: () => http.get('/accounting/financial-years').then((r) => camelize(r.data) as any[]),
+      create: (body: any) => http.post('/accounting/financial-years', snakeize(body)).then((r) => camelize(r.data)),
+      update: (id: number, body: any) => http.put(`/accounting/financial-years/${id}`, snakeize(body)).then((r) => camelize(r.data)),
+      remove: (id: number) => http.delete(`/accounting/financial-years/${id}`).then((r) => r.data),
+      setActive: (id: number) => http.post(`/accounting/financial-years/${id}/set-active`).then((r) => camelize(r.data)),
+      openingBalances: (id: number) => http.get(`/accounting/financial-years/${id}/opening-balances`).then((r) => camelize(r.data)),
+      saveOpeningBalances: (id: number, balances: { accountId: number; debit: string; credit: string }[]) =>
+        http.post(`/accounting/financial-years/${id}/opening-balances`, snakeize({ balances })).then((r) => r.data),
+    },
+  },
   dashboard: () => http.get('/dashboard').then((r) => camelize(r.data)),
   approveReturn: (id: string | number) => http.post(`/sales-returns/${id}/approve`).then((r) => camelize(r.data)),
   rejectReturn: (id: string | number) => http.post(`/sales-returns/${id}/reject`).then((r) => camelize(r.data)),

@@ -31,6 +31,7 @@ class DatabaseSeeder extends Seeder
         $this->seedMasters($reps);
         $this->seedSuppliers();
         $this->seedTransactions($items, $customers);
+        $this->call(AccountingSeeder::class);
     }
 
     private function seedCompany()

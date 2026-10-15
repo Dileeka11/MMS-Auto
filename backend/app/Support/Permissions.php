@@ -22,6 +22,7 @@ class Permissions
         'Quotation', 'Dispatch Notes', 'Sales Invoice', 'Outstanding Settlement', 'Sales Return', 'Payment Receipt', 'Expense',
         'Stock Transfer', 'Stock Adjustment', 'BIN Card', 'Live Stock', 'Price Control',
         'Reports',
+        'Accounting',
         'Sales Reps', 'User Management', 'User Permission', 'Company Profile',
     ];
 
@@ -53,7 +54,7 @@ class Permissions
             'admin' => fn ($m, $a) => true,
             'manager' => fn ($m, $a) => true && $a !== 'Delete' || in_array($m, ['Sales Invoice', 'Quotation']),
             'storekeeper' => fn ($m, $a) => in_array($m, ['Dashboard', 'Item Master', 'Supplier Master', 'GRN', 'Stock Transfer', 'Stock Adjustment', 'BIN Card', 'Live Stock', 'Price Control']) && $a !== 'Approve',
-            'accountant' => fn ($m, $a) => in_array($m, ['Dashboard', 'Customer Master', 'Sales Invoice', 'Payment Receipt', 'Expense', 'Reports']) && $a !== 'Delete',
+            'accountant' => fn ($m, $a) => in_array($m, ['Dashboard', 'Customer Master', 'Sales Invoice', 'Payment Receipt', 'Expense', 'Reports', 'Accounting']) && $a !== 'Delete',
             'salesrep' => fn ($m, $a) => in_array($m, ['Dashboard', 'Item Master', 'Customer Master', 'Quotation', 'Sales Invoice']) && in_array($a, ['View', 'Create']),
             'cashier' => fn ($m, $a) => in_array($m, ['Dashboard', 'Payment Receipt', 'Sales Invoice']) && in_array($a, ['View', 'Create']),
             'user' => fn ($m, $a) => $m === 'Dashboard' && $a === 'View',

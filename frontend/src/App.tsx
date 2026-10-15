@@ -37,6 +37,13 @@ const TransferScreen = named(() => import('./screens/Stores'), 'TransferScreen')
 const AdjustScreen = named(() => import('./screens/Stores'), 'AdjustScreen')
 const BinCardScreen = named(() => import('./screens/Stores'), 'BinCardScreen')
 const PriceScreen = named(() => import('./screens/Stores'), 'PriceScreen')
+const FinancialYearScreen = named(() => import('./screens/Accounting'), 'FinancialYearScreen')
+const ChartOfAccountsScreen = named(() => import('./screens/Accounting'), 'ChartOfAccountsScreen')
+const AccountGroupsScreen = named(() => import('./screens/Accounting'), 'AccountGroupsScreen')
+const JournalEntriesScreen = named(() => import('./screens/Accounting'), 'JournalEntriesScreen')
+const ManualJournalScreen = named(() => import('./screens/Accounting'), 'ManualJournalScreen')
+const GeneralLedgerScreen = named(() => import('./screens/Accounting'), 'GeneralLedgerScreen')
+const TrialBalanceScreen = named(() => import('./screens/Accounting'), 'TrialBalanceScreen')
 const UsersScreen = named(() => import('./screens/Admin'), 'UsersScreen')
 const PermScreen = named(() => import('./screens/Admin'), 'PermScreen')
 const CompanyScreen = named(() => import('./screens/Admin'), 'CompanyScreen')
@@ -75,6 +82,13 @@ const SCREENS: Record<string, ScreenComp> = {
   'st/bin': BinCardScreen,
   'st/live': LiveStockScreen,
   'st/price': PriceScreen,
+  'ac/fy': FinancialYearScreen,
+  'ac/coa': ChartOfAccountsScreen,
+  'ac/groups': AccountGroupsScreen,
+  'ac/journal': JournalEntriesScreen,
+  'ac/journal-new': ManualJournalScreen,
+  'ac/ledger': GeneralLedgerScreen,
+  'ac/tb': TrialBalanceScreen,
   reports: ReportsScreen,
   'ad/reps': RepsScreen,
   'ad/users': UsersScreen,

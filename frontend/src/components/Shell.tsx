@@ -55,6 +55,14 @@ export const NAV: NavNode[] = [
     { id: 'st/live', label: 'Live Stock', icon: 'box' },
     { id: 'st/price', label: 'Price Control', icon: 'tag' },
   ] },
+  { section: 'Accounting', icon: 'coins', items: [
+    { id: 'ac/fy', label: 'Financial Year', icon: 'calendar' },
+    { id: 'ac/coa', label: 'Chart of Accounts', icon: 'list' },
+    { id: 'ac/groups', label: 'Account Groups', icon: 'layers' },
+    { id: 'ac/journal', label: 'Journal Entries', icon: 'doc' },
+    { id: 'ac/ledger', label: 'General Ledger', icon: 'wallet' },
+    { id: 'ac/tb', label: 'Trial Balance', icon: 'chart' },
+  ] },
   { id: 'reports', label: 'Reports', icon: 'chart' },
   { section: 'Administration', icon: 'shield', items: [
     { id: 'ad/reps', label: 'Sales Reps & App', icon: 'phone', star: true },

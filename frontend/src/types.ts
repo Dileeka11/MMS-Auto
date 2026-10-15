@@ -178,3 +178,152 @@ export interface EditorLine {
   method: 'FIFO' | 'Average'
   max?: number
 }
+
+/* ---------- Accounting (Chart of Accounts / General Ledger) ----------
+   Field names are camelCase: api.ts converts the Laravel snake_case payloads. */
+export type NormalBalance = 'debit' | 'credit'
+export type StatementType = 'BS' | 'PNL'
+
+export interface AccountCategory {
+  id: number
+  code: string
+  name: string
+  normalBalance: NormalBalance
+  statementType: StatementType
+  groupsCount?: number
+}
+
+export interface AccountGroup {
+  id: number
+  categoryId: number
+  code: string
+  name: string
+  accountsCount?: number
+  category?: AccountCategory
+}
+
+/** A category nested with its groups — for dropdowns. */
+export interface ChartCategory extends AccountCategory {
+  groups: AccountGroup[]
+}
+
+/** A row of the flat Chart of Accounts list (joined up to group + category). */
+export interface AccountRow {
+  id: number
+  code: string
+  name: string
+  isActive: boolean
+  isDefault: boolean
+  createdBy: string
+  groupId: number
+  parentId: number | null
+  groupName: string
+  groupCode: string
+  categoryId: number
+  categoryName: string
+  type: StatementType
+  /** True when the account has sub-accounts (a "header", not postable). */
+  hasChildren: boolean
+  /** True when the account is a leaf and may be posted to in journal entries. */
+  isPostable: boolean
+}
+
+export interface JournalLine {
+  id?: number
+  entryId?: number
+  accountId: number
+  debit: string | number
+  credit: string | number
+  memo: string | null
+  accountCode?: string
+  accountName?: string
+}
+
+export interface JournalEntry {
+  id: number
+  financialYearId: number | null
+  entryDate: string
+  postingDate: string | null
+  reference: string | null
+  invoiceNumber: string | null
+  customerName: string | null
+  paymentMethod: 'cash_in_hand' | 'bank' | null
+  paymentAccountId: number | null
+  currency: string
+  branch: string | null
+  memo: string | null
+  createdAt: string
+  lines: JournalLine[]
+}
+
+export interface FinancialYear {
+  id: number
+  yearName: string
+  startDate: string
+  endDate: string
+  isActive: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface OpeningBalanceAccount {
+  accountId: number
+  accountCode: string
+  accountName: string
+  groupId: number
+  groupName: string | null
+  categoryName: string | null
+  parentId: number | null
+  financialYearId: number
+  debit: string
+  credit: string
+}
+
+export interface OpeningBalancesResponse {
+  financialYear: FinancialYear
+  accounts: OpeningBalanceAccount[]
+}
+
+/** One editable row in the Manual Journal Entry grid. */
+export interface JournalDraftLine {
+  accountId: number | ''
+  drCr: 'debit' | 'credit' | ''
+  amount: string
+  memo: string
+}
+
+export interface LedgerLine {
+  entryId: number
+  docNo: string
+  date: string
+  reference: string | null
+  memo: string | null
+  debit: number
+  credit: number
+  balance: number
+}
+
+export interface GeneralLedger {
+  account: { id: number; code: string; name: string; normalBalance: NormalBalance }
+  openingBalance: number
+  lines: LedgerLine[]
+  totalDebit: number
+  totalCredit: number
+  closingBalance: number
+}
+
+export interface TrialBalanceRow {
+  code: string
+  name: string
+  debit: number
+  credit: number
+}
+
+export interface TrialBalance {
+  from: string | null
+  to: string | null
+  rows: TrialBalanceRow[]
+  totalDebit: number
+  totalCredit: number
+  balanced: boolean
+}

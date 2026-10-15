@@ -50,10 +50,22 @@ export const ROUTE_MODULE: Record<string, string> = {
   'st/live': 'Live Stock',
   'st/price': 'Price Control',
   reports: 'Reports',
+  'ac/fy': 'Accounting',
+  'ac/coa': 'Accounting',
+  'ac/groups': 'Accounting',
+  'ac/journal': 'Accounting',
+  'ac/journal-new': 'Accounting',
+  'ac/ledger': 'Accounting',
+  'ac/tb': 'Accounting',
   'ad/reps': 'Sales Reps',
   'ad/users': 'User Management',
   'ad/perm': 'User Permission',
   'ad/company': 'Company Profile',
+}
+
+/** Routes that need more than View (default) to open. */
+export const ROUTE_ACTION: Record<string, Action> = {
+  'ac/journal-new': 'Create',
 }
 
 export function canAccessRoute(user: AuthUser | null | undefined, routeId: string): boolean {
@@ -61,5 +73,5 @@ export function canAccessRoute(user: AuthUser | null | undefined, routeId: strin
   if (user.role === 'admin') return true // admin sees everything
   const mod = ROUTE_MODULE[routeId]
   if (!mod) return false // fail closed: unmapped route → deny for non-admins
-  return userCan(user, mod, 'View')
+  return userCan(user, mod, ROUTE_ACTION[routeId] || 'View')
 }

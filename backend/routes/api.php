@@ -1,14 +1,22 @@
 <?php
 
+use App\Http\Controllers\Api\AccountCategoryController;
+use App\Http\Controllers\Api\AccountController;
+use App\Http\Controllers\Api\AccountGroupController;
+use App\Http\Controllers\Api\AccountingStatsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CompanyProfileController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ExpenseController;
+use App\Http\Controllers\Api\FinancialYearController;
+use App\Http\Controllers\Api\GeneralLedgerController;
 use App\Http\Controllers\Api\GrnController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\ItemController;
+use App\Http\Controllers\Api\JournalEntryController;
 use App\Http\Controllers\Api\MasterController;
+use App\Http\Controllers\Api\OpeningBalanceController;
 use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\RepAuthController;
@@ -24,6 +32,7 @@ use App\Http\Controllers\Api\SalesReturnController;
 use App\Http\Controllers\Api\StockAdjustmentController;
 use App\Http\Controllers\Api\StockTransferController;
 use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\TrialBalanceController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -129,6 +138,44 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
     // Stores
     Route::apiResource('stock-transfers', StockTransferController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::apiResource('stock-adjustments', StockAdjustmentController::class)->only(['index', 'store', 'destroy']);
+
+    // Accounting — Chart of Accounts / General Ledger backbone
+    Route::prefix('accounting')->group(function () {
+        Route::get('stats', [AccountingStatsController::class, 'index']);
+
+        // Chart nested (categories -> groups) for dropdowns, then category CRUD (writes are locked → 403).
+        Route::get('chart', [AccountCategoryController::class, 'chart']);
+        Route::get('categories', [AccountCategoryController::class, 'index']);
+        Route::post('categories', [AccountCategoryController::class, 'store']);
+        Route::put('categories/{accountCategory}', [AccountCategoryController::class, 'update']);
+        Route::delete('categories/{accountCategory}', [AccountCategoryController::class, 'destroy']);
+
+        Route::get('groups', [AccountGroupController::class, 'index']);
+        Route::post('groups', [AccountGroupController::class, 'store']);
+        Route::put('groups/{accountGroup}', [AccountGroupController::class, 'update']);
+        Route::delete('groups/{accountGroup}', [AccountGroupController::class, 'destroy']);
+
+        Route::get('accounts', [AccountController::class, 'index']);
+        Route::post('accounts', [AccountController::class, 'store']);
+        Route::put('accounts/{account}', [AccountController::class, 'update']);
+        Route::delete('accounts/{account}', [AccountController::class, 'destroy']);
+
+        Route::get('journal-entries', [JournalEntryController::class, 'index']);
+        Route::get('journal-entries/{journalEntry}', [JournalEntryController::class, 'show']);
+        Route::post('journal-entries', [JournalEntryController::class, 'store']);
+
+        Route::get('general-ledger', [GeneralLedgerController::class, 'index']);
+        Route::get('trial-balance', [TrialBalanceController::class, 'index']);
+
+        Route::get('financial-years', [FinancialYearController::class, 'index']);
+        Route::post('financial-years', [FinancialYearController::class, 'store']);
+        Route::put('financial-years/{financialYear}', [FinancialYearController::class, 'update']);
+        Route::delete('financial-years/{financialYear}', [FinancialYearController::class, 'destroy']);
+        Route::post('financial-years/{financialYear}/set-active', [FinancialYearController::class, 'setActive']);
+
+        Route::get('financial-years/{financialYear}/opening-balances', [OpeningBalanceController::class, 'index']);
+        Route::post('financial-years/{financialYear}/opening-balances', [OpeningBalanceController::class, 'store']);
+    });
 
     // Administration
     Route::get('company-profile', [CompanyProfileController::class, 'show']);
