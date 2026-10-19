@@ -5,7 +5,7 @@ import { Icon } from '../components/Icon'
 import { api } from '../api'
 import { useNotify } from '../components/Notify'
 import { brands as brandSeed, categories as catSeed, groups as grpSeed, money } from '../data'
-import { parseItemMasterExcel } from '../excel'
+import { parseItemMasterExcel, downloadItemMasterTemplate } from '../excel'
 import type { Item, Customer } from '../types'
 import type { Go } from './types'
 
@@ -108,6 +108,7 @@ export function ItemMasterScreen({ go }: { go: Go }) {
         actions={<>
           <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
             onChange={(e) => onImport(e.target.files?.[0] || null)} />
+          <Btn variant="ghost" icon="download" onClick={downloadItemMasterTemplate}>Template</Btn>
           <Btn variant="ghost" icon="upload" onClick={() => importRef.current?.click()} disabled={importing}>
             {importing ? 'Importing…' : 'Import Excel'}
           </Btn>

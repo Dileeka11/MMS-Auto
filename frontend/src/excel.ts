@@ -91,11 +91,17 @@ interface HeaderIdx {
   unitCostWoVat?: number
 }
 
-function detectHeader(rows: any[][]) {
+/** `needQty` = false is for Item Master sheets, which have a code + description
+ *  but no quantity column. */
+function detectHeader(rows: any[][], needQty = true) {
   for (let i = 0; i < Math.min(rows.length, 25); i++) {
     const r = rows[i].map(lower)
-    const itemCol = r.findIndex((c) => /item|description|particular|name/.test(c))
-    const qtyCol = r.findIndex((c) => /qty|quantity/.test(c))
+    const itemCol = needQty
+      ? r.findIndex((c) => /item|description|particular|name/.test(c))
+      : r.findIndex((c) => /description|particular|^item$|name/.test(c))
+    const qtyCol = needQty
+      ? r.findIndex((c) => /qty|quantity/.test(c))
+      : r.findIndex((c) => /(^|\b)(code|part\s*no|part\s*number|part)\b/.test(c))
     // Require the two keywords to live in distinct cells — otherwise a single
     // long note row containing both words can be misread as the header.
     if (itemCol >= 0 && qtyCol >= 0 && itemCol !== qtyCol) {
@@ -114,7 +120,8 @@ function detectHeader(rows: any[][]) {
         if (idx.sellingWo == null && /selling.*w\/?o.*vat/.test(c)) idx.sellingWo = j
         if (idx.sellingWith == null && /selling.*with.*vat/.test(c)) idx.sellingWith = j
         // Costing allocation columns — matched verbatim, no computation.
-        if (idx.fobLkr == null && /fob-?lkr|amountfob/.test(cc)) idx.fobLkr = j
+        // "TOTAL AMOUNT FOB-USD" also contains "amountfob" — don't let it claim the LKR column.
+        if (idx.fobLkr == null && (/fob-?lkr/.test(cc) || (/amountfob/.test(cc) && !/usd/.test(cc)))) idx.fobLkr = j
         if (idx.freightLkr == null && /^freight/.test(cc)) idx.freightLkr = j
         if (idx.insuranceLkr == null && /^insur/.test(cc)) idx.insuranceLkr = j
         if (idx.cid == null && cc === 'cid') idx.cid = j
@@ -247,7 +254,7 @@ export async function parseItemMasterExcel(file: File): Promise<ParsedItem[]> {
   const wb = await readWorkbook(file)
   const sheet = pickSheet(wb, /^po\b|item|master/i)
   const rows = rowsFromSheet(sheet)
-  const h = detectHeader(rows)
+  const h = detectHeader(rows, false)
   if (!h) return []
   const { headerRow, idx } = h
   if (idx.code == null || idx.item == null) return []
@@ -302,4 +309,75 @@ export async function parseCostingExcel(file: File): Promise<ParsedCosting> {
     }
   }
   return { lines, extras }
+}
+
+/* ---------- Downloadable upload templates ----------
+   Each template's header row matches what the parser above detects, so a user
+   can download it, fill it in and upload the same file back. The data sheet
+   comes first (the parsers fall back to the first sheet); an "Instructions"
+   sheet follows. */
+
+export const PO_TEMPLATE_HEADERS = ['PART NO', 'DESCRIPTION', 'HS CODE', 'ORDER QUANTITY', 'UNIT PRICE FOB-USD', 'TOTAL AMOUNT USD-FOB']
+export const ITEM_TEMPLATE_HEADERS = ['PART NO', 'DESCRIPTION', 'HS CODE']
+export const COSTING_TEMPLATE_HEADERS = [
+  'PART NO', 'DESCRIPTION', 'SHIPMENT QUANTITY', 'UNIT PRICE FOB-USD', 'TOTAL AMOUNT FOB-USD',
+  'TOTAL AMOUNT FOB-LKR @ BANKING RATE', 'FREIGHT IN LKR', 'INSURANCE IN LKR',
+  'CID', 'PAL', 'CESS', 'VAT', 'SSCL', 'OTHER 1', 'OTHER 2', 'OTHER 3',
+  'BANKING', 'CLEARANCE', 'SLPA', 'DEMURRAGE',
+  'TOTAL PRICE W/O VAT', 'TOTAL PRICE WITH VAT', 'UNIT COST WITH VAT', 'UNIT COST W/O VAT',
+  'SELLING PRICE W/O VAT', 'SELLING PRICE WITH VAT',
+]
+
+async function downloadTemplate(filename: string, sheetName: string, headers: string[], rows: (string | number)[][], notes: string[]) {
+  const XLSX = await loadXlsx()
+  const wb = XLSX.utils.book_new()
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+  ws['!cols'] = headers.map((h) => ({ wch: Math.max(12, Math.min(40, h.length + 2)) }))
+  XLSX.utils.book_append_sheet(wb, ws, sheetName)
+  const info = XLSX.utils.aoa_to_sheet(notes.map((n) => [n]))
+  info['!cols'] = [{ wch: 110 }]
+  XLSX.utils.book_append_sheet(wb, info, 'Instructions')
+  XLSX.writeFile(wb, filename)
+}
+
+const COMMON_NOTES = [
+  'Keep the header row (row 1) exactly as it is — the system finds columns by these names.',
+  'Enter one item per row, starting from row 2, with no blank rows in between.',
+  'Keep the data on the first sheet. Save as .xlsx and upload the same file.',
+]
+
+export function downloadItemMasterTemplate() {
+  return downloadTemplate('Item_Master_Template.xlsx', 'Item Master', ITEM_TEMPLATE_HEADERS, [], [
+    'ITEM MASTER IMPORT TEMPLATE', '',
+    ...COMMON_NOTES,
+    'PART NO and DESCRIPTION are required. HS CODE is optional.',
+    'Existing items with the same PART NO are updated; new part numbers are created.',
+  ])
+}
+
+export function downloadPoTemplate() {
+  return downloadTemplate('PO_Items_Template.xlsx', 'PO', PO_TEMPLATE_HEADERS, [], [
+    'PURCHASE ORDER ITEMS TEMPLATE', '',
+    ...COMMON_NOTES,
+    'PART NO, DESCRIPTION, ORDER QUANTITY and UNIT PRICE FOB-USD are required.',
+    'Description and HS code are taken from Item Master when the PART NO exists there.',
+    'TOTAL AMOUNT USD-FOB is optional — when blank it is calculated as quantity × unit price.',
+  ])
+}
+
+/** Costing template, pre-filled with the selected PO's lines (remaining qty when
+ *  partially shipped) so only the cost columns need to be filled in. */
+export function downloadCostingTemplate(po?: { code?: string; id?: string; lines: { code: string; item: string; qty: number; cost: number; balanceQty?: number }[] }) {
+  const rows = (po?.lines || []).map((l) => {
+    const qty = l.balanceQty != null && l.balanceQty > 0 ? l.balanceQty : l.qty
+    return [l.code, l.item, qty, l.cost, +(qty * l.cost).toFixed(2)]
+  })
+  const ref = po ? '_' + String(po.code || po.id).replace(/[^\w-]+/g, '_') : ''
+  return downloadTemplate(`Costing_Template${ref}.xlsx`, 'Costing', COSTING_TEMPLATE_HEADERS, rows, [
+    'COSTING UPLOAD TEMPLATE', '',
+    ...COMMON_NOTES,
+    'Item lines are pre-filled from the selected PO — adjust SHIPMENT QUANTITY for partial shipments and remove items not in this shipment.',
+    'All cost columns are read exactly as entered (nothing is recalculated), so fill every amount column.',
+    'SELLING PRICE columns are optional and can also be edited in the system after upload.',
+  ])
 }

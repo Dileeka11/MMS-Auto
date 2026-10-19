@@ -15,7 +15,7 @@ import { ApprovalCounter, ApprovalPanel, canApprove as canApproveR, canReject as
 import { useNotify } from '../components/Notify'
 import DB from '../data'
 import { api } from '../api'
-import { parsePoExcel, parseCostingExcel, fileToBase64, type ParsedLine, type ParsedCostingLine } from '../excel'
+import { parsePoExcel, parseCostingExcel, fileToBase64, downloadPoTemplate, downloadCostingTemplate, type ParsedLine, type ParsedCostingLine } from '../excel'
 import { diffCostingAgainstPo, type ComplexCharge, type CostingDiff } from '../lib/costing'
 import type { PurchaseOrder, Shipment, ShipmentLine, GRN, TrackingRow, Supplier } from '../types'
 import type { Go } from './types'
@@ -256,7 +256,7 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
         </div>
 
         <div className="eyebrow" style={{ marginBottom: 10 }}>Items · Excel Upload</div>
-        <ExcelDrop onPick={onFile} fileName={fileName} parsing={parsing} fileRef={fileRef}
+        <ExcelDrop onPick={onFile} fileName={fileName} parsing={parsing} fileRef={fileRef} onTemplate={downloadPoTemplate}
           hint="Drop .xlsx with: PART NO · DESCRIPTION · HS CODE · ORDER QUANTITY · UNIT PRICE FOB-USD · TOTAL AMOUNT USD-FOB" />
 
         {err && <ErrBox text={err} />}
@@ -714,6 +714,7 @@ export function CostingScreen({ go, user }: { go: Go; user?: { id: number; role?
 
             <Section title="Items · Costing Excel Upload">
               <ExcelDrop onPick={onFile} fileName={fileName} parsing={parsing} fileRef={fileRef}
+                onTemplate={() => downloadCostingTemplate(po || undefined)}
                 hint="Upload the costing template — the item grid below is loaded from this file." />
             </Section>
 
@@ -1407,12 +1408,13 @@ function SearchSelect({ value, onChange, options, placeholder, allowCustom }: {
   )
 }
 
-function ExcelDrop({ onPick, fileName, parsing, fileRef, hint }: {
+function ExcelDrop({ onPick, fileName, parsing, fileRef, hint, onTemplate }: {
   onPick: (f: File | null) => void
   fileName: string
   parsing: boolean
   fileRef: React.RefObject<HTMLInputElement>
   hint: string
+  onTemplate?: () => void
 }) {
   const [drag, setDrag] = useState(false)
   return (
@@ -1427,6 +1429,12 @@ function ExcelDrop({ onPick, fileName, parsing, fileRef, hint }: {
       <Icon n="upload" s={26} c="var(--ac-bright)" />
       <div style={{ marginTop: 8, fontSize: 13.5, fontWeight: 600 }}>{parsing ? 'Reading…' : fileName || 'Click or drop Excel here'}</div>
       <div className="t-2" style={{ fontSize: 11.5, marginTop: 4 }}>{hint}</div>
+      {onTemplate && (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onTemplate() }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ac-bright)', fontSize: 12.5, fontWeight: 600, textDecoration: 'underline' }}>
+          <Icon n="download" s={14} />Download Excel template
+        </button>
+      )}
     </div>
   )
 }
