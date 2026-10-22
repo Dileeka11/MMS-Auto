@@ -176,7 +176,7 @@ export const api = {
       http.get('/sales-orders', { params: status ? { status } : {} }).then((r) => camelize(r.data) as any[]),
     dispatch: (id: string | number, body: { date?: string; lines: any[] }) =>
       http.post(`/sales-orders/${id}/dispatch`, snakeize(body)).then((r) => camelize(r.data)),
-    invoice: (id: string | number, body: { terms?: string; date?: string }) =>
+    invoice: (id: string | number, body: { terms?: string; date?: string; vatApplied?: boolean }) =>
       http.post(`/sales-orders/${id}/invoice`, snakeize(body)).then((r) => camelize(r.data)),
     remove: (id: string | number) => http.delete(`/sales-orders/${id}`).then((r) => r.data),
   },

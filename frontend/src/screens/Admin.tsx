@@ -315,7 +315,8 @@ export function CompanyScreen({ go: _go, setBrand, setLogoUrl }: { go: Go; setBr
               <Field label="Address" full><textarea value={data.address || ''} onChange={(e) => set('address', e.target.value)} rows={2} style={{ ...inputStyle, resize: 'vertical' }} /></Field>
               <Field label="Phone"><Input value={data.phone || ''} onChange={(e) => set('phone', e.target.value)} /></Field>
               <Field label="Email"><Input value={data.email || ''} onChange={(e) => set('email', e.target.value)} /></Field>
-              <Field label="Tax / VAT No"><Input value={data.taxNo || ''} onChange={(e) => set('taxNo', e.target.value)} /></Field>
+              <Field label="Tax / VAT No (TIN)"><Input value={data.taxNo || ''} onChange={(e) => set('taxNo', e.target.value)} /></Field>
+              <Field label="VAT %"><Input type="number" value={data.vatPct ?? ''} onChange={(e) => set('vatPct', e.target.value)} placeholder="18" /></Field>
               <Field label="Currency"><Select value={data.currency || ''} onChange={(e) => set('currency', e.target.value)}>{['LKR — Sri Lankan Rupee', 'PKR — Pakistani Rupee', 'INR — Indian Rupee', 'USD — US Dollar'].map((c) => <option key={c}>{c}</option>)}</Select></Field>
             </div>
           </Card>

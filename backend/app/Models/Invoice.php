@@ -14,7 +14,22 @@ class Invoice extends Model
     protected $casts = [
         'total' => 'float', 'paid' => 'float', 'due' => 'float',
         'items' => 'integer', 'date' => 'date:Y-m-d',
+        'vat_applied' => 'boolean', 'vat_pct' => 'float', 'vat_amount' => 'float',
     ];
+
+    /**
+     * VAT on a value of supply at the company-profile rate.
+     * Returns [vat_pct, vat_amount]; both zero when VAT is not applied.
+     */
+    public static function vatFor(float $supply, bool $apply): array
+    {
+        if (! $apply) {
+            return [0, 0];
+        }
+        $pct = (float) (CompanyProfile::find(1)->vat_pct ?? 18);
+
+        return [$pct, round($supply * $pct / 100, 2)];
+    }
 
     public function lines()
     {

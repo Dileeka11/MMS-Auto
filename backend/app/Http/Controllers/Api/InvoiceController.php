@@ -42,16 +42,19 @@ class InvoiceController extends Controller
             'lines.*.rate' => 'required|numeric|min:0|max:10000000',
             'lines.*.method' => 'nullable|in:FIFO,Average',
             'discount_pct' => 'nullable|numeric|min:0|max:100',
+            'vat_applied' => 'nullable|boolean',
         ]);
 
         return DB::transaction(function () use ($data) {
-            $total = 0;
+            $supply = 0;
             $methods = [];
             foreach ($data['lines'] as $l) {
-                $total += $l['qty'] * $l['rate'];
+                $supply += $l['qty'] * $l['rate'];
                 $methods[$l['method'] ?? 'FIFO'] = true;
             }
             $costing = count($methods) > 1 ? 'Mixed' : array_key_first($methods);
+            [$vatPct, $vatAmount] = Invoice::vatFor($supply, ! empty($data['vat_applied']));
+            $total = round($supply + $vatAmount, 2);
 
             $inv = Invoice::create([
                 'code' => Invoice::nextCode(),
@@ -68,6 +71,9 @@ class InvoiceController extends Controller
                 'status' => 'Unpaid',
                 'discount_pct' => $data['discount_pct'] ?? 0,
                 'discount_status' => !empty($data['discount_pct']) && $data['discount_pct'] > 0 ? 'pending' : null,
+                'vat_applied' => $vatPct > 0,
+                'vat_pct' => $vatPct,
+                'vat_amount' => $vatAmount,
             ]);
 
             foreach ($data['lines'] as $l) {
@@ -154,7 +160,10 @@ class InvoiceController extends Controller
         $invoice->discount_status = 'approved';
         // recalculate total and due based on discount
         $totalBeforeDiscount = $invoice->lines()->sum(DB::raw('qty * rate'));
-        $invoice->total = round($totalBeforeDiscount * (1 - ($invoice->discount_pct / 100)), 2);
+        $supply = round($totalBeforeDiscount * (1 - ($invoice->discount_pct / 100)), 2);
+        // VAT is charged on the discounted value of supply, at the rate stored on the invoice
+        $invoice->vat_amount = $invoice->vat_applied ? round($supply * $invoice->vat_pct / 100, 2) : 0;
+        $invoice->total = round($supply + $invoice->vat_amount, 2);
         $invoice->due = round(max(0, $invoice->total - $invoice->paid), 2);
         $invoice->save();
         return $invoice->load('lines');

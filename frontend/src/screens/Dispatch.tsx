@@ -5,48 +5,11 @@ import { Icon } from '../components/Icon'
 import { StatRow } from '../components/doc'
 import { api } from '../api'
 import { money, moneyK, fmtDate } from '../data'
+import { printInvoice } from '../lib/invoicePrint'
 import type { SalesOrder, Invoice } from '../types'
 import type { Go } from './types'
 
 const TERMS = ['Cash', 'Cheque', 'Credit (30 days)']
-
-/** Open a printable invoice window (shared by dispatch → invoice flow). */
-function printInvoice(r: Invoice) {
-  const no = r.code || r.id
-  const items = (r.lines || [])
-    .map((l) => `<tr><td>${l.code || ''}</td><td>${l.name}</td><td class="r">${l.qty}</td><td class="r">${money(l.rate)}</td><td class="r">${money(l.qty * l.rate)}</td></tr>`)
-    .join('')
-  const w = window.open('', '_blank', 'width=800,height=900')
-  if (!w) return
-  w.document.write(`<!doctype html><html><head><title>Invoice ${no}</title><meta charset="utf-8">
-    <style>
-      *{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
-      body{margin:32px;color:#111}
-      h1{margin:0;font-size:22px}
-      .muted{color:#666;font-size:12px}
-      .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:16px}
-      table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
-      th,td{padding:8px 10px;border-bottom:1px solid #ddd;text-align:left}
-      th{background:#f4f4f4;text-transform:uppercase;font-size:11px;letter-spacing:.5px}
-      .r{text-align:right}
-      .totals{margin-top:16px;width:280px;margin-left:auto;font-size:13px}
-      .totals div{display:flex;justify-content:space-between;padding:4px 0}
-      .totals .grand{font-weight:700;font-size:15px;border-top:2px solid #111;margin-top:6px;padding-top:8px}
-    </style></head><body>
-    <div class="head">
-      <div><h1>NMS-Auto</h1><div class="muted">Spare Parts Distribution</div></div>
-      <div class="r"><h1 style="font-size:16px">SALES INVOICE</h1><div class="muted">${no}</div><div class="muted">${fmtDate(r.date)}</div></div>
-    </div>
-    <div><strong>Bill To:</strong> ${r.customer || ''}${r.rep ? ` &nbsp;·&nbsp; <span class="muted">Rep: ${r.rep}</span>` : ''}${r.terms ? ` &nbsp;·&nbsp; <span class="muted">Terms: ${r.terms}</span>` : ''}</div>
-    <table><thead><tr><th>Code</th><th>Item</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${items || '<tr><td colspan="5" class="muted">No line items</td></tr>'}</tbody></table>
-    <div class="totals">
-      <div><span>Total</span><span>${money(r.total || 0)}</span></div>
-      <div><span>Paid</span><span>${money(r.paid || 0)}</span></div>
-      <div class="grand"><span>Balance Due</span><span>${money(r.due || 0)}</span></div>
-    </div>
-    </body></html>`)
-  w.document.close(); w.focus(); w.print()
-}
 
 type EditLine = { id?: number; code?: string; name: string; qty: number; rate: number; method?: string }
 
@@ -65,6 +28,7 @@ export function DispatchScreen({ go: _go }: { go: Go }) {
   const [inv, setInv] = useState<SalesOrder | null>(null)
   const [terms, setTerms] = useState(TERMS[0])
   const [invoicing, setInvoicing] = useState(false)
+  const [vat, setVat] = useState(false)
 
   const refresh = () => {
     setLoading(true)
@@ -95,12 +59,12 @@ export function DispatchScreen({ go: _go }: { go: Go }) {
     } finally { setDispatching(false) }
   }
 
-  const openInvoice = (o: SalesOrder) => { setInv(o); setTerms(TERMS[0]) }
+  const openInvoice = (o: SalesOrder) => { setInv(o); setTerms(TERMS[0]); setVat(false) }
   const submitInvoice = async () => {
     if (!inv) return
     setInvoicing(true)
     try {
-      const created = await api.salesOrders.invoice(inv.id, { terms }) as Invoice
+      const created = await api.salesOrders.invoice(inv.id, { terms, vatApplied: vat }) as Invoice
       setInv(null); refresh()
       printInvoice(created)
     } finally { setInvoicing(false) }
@@ -198,6 +162,10 @@ export function DispatchScreen({ go: _go }: { go: Go }) {
                 {TERMS.map((t) => <option key={t}>{t}</option>)}
               </Select>
             </Field>
+            <label className="row gap-2" style={{ fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={vat} onChange={(e) => setVat(e.target.checked)} />
+              Apply VAT (company VAT %) — prints as a Tax Invoice
+            </label>
             <div className="t-2" style={{ fontSize: 12 }}>Stock will be reduced and the balance posted to outstanding. Settle it later from Outstanding Settlement.</div>
           </div>
         )}

@@ -32,7 +32,7 @@ class CompanyProfileController extends Controller
         $profile = CompanyProfile::firstOrCreate(['id' => 1]);
         $profile->update($request->only([
             'name', 'tagline', 'address', 'phone', 'email',
-            'tax_no', 'currency', 'logo_path', 'favicon_path', 'accent',
+            'tax_no', 'vat_pct', 'currency', 'logo_path', 'favicon_path', 'accent',
         ]));
 
         return $profile;

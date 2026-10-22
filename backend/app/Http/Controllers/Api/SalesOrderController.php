@@ -104,18 +104,21 @@ class SalesOrderController extends Controller
         $data = $request->validate([
             'terms' => 'nullable|string|max:24',
             'date' => 'nullable|date',
+            'vat_applied' => 'nullable|boolean',
         ]);
 
         return DB::transaction(function () use ($data, $salesOrder) {
             $salesOrder->load('lines');
 
-            $total = 0;
+            $supply = 0;
             $methods = [];
             foreach ($salesOrder->lines as $l) {
-                $total += $l->qty * $l->rate;
+                $supply += $l->qty * $l->rate;
                 $methods[$l->method] = true;
             }
             $costing = count($methods) > 1 ? 'Mixed' : (array_key_first($methods) ?: 'FIFO');
+            [$vatPct, $vatAmount] = Invoice::vatFor($supply, ! empty($data['vat_applied']));
+            $total = round($supply + $vatAmount, 2);
 
             $inv = Invoice::create([
                 'code' => Invoice::nextCode(),
@@ -132,6 +135,9 @@ class SalesOrderController extends Controller
                 'status' => 'Unpaid',
                 'discount_pct' => $salesOrder->discount_pct ?? 0,
                 'discount_status' => $salesOrder->discount_status,
+                'vat_applied' => $vatPct > 0,
+                'vat_pct' => $vatPct,
+                'vat_amount' => $vatAmount,
             ]);
 
             foreach ($salesOrder->lines as $l) {

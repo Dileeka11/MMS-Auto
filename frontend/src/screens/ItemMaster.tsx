@@ -268,6 +268,8 @@ export function CustomerMasterScreen({ go: _go }: { go: Go }) {
           <Field label="City"><Input value={form.city || ''} onChange={(e) => setForm((s: any) => ({ ...s, city: e.target.value }))} /></Field>
           <Field label="Assigned Rep"><Select value={form.rep || ''} onChange={(e) => setForm((s: any) => ({ ...s, rep: e.target.value }))}><option value="">Select…</option>{reps.map((r) => <option key={r.id}>{r.name}</option>)}</Select></Field>
           <Field label="Credit Period (days)"><Select value={form.credit || ''} onChange={(e) => setForm((s: any) => ({ ...s, credit: e.target.value }))}>{[0, 7, 15, 30, 45, 60].map((d) => <option key={d}>{d}</option>)}</Select></Field>
+          <Field label="Tax No (TIN / VAT)"><Input value={form.taxNo || ''} onChange={(e) => setForm((s: any) => ({ ...s, taxNo: e.target.value }))} /></Field>
+          <Field label="Address" full><Input value={form.address || ''} onChange={(e) => setForm((s: any) => ({ ...s, address: e.target.value }))} /></Field>
           <Field label="Credit Limit (Rs)" full><Input type="number" value={form.limit || ''} onChange={(e) => setForm((s: any) => ({ ...s, limit: e.target.value }))} /></Field>
         </div>
       </Modal>

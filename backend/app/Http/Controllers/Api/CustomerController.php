@@ -27,6 +27,8 @@ class CustomerController extends Controller
             'credit' => 'nullable|integer',
             'limit' => 'nullable|numeric',
             'rep' => 'nullable|string',
+            'tax_no' => 'nullable|string|max:64',
+            'address' => 'nullable|string',
         ]);
         $data['outstanding'] = 0;
         $data['status'] = 'ok';
@@ -36,7 +38,7 @@ class CustomerController extends Controller
 
     public function update(Request $request, Customer $customer)
     {
-        $customer->fill($request->only(['name', 'contact', 'city', 'credit', 'limit', 'rep']));
+        $customer->fill($request->only(['name', 'contact', 'city', 'credit', 'limit', 'rep', 'tax_no', 'address']));
         $customer->status = $customer->limit > 0 && $customer->outstanding >= $customer->limit * 0.8 ? 'risk' : 'ok';
         $customer->save();
 

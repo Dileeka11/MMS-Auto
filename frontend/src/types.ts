@@ -47,6 +47,8 @@ export interface Customer {
   outstanding: number
   rep: string
   status: 'ok' | 'risk'
+  taxNo?: string   // TIN / VAT no — shown on tax invoices
+  address?: string
 }
 
 export interface Rep {
@@ -142,6 +144,9 @@ export interface Invoice {
   terms?: string  // Cash | Cheque | Credit (30 days)
   discountPct?: number
   discountStatus?: 'pending' | 'approved' | 'rejected' | null
+  vatApplied?: boolean // printed as a Tax Invoice
+  vatPct?: number
+  vatAmount?: number   // included in total
   lines?: Array<{ id?: number; code?: string; name: string; qty: number; rate: number }>
 }
 export interface SalesOrder {

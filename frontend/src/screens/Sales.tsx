@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { Card, PageHead, Btn, Badge, Field, Input, DateInput, Select, Modal, Table, Td, statusTone } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { StatRow, LineEditor } from '../components/doc'
-import { api } from '../api'
+import { api, company as companyApi } from '../api'
+import { printInvoice } from '../lib/invoicePrint'
 import { money, moneyK, fmtDate } from '../data'
 import type { EditorLine, Quotation, Invoice } from '../types'
 import type { Go } from './types'
@@ -72,12 +73,14 @@ export function QuoteScreen({ go }: { go: Go }) {
   )
 }
 
-function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, profit, post, back, customers, saving }: { src: any | null; cust: string; setCust: (v: string) => void; lines: EditorLine[]; setLines: (fn: (l: EditorLine[]) => EditorLine[]) => void; total: number; cogs: number; profit: number; post: () => void; back: () => void; customers: any[]; saving: boolean }) {
+function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, profit, post, back, customers, saving, vat, setVat, vatPct, vatAmt }: { src: any | null; cust: string; setCust: (v: string) => void; lines: EditorLine[]; setLines: (fn: (l: EditorLine[]) => EditorLine[]) => void; total: number; cogs: number; profit: number; post: () => void; back: () => void; customers: any[]; saving: boolean; vat: boolean; setVat: (v: boolean) => void; vatPct: number; vatAmt: number }) {
   return (
     <div>
       <PageHead crumbs="Data Capture · Sales Invoice" title={src ? 'Invoice from ' + src.id : 'New Sales Invoice'} icon="receipt"
         sub="Choose FIFO or Average costing per line — profit recalculates instantly"
-        actions={<><Btn variant="plain" icon="x" onClick={back}>Discard</Btn><Btn variant="primary" icon="check" onClick={post} disabled={!cust || !lines.length || saving}>{saving ? 'Posting…' : 'Post Invoice'}</Btn></>} />
+        actions={<><Btn variant="plain" icon="x" onClick={back}>Discard</Btn>
+          <Btn variant={vat ? 'primary' : 'solid'} icon={vat ? 'check' : 'coins'} onClick={() => setVat(!vat)} title="Add VAT and print as a Tax Invoice">{vat ? `VAT ${vatPct}% Applied` : 'Apply VAT'}</Btn>
+          <Btn variant="primary" icon="check" onClick={post} disabled={!cust || !lines.length || saving}>{saving ? 'Posting…' : 'Post Invoice'}</Btn></>} />
       <div className="inv-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
         <Card>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 18 }}>
@@ -94,14 +97,14 @@ function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, prof
         <div className="col gap-4" style={{ position: 'sticky', top: 80 }}>
           <Card>
             <div className="eyebrow" style={{ marginBottom: 14 }}>Invoice Summary</div>
-            {([['Sub-total', total], ['Discount', 0], ['Tax (0%)', 0]] as [string, number][]).map(([l, v]) => (
+            {([['Sub-total', total], ['Discount', 0], [`VAT (${vat ? vatPct : 0}%)`, vatAmt]] as [string, number][]).map(([l, v]) => (
               <div key={l} className="row between" style={{ marginBottom: 9, fontSize: 13 }}>
                 <span className="t-2">{l}</span><span className="num">{money(v)}</span>
               </div>
             ))}
             <div className="row between" style={{ paddingTop: 12, marginTop: 6, borderTop: '1px solid var(--line)' }}>
               <span style={{ fontWeight: 700, fontFamily: 'Saira', fontSize: 16 }}>Total</span>
-              <span className="num" style={{ fontWeight: 700, fontFamily: 'Saira', fontSize: 20, color: 'var(--ac-bright)' }}>{money(total)}</span>
+              <span className="num" style={{ fontWeight: 700, fontFamily: 'Saira', fontSize: 20, color: 'var(--ac-bright)' }}>{money(total + vatAmt)}</span>
             </div>
           </Card>
           <Card style={{ background: 'linear-gradient(160deg, var(--bg-1), oklch(0.22 0.04 155 / 0.4))', border: '1px solid var(--ok)' }}>
@@ -127,6 +130,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   const [step, setStep] = useState(0)
   const [src, setSrc] = useState<any>(null); const [lines, setLines] = useState<EditorLine[]>([]); const [cust, setCust] = useState('')
   const [saving, setSaving] = useState(false)
+  const [vat, setVat] = useState(false); const [vatPct, setVatPct] = useState(18)
   const [payFor, setPayFor] = useState<Invoice | null>(null)
   const [payAmt, setPayAmt] = useState(''); const [payMode, setPayMode] = useState('Cash'); const [payRef, setPayRef] = useState(''); const [paying, setPaying] = useState(false)
   const [chequeBank, setChequeBank] = useState(''); const [chequeNo, setChequeNo] = useState(''); const [chequeDate, setChequeDate] = useState('')
@@ -135,6 +139,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   useEffect(() => {
     refresh()
     api.customers.list().then((d) => setCustomers(d as any)).catch(() => {})
+    companyApi.get().then((d: any) => { if (d?.vatPct != null) setVatPct(Number(d.vatPct)) }).catch(() => {})
     api.quotations.list().then((d: any[]) => setOpenQuotes(d.filter((q) => q.status === 'Open'))).catch(() => {})
   }, [])
 
@@ -157,48 +162,14 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
     } finally { setPaying(false) }
   }
 
-  const printInvoice = (r: Invoice) => {
-    const no = r.code || r.id
-    const items = (r.lines || []).map((l) => `<tr><td>${l.code || ''}</td><td>${l.name}</td><td class="r">${l.qty}</td><td class="r">${money(l.rate)}</td><td class="r">${money(l.qty * l.rate)}</td></tr>`).join('')
-    const w = window.open('', '_blank', 'width=800,height=900')
-    if (!w) return
-    w.document.write(`<!doctype html><html><head><title>Invoice ${no}</title><meta charset="utf-8">
-      <style>
-        *{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
-        body{margin:32px;color:#111}
-        h1{margin:0;font-size:22px}
-        .muted{color:#666;font-size:12px}
-        .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:16px}
-        table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
-        th,td{padding:8px 10px;border-bottom:1px solid #ddd;text-align:left}
-        th{background:#f4f4f4;text-transform:uppercase;font-size:11px;letter-spacing:.5px}
-        .r{text-align:right}
-        .totals{margin-top:16px;width:280px;margin-left:auto;font-size:13px}
-        .totals div{display:flex;justify-content:space-between;padding:4px 0}
-        .totals .grand{font-weight:700;font-size:15px;border-top:2px solid #111;margin-top:6px;padding-top:8px}
-      </style></head><body>
-      <div class="head">
-        <div><h1>NMS-Auto</h1><div class="muted">Spare Parts Distribution</div></div>
-        <div class="r"><h1 style="font-size:16px">SALES INVOICE</h1><div class="muted">${no}</div><div class="muted">${fmtDate(r.date)}</div></div>
-      </div>
-      <div><strong>Bill To:</strong> ${r.customer || ''}${r.rep ? ` &nbsp;·&nbsp; <span class="muted">Rep: ${r.rep}</span>` : ''}${r.terms ? ` &nbsp;·&nbsp; <span class="muted">Terms: ${r.terms}</span>` : ''}</div>
-      <table><thead><tr><th>Code</th><th>Item</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${items || '<tr><td colspan="5" class="muted">No line items</td></tr>'}</tbody></table>
-      <div class="totals">
-        <div><span>Total</span><span>${money(r.total || 0)}</span></div>
-        <div><span>Paid</span><span>${money(r.paid || 0)}</span></div>
-        <div class="grand"><span>Balance Due</span><span>${money(r.due || 0)}</span></div>
-      </div>
-      </body></html>`)
-    w.document.close(); w.focus(); w.print()
-  }
-
   const fromQuote = (q: any) => {
     setSrc(q); setCust(q.customer)
     const picks: EditorLine[] = (q.lines || []).map((l: any) => ({ id: l.id || l.itemId, code: l.code, name: l.name, qty: l.qty, rate: l.rate, fifo: l.fifo || l.rate, avg: l.avg || l.rate, method: 'FIFO', cost: l.avg || l.rate }))
-    setLines(picks); setStep(2)
+    setLines(picks); setVat(false); setStep(2)
   }
-  const blank = () => { setSrc(null); setCust(''); setLines([]); setStep(2) }
+  const blank = () => { setSrc(null); setCust(''); setLines([]); setVat(false); setStep(2) }
   const total = lines.reduce((a, l) => a + l.qty * l.rate, 0)
+  const vatAmt = vat ? Math.round(total * vatPct) / 100 : 0
   const cogs = lines.reduce((a, l) => a + l.qty * (l.method === 'FIFO' ? l.fifo : l.avg), 0)
   const profit = total - cogs
   const post = async () => {
@@ -206,13 +177,14 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
     try {
       await api.invoices.create({
         customer: cust, rep: 'R. Fernando', date: new Date().toISOString().slice(0, 10),
-        total, paid: 0, due: total, items: lines.length, cost: 'Mixed', status: 'Unpaid', lines,
+        total: total + vatAmt, paid: 0, due: total + vatAmt, items: lines.length, cost: 'Mixed', status: 'Unpaid', lines,
+        vatApplied: vat,
       } as any)
-      setStep(0); setLines([]); refresh()
+      setStep(0); setLines([]); setVat(false); refresh()
     } finally { setSaving(false) }
   }
 
-  if (step === 2) return <InvoiceBuilder {...{ src, cust, setCust, lines, setLines, total, cogs, profit, post, back: () => setStep(0), customers, saving }} />
+  if (step === 2) return <InvoiceBuilder {...{ src, cust, setCust, lines, setLines, total, cogs, profit, post, back: () => setStep(0), customers, saving, vat, setVat, vatPct, vatAmt }} />
   const shown = rows
   return (
     <div>
