@@ -62,6 +62,7 @@ export const NAV: NavNode[] = [
     { id: 'ac/journal', label: 'Journal Entries', icon: 'doc' },
     { id: 'ac/ledger', label: 'General Ledger', icon: 'wallet' },
     { id: 'ac/tb', label: 'Trial Balance', icon: 'chart' },
+    { id: 'ac/posting', label: 'Posting Setup', icon: 'bolt' },
   ] },
   { id: 'reports', label: 'Reports', icon: 'chart' },
   { section: 'Administration', icon: 'shield', items: [

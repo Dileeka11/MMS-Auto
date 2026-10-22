@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\Item;
 use App\Models\Quotation;
 use App\Models\Receipt;
+use App\Services\Accounting\Posting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -101,6 +102,8 @@ class InvoiceController extends Controller
                 Quotation::where('code', $data['quotation'])->update(['status' => 'Converted']);
             }
 
+            Posting::invoice($inv);
+
             return response()->json($inv->load('lines'), 201);
         });
     }
@@ -130,8 +133,8 @@ class InvoiceController extends Controller
             $invoice->status = $invoice->due <= 0 ? 'Paid' : 'Partial';
             $invoice->save();
 
-            Receipt::create([
-                'code' => 'RCP-' . (6600 + Receipt::count() + 1),
+            $receipt = Receipt::create([
+                'code' => Receipt::nextCode(),
                 'customer' => $invoice->customer,
                 'date' => now()->toDateString(),
                 'amount' => $amount,
@@ -143,6 +146,7 @@ class InvoiceController extends Controller
                 'cheque_date' => $data['cheque_date'] ?? null,
                 'bank_acc' => $data['bank_acc'] ?? null,
             ]);
+            Posting::receipt($receipt);
 
             $cust = Customer::where('name', $invoice->customer)->first();
             if ($cust) {
@@ -157,16 +161,21 @@ class InvoiceController extends Controller
 
     public function approveDiscount(Invoice $invoice)
     {
-        $invoice->discount_status = 'approved';
-        // recalculate total and due based on discount
-        $totalBeforeDiscount = $invoice->lines()->sum(DB::raw('qty * rate'));
-        $supply = round($totalBeforeDiscount * (1 - ($invoice->discount_pct / 100)), 2);
-        // VAT is charged on the discounted value of supply, at the rate stored on the invoice
-        $invoice->vat_amount = $invoice->vat_applied ? round($supply * $invoice->vat_pct / 100, 2) : 0;
-        $invoice->total = round($supply + $invoice->vat_amount, 2);
-        $invoice->due = round(max(0, $invoice->total - $invoice->paid), 2);
-        $invoice->save();
-        return $invoice->load('lines');
+        return DB::transaction(function () use ($invoice) {
+            $invoice->discount_status = 'approved';
+            // recalculate total and due based on discount
+            $totalBeforeDiscount = $invoice->lines()->sum(DB::raw('qty * rate'));
+            $supply = round($totalBeforeDiscount * (1 - ($invoice->discount_pct / 100)), 2);
+            // VAT is charged on the discounted value of supply, at the rate stored on the invoice
+            $invoice->vat_amount = $invoice->vat_applied ? round($supply * $invoice->vat_pct / 100, 2) : 0;
+            $invoice->total = round($supply + $invoice->vat_amount, 2);
+            $invoice->due = round(max(0, $invoice->total - $invoice->paid), 2);
+            $invoice->save();
+            // The discounted total replaces the original posting.
+            Posting::invoice($invoice);
+
+            return $invoice->load('lines');
+        });
     }
 
     public function rejectDiscount(Invoice $invoice)
@@ -178,7 +187,10 @@ class InvoiceController extends Controller
 
     public function destroy(Invoice $invoice)
     {
-        $invoice->delete();
+        DB::transaction(function () use ($invoice) {
+            Posting::remove(Posting::INVOICE, $invoice->id);
+            $invoice->delete();
+        });
 
         return response()->noContent();
     }

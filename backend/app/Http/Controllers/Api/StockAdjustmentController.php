@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Item;
 use App\Models\StockAdjustment;
+use App\Services\Accounting\Posting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -37,6 +38,7 @@ class StockAdjustmentController extends Controller
                 'reason' => $data['reason'] ?? null,
                 'date' => now()->toDateString(),
                 'by' => $data['by'] ?? 'K. Bandara',
+                'unit_cost' => $item ? (float) $item->avg_cost : 0,
             ]);
             if ($item) {
                 $item->qty = max(0, $item->qty + ($data['type'] === 'Increase' ? $data['qty'] : -$data['qty']));
@@ -44,13 +46,18 @@ class StockAdjustmentController extends Controller
                 $item->save();
             }
 
+            Posting::stockAdjustment($adj);
+
             return response()->json($adj, 201);
         });
     }
 
     public function destroy(StockAdjustment $stockAdjustment)
     {
-        $stockAdjustment->delete();
+        DB::transaction(function () use ($stockAdjustment) {
+            Posting::remove(Posting::STOCK_ADJUSTMENT, $stockAdjustment->id);
+            $stockAdjustment->delete();
+        });
 
         return response()->noContent();
     }

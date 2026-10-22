@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 
 use App\Models\Account;
 use App\Models\AccountGroup;
+use App\Models\OpeningBalance;
+use App\Services\Accounting\Posting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -64,6 +66,13 @@ class AccountController extends Controller
         // A top-level account needs a group and gets a group-derived code.
         if (! empty($data['parent_id'])) {
             $parent = Account::findOrFail($data['parent_id']);
+            // A parent becomes a non-postable header — not allowed once it
+            // carries postings of its own or is an auto-posting account.
+            if ($blocker = $this->postingUse($parent)) {
+                return response()->json([
+                    'message' => "Cannot add a sub-account under {$parent->code} · {$parent->name}: it {$blocker}.",
+                ], 409);
+            }
             $groupId = $parent->group_id;
             $code = $this->nextChildCode($parent);
             $parentId = $parent->id;
@@ -101,9 +110,16 @@ class AccountController extends Controller
             'is_active' => ['nullable', 'boolean'],
         ]);
 
+        $active = $data['is_active'] ?? $account->is_active;
+        if (! $active && $account->is_active && in_array($account->id, Posting::roleAccountIds(), true)) {
+            return response()->json([
+                'message' => 'Cannot deactivate: this account is used for auto-posting. Change it in Accounting → Posting Setup first.',
+            ], 409);
+        }
+
         $account->update([
             'name' => $data['name'],
-            'is_active' => $data['is_active'] ?? $account->is_active,
+            'is_active' => $active,
         ]);
 
         return response()->json($account);
@@ -126,9 +142,29 @@ class AccountController extends Controller
             ], 409);
         }
 
+        if ($blocker = $this->postingUse($account)) {
+            return response()->json(['message' => "Cannot delete: this account {$blocker}."], 409);
+        }
+
         $account->delete();
 
         return response()->json(['message' => 'Deleted.']);
+    }
+
+    /** Why an account must stay a postable leaf, or null when nothing depends on it. */
+    private function postingUse(Account $account): ?string
+    {
+        if ($account->lines()->exists()) {
+            return 'already has journal postings';
+        }
+        if (OpeningBalance::where('account_id', $account->id)->exists()) {
+            return 'has an opening balance';
+        }
+        if (in_array($account->id, Posting::roleAccountIds(), true)) {
+            return 'is used for auto-posting (Accounting → Posting Setup)';
+        }
+
+        return null;
     }
 
     /**

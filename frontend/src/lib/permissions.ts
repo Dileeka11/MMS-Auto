@@ -57,6 +57,7 @@ export const ROUTE_MODULE: Record<string, string> = {
   'ac/journal-new': 'Accounting',
   'ac/ledger': 'Accounting',
   'ac/tb': 'Accounting',
+  'ac/posting': 'Accounting',
   'ad/reps': 'Sales Reps',
   'ad/users': 'User Management',
   'ad/perm': 'User Permission',

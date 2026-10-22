@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Receipt;
+use App\Services\Accounting\Posting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -29,7 +30,7 @@ class ReceiptController extends Controller
 
         return DB::transaction(function () use ($data) {
             $receipt = Receipt::create([
-                'code' => 'RCP-' . (6600 + Receipt::count() + 1),
+                'code' => Receipt::nextCode(),
                 'customer' => $data['customer'],
                 'date' => now()->toDateString(),
                 'amount' => $data['amount'],
@@ -40,6 +41,8 @@ class ReceiptController extends Controller
                 'cheque_bank_name' => $data['cheque_bank_name'] ?? null,
                 'cheque_date' => $data['cheque_date'] ?? null,
             ]);
+            Posting::receipt($receipt);
+
             // settle customer outstanding
             $cust = Customer::where('name', $data['customer'])->first();
             if ($cust) {
@@ -54,7 +57,10 @@ class ReceiptController extends Controller
 
     public function destroy(Receipt $receipt)
     {
-        $receipt->delete();
+        DB::transaction(function () use ($receipt) {
+            Posting::remove(Posting::RECEIPT, $receipt->id);
+            $receipt->delete();
+        });
 
         return response()->noContent();
     }

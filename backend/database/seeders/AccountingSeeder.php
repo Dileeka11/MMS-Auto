@@ -5,6 +5,8 @@ namespace Database\Seeders;
 use App\Models\Account;
 use App\Models\AccountCategory;
 use App\Models\AccountGroup;
+use App\Models\AccountMapping;
+use App\Services\Accounting\Posting;
 use Illuminate\Database\Seeder;
 
 /**
@@ -57,7 +59,9 @@ class AccountingSeeder extends Seeder
             ['code' => '210000', 'name' => 'Trade Payable',           'group' => '2100'],
             ['code' => '210100', 'name' => 'VAT Output (Payable)',    'group' => '2100'],
             ['code' => '410000', 'name' => 'Sales Revenue',           'group' => '4100'],
+            ['code' => '410100', 'name' => 'Sales Returns',           'group' => '4100'],
             ['code' => '510000', 'name' => 'Cost of Sales',           'group' => '5100'],
+            ['code' => '510100', 'name' => 'Stock Adjustment (Gain)/Loss', 'group' => '5100'],
             ['code' => '520000', 'name' => 'Cash Discount Given',     'group' => '5200'],
 
             // ── Stage-01 account master (exact codes from the spec) ──────────
@@ -100,6 +104,12 @@ class AccountingSeeder extends Seeder
                     'created_by' => 'system',
                 ],
             );
+        }
+
+        // 4. Auto-posting roles → their default accounts (Accounting → Posting Setup).
+        $accountIdByCode = Account::pluck('id', 'code');
+        foreach (Posting::ROLES as $key => $role) {
+            AccountMapping::firstOrCreate(['key' => $key], ['account_id' => $accountIdByCode[$role[1]] ?? null]);
         }
     }
 }

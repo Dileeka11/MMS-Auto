@@ -10,7 +10,7 @@ import { api } from '../api'
 import { userCan } from '../lib/permissions'
 import type {
   AccountCategory, AccountGroup, AccountRow, ChartCategory, FinancialYear, GeneralLedger,
-  JournalDraftLine, JournalEntry, OpeningBalanceAccount, OpeningBalancesResponse, TrialBalance,
+  JournalDraftLine, JournalEntry, OpeningBalanceAccount, OpeningBalancesResponse, PostingSetup, RebuildResult, TrialBalance,
 } from '../types'
 import type { ScreenProps } from './types'
 
@@ -467,34 +467,78 @@ export function AccountGroupsScreen(_: ScreenProps) {
 /* =====================================================================
    Journal Entries (list)
    ===================================================================== */
+/** Source filter options — keys match the backend's journal source_type values. */
+const SOURCES: [string, string][] = [
+  ['manual', 'Manual'], ['invoice', 'Sales Invoice'], ['receipt', 'Payment Receipt'], ['expense', 'Expense'],
+  ['grn', 'GRN'], ['sales_return', 'Sales Return'], ['stock_adjustment', 'Stock Adjustment'], ['opening_balance', 'Opening Balance'],
+]
+
+const SourceBadge = ({ e }: { e: JournalEntry }) => (
+  <Badge tone={e.sourceType ? 'blue' : 'neutral'}>{e.sourceLabel ?? 'Manual'}</Badge>
+)
+
 export function JournalEntriesScreen({ go, user }: ScreenProps) {
+  const notify = useNotify()
   const [entries, setEntries] = useState<JournalEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [source, setSource] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    api.accounting.journal.list()
-      .then((d) => setEntries(d as JournalEntry[]))
-      .catch(() => setEntries([]))
-      .finally(() => setLoading(false))
-  }, [])
+  async function load() {
+    setLoading(true)
+    try {
+      setEntries(await api.accounting.journal.list({
+        source: source || undefined, from: from || undefined, to: to || undefined, search: search.trim() || undefined,
+      }) as JournalEntry[])
+    } catch {
+      setEntries([])
+    } finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [source, from, to]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function handleDelete(e: JournalEntry) {
+    const ok = await notify.confirm({ title: `Delete ${docNo(e.id)}?`, msg: 'This manual voucher will be removed from the ledger.', danger: true, okText: 'Delete' })
+    if (!ok) return
+    try {
+      await api.accounting.journal.remove(e.id)
+      notify.success('Journal entry deleted')
+      await load()
+    } catch (err) {
+      notify.error('Delete failed', errMsg(err, 'Could not delete the entry.'))
+    }
+  }
+
+  const canDelete = userCan(user, 'Accounting', 'Delete')
   const entryTotal = (e: JournalEntry) => e.lines.reduce((sum, l) => sum + Number(l.debit), 0)
-  const cols = '130px 110px 1fr 140px'
+  const cols = '120px 100px 140px 1fr 130px'
 
   return (
-    <div style={{ maxWidth: 960 }}>
-      <PageHead crumbs="Accounting" title="Journal Entries" icon="doc" sub={`${entries.length} posted entries`}
+    <div style={{ maxWidth: 1080 }}>
+      <PageHead crumbs="Accounting" title="Journal Entries" icon="doc"
+        sub={<>{entries.length} entries{entries.length >= 500 ? ' (latest 500 — narrow the filters to see more)' : ''} · invoices, receipts, expenses, GRNs, returns and stock adjustments post here automatically</>}
         actions={userCan(user, 'Accounting', 'Create') && <Btn variant="primary" icon="plus" onClick={() => go('ac/journal-new')}>New Entry</Btn>} />
 
       <Card pad={0} style={{ overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, padding: '14px 18px', borderBottom: '1px solid var(--line)' }}>
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()}
+            placeholder="Search reference / memo, Enter…" />
+          <Select value={source} onChange={(e) => setSource(e.target.value)}>
+            <option value="">All sources</option>
+            {SOURCES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </Select>
+          <DateInput value={from} onChange={setFrom} />
+          <DateInput value={to} onChange={setTo} />
+        </div>
         {loading && <Loading />}
-        {!loading && entries.length === 0 && <Empty>No journal entries yet — post your first one.</Empty>}
+        {!loading && entries.length === 0 && <Empty>No journal entries match.</Empty>}
         {!loading && entries.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
-            <div style={{ minWidth: 560 }}>
+            <div style={{ minWidth: 680 }}>
               <div style={{ display: 'grid', gridTemplateColumns: cols, columnGap: 12, padding: '10px 20px', borderBottom: '1px solid var(--line)', ...thStyle }}>
-                <div>Doc No</div><div>Date</div><div>Reference · Memo</div><div style={{ textAlign: 'right' }}>Amount</div>
+                <div>Doc No</div><div>Date</div><div>Source</div><div>Reference · Memo</div><div style={{ textAlign: 'right' }}>Amount</div>
               </div>
               {entries.map((e) => {
                 const open = expanded === e.id
@@ -504,6 +548,7 @@ export function JournalEntriesScreen({ go, user }: ScreenProps) {
                       style={{ display: 'grid', gridTemplateColumns: cols, columnGap: 12, padding: '12px 20px', fontSize: 13, alignItems: 'center', cursor: 'pointer', background: open ? 'var(--bg-2)' : 'transparent' }}>
                       <span className="mono" style={{ fontWeight: 600, color: 'var(--ac-bright)' }}>{docNo(e.id)}</span>
                       <span className="mono">{e.entryDate}</span>
+                      <span><SourceBadge e={e} /></span>
                       <span className="t-2" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {e.reference ? `${e.reference} · ` : ''}{e.memo ?? '—'}
                       </span>
@@ -526,11 +571,15 @@ export function JournalEntriesScreen({ go, user }: ScreenProps) {
                             <div className="mono" style={{ textAlign: 'right' }}>{Number(l.credit) ? money(l.credit) : '—'}</div>
                           </div>
                         ))}
-                        {(e.currency || e.postingDate) && (
-                          <div className="t-2" style={{ fontSize: 12, marginTop: 8 }}>
+                        <div className="row between wrap gap-2" style={{ marginTop: 8 }}>
+                          <div className="t-2" style={{ fontSize: 12 }}>
                             Posting date: {e.postingDate ?? e.entryDate} · Currency: {e.currency}
+                            {e.sourceType && <> · Posted automatically — change the {e.sourceLabel} to change this entry</>}
                           </div>
-                        )}
+                          {!e.sourceType && canDelete && (
+                            <Btn size="sm" variant="plain" icon="trash" onClick={() => handleDelete(e)} style={{ color: 'var(--bad)' }}>Delete voucher</Btn>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -749,7 +798,7 @@ export function GeneralLedgerScreen(_: ScreenProps) {
             <div className="t-2" style={{ fontSize: 13 }}>Opening balance: <b className="mono" style={{ color: 'var(--tx-0)' }}>{money(ledger.openingBalance)}</b></div>
           </div>
           <Table cols={[
-            { label: 'Doc No', w: 110 }, { label: 'Date', w: 110 }, { label: 'Memo' },
+            { label: 'Doc No', w: 110 }, { label: 'Date', w: 110 }, { label: 'Source', w: 140 }, { label: 'Reference · Memo' },
             { label: 'Debit', align: 'right', w: 130 }, { label: 'Credit', align: 'right', w: 130 }, { label: 'Balance', align: 'right', w: 140 },
           ]}
             rows={[
@@ -757,11 +806,12 @@ export function GeneralLedgerScreen(_: ScreenProps) {
               { kind: 'total' as const },
             ]}
             render={(r) => {
-              if (r.kind === 'empty') return <td colSpan={6} style={{ padding: '16px 14px', fontSize: 13, color: 'var(--tx-3)' }}>No postings in this range.</td>
+              if (r.kind === 'empty') return <td colSpan={7} style={{ padding: '16px 14px', fontSize: 13, color: 'var(--tx-3)' }}>No postings in this range.</td>
               if (r.kind === 'total') return (
                 <>
                   <Td style={totalCell} />
                   <Td c="var(--tx-0)" style={totalCell}>Totals</Td>
+                  <Td style={totalCell} />
                   <Td style={totalCell} />
                   <Td align="right" mono c="var(--tx-0)" style={totalCell}>{money(ledger.totalDebit)}</Td>
                   <Td align="right" mono c="var(--tx-0)" style={totalCell}>{money(ledger.totalCredit)}</Td>
@@ -773,7 +823,8 @@ export function GeneralLedgerScreen(_: ScreenProps) {
                 <>
                   <Td mono style={{ fontSize: 12 }}>{l.docNo}</Td>
                   <Td mono>{l.date}</Td>
-                  <Td c="var(--tx-2)" style={{ whiteSpace: 'normal' }}>{l.memo ?? '—'}</Td>
+                  <Td c="var(--tx-2)">{l.source}</Td>
+                  <Td c="var(--tx-2)" style={{ whiteSpace: 'normal' }}>{l.reference ? `${l.reference} · ` : ''}{l.memo ?? '—'}</Td>
                   <Td align="right" mono>{l.debit ? money(l.debit) : '—'}</Td>
                   <Td align="right" mono>{l.credit ? money(l.credit) : '—'}</Td>
                   <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{money(l.balance)}</Td>
@@ -876,14 +927,21 @@ function OpeningBalanceScreen({ year, onBack }: { year: FinancialYear; onBack: (
   const setField = (accountId: number, field: 'debit' | 'credit', value: string) =>
     setEdits((prev) => ({ ...prev, [accountId]: { ...prev[accountId], [field]: value } }))
 
+  const totals = useMemo(() => {
+    let debit = 0
+    let credit = 0
+    Object.values(edits).forEach((v) => { debit += parseFloat(v.debit) || 0; credit += parseFloat(v.credit) || 0 })
+    return { debit, credit, diff: Math.round((debit - credit) * 100) / 100 }
+  }, [edits])
+
   async function save() {
     setSaving(true)
     try {
       const balances = Object.entries(edits).map(([id, v]) => ({ accountId: Number(id), debit: v.debit || '0', credit: v.credit || '0' }))
       await api.accounting.years.saveOpeningBalances(year.id, balances)
-      notify.success('Opening balances saved.')
-    } catch {
-      notify.error('Could not save opening balances.')
+      notify.success('Opening balances saved and posted to the ledger.')
+    } catch (e) {
+      notify.error('Could not save opening balances', errMsg(e, 'Please check the balances.'))
     } finally { setSaving(false) }
   }
 
@@ -920,9 +978,12 @@ function OpeningBalanceScreen({ year, onBack }: { year: FinancialYear; onBack: (
                 return (
                   <div key={acc.accountId} style={{ display: 'grid', gridTemplateColumns: cols, columnGap: 12, padding: '8px 20px', alignItems: 'center', borderBottom: '1px solid var(--line-soft)', fontSize: 13.5 }}>
                     <div className="mono t-2" style={{ fontSize: 13 }}>{acc.accountCode}</div>
-                    <div style={{ paddingLeft: acc.parentId ? 16 : 0, color: 'var(--tx-0)' }}>{acc.accountName}</div>
-                    <Input type="number" min="0" step="0.01" value={e.debit} onChange={(ev) => setField(acc.accountId, 'debit', ev.target.value)} style={{ textAlign: 'right' }} />
-                    <Input type="number" min="0" step="0.01" value={e.credit} onChange={(ev) => setField(acc.accountId, 'credit', ev.target.value)} style={{ textAlign: 'right' }} />
+                    <div style={{ paddingLeft: acc.parentId ? 16 : 0, color: 'var(--tx-0)', fontWeight: acc.isHeader ? 700 : 400 }}>
+                      {acc.accountName}
+                      {acc.isHeader && <span className="t-2" style={{ marginLeft: 8, fontSize: 11, fontWeight: 600 }}>· header — enter on sub-accounts</span>}
+                    </div>
+                    <Input type="number" min="0" step="0.01" value={e.debit} disabled={acc.isHeader} onChange={(ev) => setField(acc.accountId, 'debit', ev.target.value)} style={{ textAlign: 'right' }} />
+                    <Input type="number" min="0" step="0.01" value={e.credit} disabled={acc.isHeader} onChange={(ev) => setField(acc.accountId, 'credit', ev.target.value)} style={{ textAlign: 'right' }} />
                   </div>
                 )
               })}
@@ -931,10 +992,21 @@ function OpeningBalanceScreen({ year, onBack }: { year: FinancialYear; onBack: (
         </Card>
       ))}
 
-      <div className="row gap-2" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
-        <Btn variant="plain" onClick={onBack}>Cancel</Btn>
-        <Btn variant="primary" icon="check" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Opening Balances'}</Btn>
-      </div>
+      <Card style={{ position: 'sticky', bottom: 0, marginTop: 8 }}>
+        <div className="row between wrap gap-4">
+          <div className="row gap-6 wrap" style={{ fontSize: 13.5 }}>
+            <div><span className="t-2">Debit </span><b className="mono">{money(totals.debit)}</b></div>
+            <div><span className="t-2">Credit </span><b className="mono">{money(totals.credit)}</b></div>
+            <div style={{ fontWeight: 700, color: totals.diff === 0 ? 'var(--ok)' : 'var(--bad)' }}>
+              {totals.diff === 0 ? '✓ Balanced' : `Difference ${money(Math.abs(totals.diff))}`}
+            </div>
+          </div>
+          <div className="row gap-2">
+            <Btn variant="plain" onClick={onBack}>Cancel</Btn>
+            <Btn variant="primary" icon="check" onClick={save} disabled={saving || totals.diff !== 0}>{saving ? 'Saving…' : 'Save Opening Balances'}</Btn>
+          </div>
+        </div>
+      </Card>
     </div>
   )
 }
@@ -1067,6 +1139,146 @@ export function FinancialYearScreen(_: ScreenProps) {
           {formError && <ErrBox>{formError}</ErrBox>}
         </div>
       </Modal>
+    </div>
+  )
+}
+
+/* =====================================================================
+   Posting Setup — which ledger account each auto-posting role uses
+   (sales invoices, receipts, expenses, GRNs, returns, stock adjustments
+   post journals automatically), plus a full re-post of every document.
+   ===================================================================== */
+export function PostingSetupScreen({ user }: ScreenProps) {
+  const notify = useNotify()
+  const [setup, setSetup] = useState<PostingSetup | null>(null)
+  const [accounts, setAccounts] = useState<AccountRow[]>([])
+  const [edits, setEdits] = useState<Record<string, number>>({})
+  const [saving, setSaving] = useState(false)
+  const [rebuilding, setRebuilding] = useState(false)
+  const [result, setResult] = useState<RebuildResult | null>(null)
+  const isAdmin = user?.role === 'admin'
+
+  async function load() {
+    const [s, a] = await Promise.all([api.accounting.posting.setup(), api.accounting.accounts.list()])
+    setSetup(s as PostingSetup)
+    setAccounts((a as AccountRow[]).filter((x) => x.isActive && x.isPostable))
+    setEdits({})
+  }
+  useEffect(() => { load().catch(() => notify.error('Could not load the posting setup.')) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const accountGroups = useMemo(() => groupAccounts(accounts), [accounts])
+  const changed = Object.keys(edits).length > 0
+
+  async function save() {
+    setSaving(true)
+    try {
+      setSetup(await api.accounting.posting.save(Object.entries(edits).map(([key, accountId]) => ({ key, accountId }))) as PostingSetup)
+      setEdits({})
+      notify.success('Posting setup saved', 'New documents post to these accounts. Re-post to move existing ones.')
+    } catch (e) {
+      notify.error('Could not save', errMsg(e, 'Could not save the posting setup.'))
+    } finally { setSaving(false) }
+  }
+
+  async function rebuild() {
+    const ok = await notify.confirm({
+      title: 'Re-post all documents?',
+      msg: 'Every invoice, receipt, expense, GRN, approved return, stock adjustment and opening balance is posted again with the current setup. Manual journal entries are not touched.',
+      okText: 'Re-post',
+    })
+    if (!ok) return
+    setRebuilding(true)
+    try {
+      const r = await api.accounting.posting.rebuild() as RebuildResult
+      setResult(r)
+      if (r.errors.length) notify.error('Re-post finished with errors', `${r.errors.length} document(s) could not be posted.`)
+      else notify.success('All documents re-posted')
+      await load()
+    } catch (e) {
+      notify.error('Re-post failed', errMsg(e, 'Could not re-post the documents.'))
+    } finally { setRebuilding(false) }
+  }
+
+  if (!setup) return <Loading />
+  const problems = setup.roles.filter((r) => r.problem && !edits[r.key]).length
+
+  return (
+    <div style={{ maxWidth: 1080 }}>
+      <PageHead crumbs="Accounting" title="Posting Setup" icon="bolt"
+        sub="Sales, receipts, expenses, GRNs, returns and stock adjustments post journal entries automatically — choose the ledger account for each role."
+        actions={isAdmin && <Btn variant="ghost" icon="bolt" onClick={rebuild} disabled={rebuilding || changed}>{rebuilding ? 'Re-posting…' : 'Re-post all documents'}</Btn>} />
+
+      {problems > 0 && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--bad-dim)', color: 'var(--bad)', border: '1px solid var(--bad)', borderRadius: 'var(--r-s)', fontSize: 13 }}>
+          {problems} posting role{problems > 1 ? 's need' : ' needs'} an account — documents that use {problems > 1 ? 'them' : 'it'} will be refused until fixed.
+        </div>
+      )}
+
+      <Card pad={0} style={{ overflow: 'hidden', marginBottom: 16 }}>
+        <Table cols={[{ label: 'Role', w: 230 }, { label: 'Used for' }, { label: 'Ledger account', w: 330 }]}
+          rows={setup.roles}
+          render={(r) => (
+            <>
+              <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.label}</Td>
+              <Td c="var(--tx-2)" style={{ whiteSpace: 'normal', fontSize: 12.5 }}>
+                {r.usage}
+                {r.problem && !edits[r.key] && <div style={{ color: 'var(--bad)', marginTop: 4 }}>{r.problem}</div>}
+              </Td>
+              <Td>
+                <Select value={edits[r.key] ?? r.accountId ?? ''} disabled={!isAdmin}
+                  onChange={(e) => {
+                    const v = Number(e.target.value)
+                    setEdits((prev) => {
+                      const next = { ...prev }
+                      if (!v || v === r.accountId) delete next[r.key]; else next[r.key] = v
+                      return next
+                    })
+                  }}>
+                  {!r.accountId && <option value="">Select account…</option>}
+                  {r.accountId && !accounts.some((a) => a.id === r.accountId) && (
+                    <option value={r.accountId}>{r.accountCode} · {r.accountName} (not postable)</option>
+                  )}
+                  {accountGroups.map((grp) => (
+                    <optgroup key={grp.label} label={grp.label}>
+                      {grp.accounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
+                    </optgroup>
+                  ))}
+                </Select>
+              </Td>
+            </>
+          )} />
+        {isAdmin && (
+          <div className="row gap-2" style={{ justifyContent: 'flex-end', padding: '12px 20px', borderTop: '1px solid var(--line)' }}>
+            <Btn variant="plain" onClick={() => setEdits({})} disabled={!changed}>Reset</Btn>
+            <Btn variant="primary" icon="check" onClick={save} disabled={saving || !changed}>{saving ? 'Saving…' : 'Save Setup'}</Btn>
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <div className="eyebrow" style={{ marginBottom: 10 }}>Journal entries by source</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+          {setup.posted.map((p) => (
+            <div key={p.type} style={{ padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 'var(--r-s)' }}>
+              <div className="t-2" style={{ fontSize: 12 }}>{p.label}</div>
+              <div className="mono" style={{ fontSize: 18, fontWeight: 700, color: 'var(--tx-0)' }}>{p.entries}</div>
+            </div>
+          ))}
+        </div>
+        {result && (
+          <div style={{ marginTop: 14, fontSize: 13 }}>
+            <div className="t-2">
+              Last re-post: {Object.values(result.posted).reduce((s, n) => s + n, 0)} documents posted
+              {result.removed > 0 && <> · {result.removed} journal(s) of deleted documents removed</>}
+            </div>
+            {result.errors.length > 0 && (
+              <ul style={{ margin: '8px 0 0', paddingLeft: 18, color: 'var(--bad)' }}>
+                {result.errors.map((err, i) => <li key={i}>{err}</li>)}
+              </ul>
+            )}
+          </div>
+        )}
+      </Card>
     </div>
   )
 }

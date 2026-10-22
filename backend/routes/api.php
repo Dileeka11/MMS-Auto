@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AccountCategoryController;
 use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AccountGroupController;
 use App\Http\Controllers\Api\AccountingStatsController;
+use App\Http\Controllers\Api\AccountMappingController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CompanyProfileController;
 use App\Http\Controllers\Api\CustomerController;
@@ -163,6 +164,12 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
         Route::get('journal-entries', [JournalEntryController::class, 'index']);
         Route::get('journal-entries/{journalEntry}', [JournalEntryController::class, 'show']);
         Route::post('journal-entries', [JournalEntryController::class, 'store']);
+        Route::delete('journal-entries/{journalEntry}', [JournalEntryController::class, 'destroy']);
+
+        // Auto-posting setup (role → ledger account) and full re-post.
+        Route::get('posting-accounts', [AccountMappingController::class, 'index']);
+        Route::put('posting-accounts', [AccountMappingController::class, 'update'])->middleware('admin');
+        Route::post('posting/rebuild', [AccountMappingController::class, 'rebuild'])->middleware('admin');
 
         Route::get('general-ledger', [GeneralLedgerController::class, 'index']);
         Route::get('trial-balance', [TrialBalanceController::class, 'index']);

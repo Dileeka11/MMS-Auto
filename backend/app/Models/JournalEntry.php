@@ -29,6 +29,14 @@ class JournalEntry extends Model
         'posting_date' => 'date:Y-m-d',
     ];
 
+    protected $appends = ['source_label'];
+
+    /** "Sales Invoice", "GRN", … for auto-posted entries; "Manual" otherwise. */
+    public function getSourceLabelAttribute(): string
+    {
+        return \App\Services\Accounting\Posting::SOURCE_LABELS[$this->source_type] ?? 'Manual';
+    }
+
     /** Debit/credit legs of this entry. */
     public function lines()
     {

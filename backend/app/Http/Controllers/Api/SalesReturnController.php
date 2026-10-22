@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SalesReturn;
+use App\Services\Accounting\Posting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class SalesReturnController extends Controller
 {
@@ -34,22 +36,32 @@ class SalesReturnController extends Controller
     /** Admin approves — only here does stock get added back. */
     public function approve(SalesReturn $salesReturn)
     {
-        // (stock restock would happen here against the return lines)
-        $salesReturn->update(['status' => 'Approved']);
+        return DB::transaction(function () use ($salesReturn) {
+            // (stock restock would happen here against the return lines)
+            $salesReturn->update(['status' => 'Approved']);
+            Posting::salesReturn($salesReturn);
 
-        return $salesReturn;
+            return $salesReturn;
+        });
     }
 
     public function reject(SalesReturn $salesReturn)
     {
-        $salesReturn->update(['status' => 'Rejected']);
+        return DB::transaction(function () use ($salesReturn) {
+            $salesReturn->update(['status' => 'Rejected']);
+            // Unposts a return that had been approved earlier.
+            Posting::salesReturn($salesReturn);
 
-        return $salesReturn;
+            return $salesReturn;
+        });
     }
 
     public function destroy(SalesReturn $salesReturn)
     {
-        $salesReturn->delete();
+        DB::transaction(function () use ($salesReturn) {
+            Posting::remove(Posting::SALES_RETURN, $salesReturn->id);
+            $salesReturn->delete();
+        });
 
         return response()->noContent();
     }

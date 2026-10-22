@@ -10,6 +10,7 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderLine;
 use App\Models\Shipment;
 use App\Models\ShipmentLine;
+use App\Services\Accounting\Posting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -158,6 +159,9 @@ class GrnController extends Controller
 
             $grn->update(['items' => $linesPosted, 'total' => round($total, 2)]);
 
+            // Stock moves when the GRN is posted (not on approval), so the books do too.
+            Posting::grn($grn);
+
             // Recompute PO status from balance
             $totalBalance = $po->lines()->sum('balance_qty');
             $totalReceived = $po->lines()->sum('received_qty');
@@ -179,7 +183,10 @@ class GrnController extends Controller
 
     public function destroy(Grn $grn)
     {
-        $grn->delete();
+        DB::transaction(function () use ($grn) {
+            Posting::remove(Posting::GRN, $grn->id);
+            $grn->delete();
+        });
 
         return response()->noContent();
     }

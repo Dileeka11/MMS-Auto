@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 
 use App\Models\Account;
+use App\Services\Accounting\Posting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -36,24 +37,28 @@ class GeneralLedgerController extends Controller
         $from = $data['from'] ?? null;
         $to = $data['to'] ?? null;
 
+        // A header account's ledger is the combined ledger of its whole sub-tree.
+        $ids = $this->subtree($account->id);
+
         // Opening balance = net (debit - credit) of everything before `from`.
         $opening = 0.0;
         if ($from) {
             $opening = (float) DB::table('journal_lines as l')
                 ->join('journal_entries as e', 'e.id', '=', 'l.entry_id')
-                ->where('l.account_id', $account->id)
+                ->whereIn('l.account_id', $ids)
                 ->where('e.entry_date', '<', $from)
                 ->sum(DB::raw('l.debit - l.credit'));
         }
 
         $rows = DB::table('journal_lines as l')
             ->join('journal_entries as e', 'e.id', '=', 'l.entry_id')
-            ->where('l.account_id', $account->id)
+            ->whereIn('l.account_id', $ids)
             ->when($from, fn ($q) => $q->where('e.entry_date', '>=', $from))
             ->when($to, fn ($q) => $q->where('e.entry_date', '<=', $to))
             ->orderBy('e.entry_date')
             ->orderBy('e.id')
-            ->get(['e.id as entry_id', 'e.entry_date', 'e.reference', 'l.debit', 'l.credit', 'l.memo']);
+            ->orderBy('l.id')
+            ->get(['e.id as entry_id', 'e.entry_date', 'e.reference', 'e.source_type', 'e.memo as entry_memo', 'l.debit', 'l.credit', 'l.memo']);
 
         $balance = $opening;
         $totalDebit = 0.0;
@@ -70,7 +75,8 @@ class GeneralLedgerController extends Controller
                 'doc_no' => 'JE-' . str_pad((string) $r->entry_id, 6, '0', STR_PAD_LEFT),
                 'date' => $r->entry_date,
                 'reference' => $r->reference,
-                'memo' => $r->memo,
+                'source' => Posting::SOURCE_LABELS[$r->source_type] ?? 'Manual',
+                'memo' => $r->memo ?: $r->entry_memo,
                 'debit' => round($debit, 2),
                 'credit' => round($credit, 2),
                 'balance' => round($balance, 2),
@@ -85,5 +91,18 @@ class GeneralLedgerController extends Controller
             'total_credit' => round($totalCredit, 2),
             'closing_balance' => round($balance, 2),
         ]);
+    }
+
+    /** The account id plus every descendant id. */
+    private function subtree(int $id): array
+    {
+        $ids = [$id];
+        $frontier = [$id];
+        while ($frontier) {
+            $frontier = Account::whereIn('parent_id', $frontier)->pluck('id')->all();
+            $ids = array_merge($ids, $frontier);
+        }
+
+        return $ids;
     }
 }

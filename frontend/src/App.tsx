@@ -44,6 +44,7 @@ const JournalEntriesScreen = named(() => import('./screens/Accounting'), 'Journa
 const ManualJournalScreen = named(() => import('./screens/Accounting'), 'ManualJournalScreen')
 const GeneralLedgerScreen = named(() => import('./screens/Accounting'), 'GeneralLedgerScreen')
 const TrialBalanceScreen = named(() => import('./screens/Accounting'), 'TrialBalanceScreen')
+const PostingSetupScreen = named(() => import('./screens/Accounting'), 'PostingSetupScreen')
 const UsersScreen = named(() => import('./screens/Admin'), 'UsersScreen')
 const PermScreen = named(() => import('./screens/Admin'), 'PermScreen')
 const CompanyScreen = named(() => import('./screens/Admin'), 'CompanyScreen')
@@ -89,6 +90,7 @@ const SCREENS: Record<string, ScreenComp> = {
   'ac/journal-new': ManualJournalScreen,
   'ac/ledger': GeneralLedgerScreen,
   'ac/tb': TrialBalanceScreen,
+  'ac/posting': PostingSetupScreen,
   reports: ReportsScreen,
   'ad/reps': RepsScreen,
   'ad/users': UsersScreen,

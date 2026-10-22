@@ -257,8 +257,38 @@ export interface JournalEntry {
   currency: string
   branch: string | null
   memo: string | null
+  /** ERP document kind for auto-posted entries (invoice, receipt, grn, …); null = manual. */
+  sourceType: string | null
+  sourceId: number | null
+  /** "Sales Invoice", "GRN", … or "Manual". */
+  sourceLabel: string
   createdAt: string
   lines: JournalLine[]
+}
+
+/** One auto-posting role on the Posting Setup screen. */
+export interface PostingRole {
+  key: string
+  label: string
+  usage: string
+  defaultCode: string
+  accountId: number | null
+  accountCode: string | null
+  accountName: string | null
+  isDefault: boolean
+  /** Why documents using this role can't be posted right now; null = OK. */
+  problem: string | null
+}
+
+export interface PostingSetup {
+  roles: PostingRole[]
+  posted: { type: string; label: string; entries: number }[]
+}
+
+export interface RebuildResult {
+  posted: Record<string, number>
+  removed: number
+  errors: string[]
 }
 
 export interface FinancialYear {
@@ -279,6 +309,9 @@ export interface OpeningBalanceAccount {
   groupName: string | null
   categoryName: string | null
   parentId: number | null
+  /** Header accounts carry no balance of their own. */
+  isHeader: boolean
+  normalBalance: NormalBalance | null
   financialYearId: number
   debit: string
   credit: string
@@ -302,6 +335,8 @@ export interface LedgerLine {
   docNo: string
   date: string
   reference: string | null
+  /** "Sales Invoice", "Manual", … */
+  source: string
   memo: string | null
   debit: number
   credit: number

@@ -205,9 +205,17 @@ export const api = {
       remove: (id: number) => http.delete(`/accounting/accounts/${id}`).then((r) => r.data),
     },
     journal: {
-      list: () => http.get('/accounting/journal-entries').then((r) => camelize(r.data) as any[]),
+      list: (params: { from?: string; to?: string; source?: string; search?: string } = {}) =>
+        http.get('/accounting/journal-entries', { params }).then((r) => camelize(r.data) as any[]),
       get: (id: number) => http.get(`/accounting/journal-entries/${id}`).then((r) => camelize(r.data)),
       create: (body: any) => http.post('/accounting/journal-entries', snakeize(body)).then((r) => camelize(r.data)),
+      remove: (id: number) => http.delete(`/accounting/journal-entries/${id}`).then((r) => r.data),
+    },
+    posting: {
+      setup: () => http.get('/accounting/posting-accounts').then((r) => camelize(r.data)),
+      save: (mappings: { key: string; accountId: number }[]) =>
+        http.put('/accounting/posting-accounts', snakeize({ mappings })).then((r) => camelize(r.data)),
+      rebuild: () => http.post('/accounting/posting/rebuild', null, { timeout: 300000 }).then((r) => camelize(r.data)),
     },
     ledger: (params: { accountId: number; from?: string; to?: string }) =>
       http.get('/accounting/general-ledger', { params: snakeize(params) }).then((r) => camelize(r.data)),

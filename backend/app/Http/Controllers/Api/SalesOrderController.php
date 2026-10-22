@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\Item;
 use App\Models\SalesOrder;
 use App\Models\SalesRep;
+use App\Services\Accounting\Posting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -160,6 +161,8 @@ class SalesOrderController extends Controller
                     $item->save();
                 }
             }
+
+            Posting::invoice($inv);
 
             $salesOrder->update([
                 'status' => 'invoiced',

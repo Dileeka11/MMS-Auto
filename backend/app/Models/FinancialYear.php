@@ -21,6 +21,15 @@ class FinancialYear extends Model
         'is_active'  => 'boolean',
     ];
 
+    /** The year whose date range contains $date (the active one wins on overlap). */
+    public static function forDate(string $date): ?self
+    {
+        return static::where('start_date', '<=', $date)
+            ->where('end_date', '>=', $date)
+            ->orderByDesc('is_active')
+            ->first();
+    }
+
     /** Opening balances recorded for this financial year. */
     public function openingBalances()
     {
