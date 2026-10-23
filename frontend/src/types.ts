@@ -156,7 +156,11 @@ export interface SalesOrder {
   lines?: Array<{ id?: number; code?: string; name: string; qty: number; rate: number; method?: string }>
 }
 export interface SalesReturn {
-  id: string; invoice: string; customer: string; rep: string; date: string; amount: number; items: number; reason: string; status: string; raisedBy: string
+  id: string; code?: string; invoice: string; customer: string; rep: string; date: string; amount: number; items: number; reason: string; status: string; raisedBy: string
+  vatAmount?: number // included in amount
+  restocked?: boolean
+  /** Returned invoice lines; empty for older amount-only returns. */
+  lines?: Array<{ id: number; invoiceLineId: number | null; code?: string; name: string; qty: number; rate: number }>
 }
 export interface Receipt {
   id: string; customer: string; date: string; amount: number; mode: string; against: string
@@ -231,7 +235,30 @@ export interface AccountRow {
   hasChildren: boolean
   /** True when the account is a leaf and may be posted to in journal entries. */
   isPostable: boolean
+  /** A cash / bank account the Cash Book runs on. */
+  isCashbook: boolean
 }
+
+/* ---------- Cash Book ---------- */
+export interface CashBookAccount { id: number; code: string; name: string; isActive: boolean; isPostable: boolean; balance: number }
+
+export interface CashBookLine {
+  entryId: number; date: string; reference: string | null
+  source: string; sourceType: string | null; sourceId: number | null
+  particulars: string | null; detail: string | null; counterAccounts: string
+  receipt: number; payment: number; balance: number
+}
+
+export interface CashBook {
+  account: { id: number; code: string; name: string }
+  from: string | null; to: string | null
+  openingBalance: number; lines: CashBookLine[]
+  totalReceipts: number; totalPayments: number; closingBalance: number
+}
+
+export type CashVoucherType = 'receipt' | 'payment' | 'transfer'
+
+export interface SupplierBalance { name: string; received: number; paid: number; balance: number }
 
 export interface JournalLine {
   id?: number
@@ -319,7 +346,28 @@ export interface OpeningBalanceAccount {
 
 export interface OpeningBalancesResponse {
   financialYear: FinancialYear
+  /** True when earlier years exist: balances are carried forward and read-only. */
+  carriedForward: boolean
   accounts: OpeningBalanceAccount[]
+}
+
+/** Financial statements: category → group → account amounts (natural side). */
+export interface StatementAccount { id: number | null; code: string; name: string; amount: number }
+export interface StatementGroup { code: string; name: string; accounts: StatementAccount[]; total: number }
+export interface StatementSection {
+  categoryCode: string; categoryName: string; normalBalance: NormalBalance; groups: StatementGroup[]; total: number
+}
+
+export interface ProfitLoss {
+  from: string | null; to: string | null
+  sections: StatementSection[]
+  totalIncome: number; totalExpenses: number; netProfit: number
+}
+
+export interface BalanceSheet {
+  asOf: string; financialYear: string | null
+  sections: StatementSection[]
+  totalAssets: number; totalLiabilities: number; totalEquity: number; balanced: boolean
 }
 
 /** One editable row in the Manual Journal Entry grid. */

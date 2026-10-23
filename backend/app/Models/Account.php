@@ -15,6 +15,7 @@ class Account extends Model
         'name',
         'is_active',
         'is_default',
+        'is_cashbook',
         'created_by',
     ];
 
@@ -23,6 +24,7 @@ class Account extends Model
         'parent_id' => 'integer',
         'is_active' => 'boolean',
         'is_default' => 'boolean',
+        'is_cashbook' => 'boolean',
     ];
 
     /** Parent group. */

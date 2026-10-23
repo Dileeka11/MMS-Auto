@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\FinancialYear;
 use App\Models\OpeningBalance;
+use App\Services\Accounting\Ledger;
 use App\Services\Accounting\Posting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -28,13 +29,24 @@ class OpeningBalanceController extends Controller
             ->orderBy('code')
             ->get(['id', 'code', 'name', 'group_id', 'parent_id', 'is_active']);
 
+        // A year with earlier ledger history inherits its balances (read-only);
+        // only the first year takes hand-entered opening balances.
+        $start = $financialYear->start_date->toDateString();
+        $carried = Ledger::hasHistoryBefore($start);
+        $carriedNet = $carried ? Ledger::carriedForward($start) : [];
+
         // Index the existing opening balances for this year.
         $balances = OpeningBalance::where('financial_year_id', $financialYear->id)
             ->get()
             ->keyBy('account_id');
 
-        $result = $accounts->map(function (Account $account) use ($balances, $financialYear) {
-            $ob = $balances->get($account->id);
+        $result = $accounts->map(function (Account $account) use ($balances, $financialYear, $carried, $carriedNet) {
+            if ($carried) {
+                $net = $carriedNet[$account->id] ?? 0;
+                $ob = (object) ['debit' => number_format(max(0, $net), 2, '.', ''), 'credit' => number_format(max(0, -$net), 2, '.', '')];
+            } else {
+                $ob = $balances->get($account->id);
+            }
             return [
                 'account_id'       => $account->id,
                 'account_code'     => $account->code,
@@ -52,8 +64,9 @@ class OpeningBalanceController extends Controller
         });
 
         return response()->json([
-            'financial_year' => $financialYear,
-            'accounts'       => $result,
+            'financial_year'  => $financialYear,
+            'carried_forward' => $carried,
+            'accounts'        => $result,
         ]);
     }
 
@@ -72,6 +85,12 @@ class OpeningBalanceController extends Controller
             'balances.*.debit'       => ['nullable', 'numeric', 'min:0'],
             'balances.*.credit'      => ['nullable', 'numeric', 'min:0'],
         ]);
+
+        if (Ledger::hasHistoryBefore($financialYear->start_date->toDateString())) {
+            throw ValidationException::withMessages([
+                'balances' => "{$financialYear->year_name} carries its balances forward from earlier entries — opening balances can only be entered for the first year.",
+            ]);
+        }
 
         $accounts = Account::whereIn('id', collect($request->balances)->pluck('account_id'))
             ->withCount('children')->get()->keyBy('id');

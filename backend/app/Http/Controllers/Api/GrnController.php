@@ -79,7 +79,7 @@ class GrnController extends Controller
             }
 
             $grn = Grn::create([
-                'code' => 'GRN-' . (7700 + Grn::count() + 1),
+                'code' => Grn::nextCode(),
                 'po' => $po->code,
                 'shipment_code' => $shipment->code,
                 'shipment_id' => $shipment->id,
@@ -181,11 +181,56 @@ class GrnController extends Controller
         });
     }
 
+    /**
+     * Delete a GRN and undo what posting it did: the received stock comes back
+     * out (re-weighting the avg cost), the PO lines are owed again, PO and
+     * shipment statuses are recomputed, and the journal goes. Refused when the
+     * goods have already been sold or moved on.
+     */
     public function destroy(Grn $grn)
     {
         DB::transaction(function () use ($grn) {
+            $grn->load('lines');
+
+            foreach ($grn->lines as $l) {
+                $item = $l->code ? Item::where('code', $l->code)->lockForUpdate()->first() : null;
+                if ($item && $item->qty < $l->qty) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'grn' => "Cannot delete: only {$item->qty} of {$item->name} left in stock, {$l->qty} came in on this GRN.",
+                    ]);
+                }
+                if ($item) {
+                    $unit = (float) $l->unit_cost_wo_vat > 0 ? (float) $l->unit_cost_wo_vat : (float) $l->cost;
+                    $item->removeStock((int) $l->qty, $unit);
+                }
+
+                $sl = $l->shipment_line_id ? ShipmentLine::find($l->shipment_line_id) : null;
+                $pl = $sl && $sl->purchase_order_line_id ? PurchaseOrderLine::find($sl->purchase_order_line_id) : null;
+                if ($pl) {
+                    $back = min((int) $l->qty, (int) $pl->received_qty);
+                    $pl->received_qty = $pl->received_qty - $back;
+                    $pl->balance_qty = $pl->balance_qty + $back;
+                    $pl->save();
+                }
+            }
+
             Posting::remove(Posting::GRN, $grn->id);
+            $grn->lines()->delete();
             $grn->delete();
+
+            $po = PurchaseOrder::where('code', $grn->po)->first();
+            if ($po) {
+                $received = $po->lines()->sum('received_qty');
+                $balance = $po->lines()->sum('balance_qty');
+                $po->update(['status' => $received <= 0 ? 'Approved' : ($balance <= 0 ? 'Completed' : 'Partial GRN')]);
+            }
+            $shipment = $grn->shipment_id ? Shipment::find($grn->shipment_id) : null;
+            if ($shipment) {
+                $lines = $shipment->lines()->get();
+                $received = $lines->sum(fn ($sl) => optional($sl->purchaseOrderLine)->received_qty ?? 0);
+                $balance = $lines->sum(fn ($sl) => optional($sl->purchaseOrderLine)->balance_qty ?? 0);
+                $shipment->update(['status' => $received <= 0 ? 'Approved' : ($balance <= 0 ? 'Received' : 'Partially Received')]);
+            }
         });
 
         return response()->noContent();

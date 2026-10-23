@@ -6,10 +6,12 @@ use App\Http\Controllers\Api\AccountGroupController;
 use App\Http\Controllers\Api\AccountingStatsController;
 use App\Http\Controllers\Api\AccountMappingController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CashBookController;
 use App\Http\Controllers\Api\CompanyProfileController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ExpenseController;
+use App\Http\Controllers\Api\FinancialReportController;
 use App\Http\Controllers\Api\FinancialYearController;
 use App\Http\Controllers\Api\GeneralLedgerController;
 use App\Http\Controllers\Api\GrnController;
@@ -173,6 +175,14 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
 
         Route::get('general-ledger', [GeneralLedgerController::class, 'index']);
         Route::get('trial-balance', [TrialBalanceController::class, 'index']);
+        Route::get('cashbook', [CashBookController::class, 'index']);
+        Route::get('cashbook/accounts', [CashBookController::class, 'accounts']);
+        Route::get('cashbook/suppliers', [CashBookController::class, 'suppliers']);
+        Route::get('cash-vouchers', [CashBookController::class, 'vouchers']);
+        Route::post('cash-vouchers', [CashBookController::class, 'store']);
+        Route::delete('cash-vouchers/{cashVoucher}', [CashBookController::class, 'destroy']);
+        Route::get('profit-loss', [FinancialReportController::class, 'profitLoss']);
+        Route::get('balance-sheet', [FinancialReportController::class, 'balanceSheet']);
 
         Route::get('financial-years', [FinancialYearController::class, 'index']);
         Route::post('financial-years', [FinancialYearController::class, 'store']);

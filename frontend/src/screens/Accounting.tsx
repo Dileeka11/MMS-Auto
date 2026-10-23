@@ -10,7 +10,8 @@ import { api } from '../api'
 import { userCan } from '../lib/permissions'
 import type {
   AccountCategory, AccountGroup, AccountRow, ChartCategory, FinancialYear, GeneralLedger,
-  JournalDraftLine, JournalEntry, OpeningBalanceAccount, OpeningBalancesResponse, PostingSetup, RebuildResult, TrialBalance,
+  BalanceSheet, JournalDraftLine, JournalEntry, OpeningBalanceAccount, OpeningBalancesResponse, PostingSetup, ProfitLoss,
+  RebuildResult, StatementSection, TrialBalance, CashBook, CashBookAccount, CashBookLine, CashVoucherType, SupplierBalance,
 } from '../types'
 import type { ScreenProps } from './types'
 
@@ -79,7 +80,7 @@ function buildTree(rows: AccountRow[]): TreeNode[] {
 /* =====================================================================
    Chart of Accounts
    ===================================================================== */
-interface AccountSaveData { groupId?: number; parentId?: number; name: string; isActive: boolean }
+interface AccountSaveData { groupId?: number; parentId?: number; name: string; isActive: boolean; isCashbook: boolean }
 
 function AccountModal({ open, editing, parent, chart, accounts, onClose, onSave }: {
   open: boolean
@@ -96,6 +97,7 @@ function AccountModal({ open, editing, parent, chart, accounts, onClose, onSave 
   const [selectedParentId, setSelectedParentId] = useState<number | ''>('')
   const [name, setName] = useState('')
   const [isActive, setIsActive] = useState(true)
+  const [isCashbook, setIsCashbook] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -112,6 +114,7 @@ function AccountModal({ open, editing, parent, chart, accounts, onClose, onSave 
     setSelectedParentId('')
     setName(editing?.name ?? '')
     setIsActive(editing ? editing.isActive : true)
+    setIsCashbook(editing ? editing.isCashbook : false)
   }, [open, editing, parent])
 
   const title = editing ? 'Edit Account' : isSubAccount || selectedParentId ? 'Add Sub-account' : 'Add Account'
@@ -121,7 +124,7 @@ function AccountModal({ open, editing, parent, chart, accounts, onClose, onSave 
     if (!name.trim()) { setError('Account name is required.'); return }
     setBusy(true); setError('')
     try {
-      const data: AccountSaveData = { name: name.trim(), isActive }
+      const data: AccountSaveData = { name: name.trim(), isActive, isCashbook }
       if (isSubAccount && parent) data.parentId = parent.id
       else if (selectedParentId) data.parentId = Number(selectedParentId)
       else if (showGroupSelector) data.groupId = Number(groupId)
@@ -179,6 +182,11 @@ function AccountModal({ open, editing, parent, chart, accounts, onClose, onSave 
         <label className="row gap-2" style={{ fontSize: 13.5, cursor: 'pointer' }}>
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
           Active
+        </label>
+
+        <label className="row gap-2" style={{ fontSize: 13.5, cursor: 'pointer' }}>
+          <input type="checkbox" checked={isCashbook} onChange={(e) => setIsCashbook(e.target.checked)} />
+          Cash / bank account — show in the Cash Book
         </label>
 
         {error && <ErrBox>{error}</ErrBox>}
@@ -266,7 +274,7 @@ export function ChartOfAccountsScreen(_: ScreenProps) {
 
   async function handleSave(data: AccountSaveData) {
     if (editing) {
-      await api.accounting.accounts.update(editing.id, { name: data.name, isActive: data.isActive })
+      await api.accounting.accounts.update(editing.id, { name: data.name, isActive: data.isActive, isCashbook: data.isCashbook })
       notify.success('Account updated')
     } else {
       await api.accounting.accounts.create(data)
@@ -946,6 +954,7 @@ function OpeningBalanceScreen({ year, onBack }: { year: FinancialYear; onBack: (
   }
 
   if (!data) return <Loading />
+  const readOnly = data.carriedForward
 
   // Group accounts by category → group for display
   const groups: Record<string, { group: string; category: string; accounts: OpeningBalanceAccount[] }> = {}
@@ -961,6 +970,13 @@ function OpeningBalanceScreen({ year, onBack }: { year: FinancialYear; onBack: (
       <PageHead crumbs="Accounting · Financial Year" title="Opening Balances" icon="coins"
         sub={<>{year.yearName} · {year.startDate} → {year.endDate}</>}
         actions={<Btn variant="ghost" icon="refund" onClick={onBack}>Back</Btn>} />
+
+      {readOnly && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', fontSize: 13 }}>
+          Carried forward automatically: these are the closing balances of the previous years, with earlier profit moved into
+          Retained Earnings. Opening balances are only keyed in for the first financial year.
+        </div>
+      )}
 
       {Object.values(groups).map(({ category, group, accounts }) => (
         <Card key={`${category}-${group}`} pad={0} style={{ overflow: 'hidden', marginBottom: 16 }}>
@@ -982,8 +998,8 @@ function OpeningBalanceScreen({ year, onBack }: { year: FinancialYear; onBack: (
                       {acc.accountName}
                       {acc.isHeader && <span className="t-2" style={{ marginLeft: 8, fontSize: 11, fontWeight: 600 }}>· header — enter on sub-accounts</span>}
                     </div>
-                    <Input type="number" min="0" step="0.01" value={e.debit} disabled={acc.isHeader} onChange={(ev) => setField(acc.accountId, 'debit', ev.target.value)} style={{ textAlign: 'right' }} />
-                    <Input type="number" min="0" step="0.01" value={e.credit} disabled={acc.isHeader} onChange={(ev) => setField(acc.accountId, 'credit', ev.target.value)} style={{ textAlign: 'right' }} />
+                    <Input type="number" min="0" step="0.01" value={e.debit} disabled={acc.isHeader || readOnly} onChange={(ev) => setField(acc.accountId, 'debit', ev.target.value)} style={{ textAlign: 'right' }} />
+                    <Input type="number" min="0" step="0.01" value={e.credit} disabled={acc.isHeader || readOnly} onChange={(ev) => setField(acc.accountId, 'credit', ev.target.value)} style={{ textAlign: 'right' }} />
                   </div>
                 )
               })}
@@ -1001,10 +1017,12 @@ function OpeningBalanceScreen({ year, onBack }: { year: FinancialYear; onBack: (
               {totals.diff === 0 ? '✓ Balanced' : `Difference ${money(Math.abs(totals.diff))}`}
             </div>
           </div>
-          <div className="row gap-2">
-            <Btn variant="plain" onClick={onBack}>Cancel</Btn>
-            <Btn variant="primary" icon="check" onClick={save} disabled={saving || totals.diff !== 0}>{saving ? 'Saving…' : 'Save Opening Balances'}</Btn>
-          </div>
+          {!readOnly && (
+            <div className="row gap-2">
+              <Btn variant="plain" onClick={onBack}>Cancel</Btn>
+              <Btn variant="primary" icon="check" onClick={save} disabled={saving || totals.diff !== 0}>{saving ? 'Saving…' : 'Save Opening Balances'}</Btn>
+            </div>
+          )}
         </div>
       </Card>
     </div>
@@ -1279,6 +1297,419 @@ export function PostingSetupScreen({ user }: ScreenProps) {
           </div>
         )}
       </Card>
+    </div>
+  )
+}
+
+/* =====================================================================
+   Financial statements — Profit & Loss and Balance Sheet, built from the
+   general ledger. Both default to the active financial year.
+   ===================================================================== */
+function useActiveYear() {
+  const [year, setYear] = useState<FinancialYear | null | undefined>(undefined)
+  useEffect(() => {
+    api.accounting.years.list()
+      .then((ys) => setYear((ys as FinancialYear[]).find((y) => y.isActive) ?? null))
+      .catch(() => setYear(null))
+  }, [])
+  return year
+}
+
+/** Category → group → account rows, with group and category totals. */
+function StatementSections({ sections, empty }: { sections: StatementSection[]; empty: string }) {
+  if (!sections.length) return <Card><Empty>{empty}</Empty></Card>
+  return (
+    <>
+      {sections.map((s) => (
+        <Card key={s.categoryCode} pad={0} style={{ overflow: 'hidden', marginBottom: 16 }}>
+          <div className="row between" style={{ padding: '12px 20px', background: 'var(--bg-2)', borderBottom: '1px solid var(--line)' }}>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>{s.categoryName}</span>
+            <span className="mono" style={{ fontWeight: 700, fontSize: 15 }}>{money(s.total)}</span>
+          </div>
+          {s.groups.map((g) => (
+            <div key={g.code + g.name} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+              <div className="row between" style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, color: 'var(--tx-1)' }}>
+                <span>{g.name}</span>
+                <span className="mono">{money(g.total)}</span>
+              </div>
+              {g.accounts.map((a) => (
+                <div key={(a.id ?? a.name) + ''} className="row between" style={{ padding: '6px 20px 6px 40px', fontSize: 13, color: 'var(--tx-2)' }}>
+                  <span>{a.code && <span className="mono" style={{ marginRight: 8 }}>{a.code}</span>}{a.name}</span>
+                  <span className="mono">{money(a.amount)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </Card>
+      ))}
+    </>
+  )
+}
+
+const ResultBar = ({ label, value, tone }: { label: ReactNode; value: number; tone?: string }) => (
+  <Card style={{ marginBottom: 16 }}>
+    <div className="row between" style={{ fontSize: 15, fontWeight: 700 }}>
+      <span style={{ color: tone }}>{label}</span>
+      <span className="mono" style={{ color: tone }}>{money(value)}</span>
+    </div>
+  </Card>
+)
+
+export function ProfitLossScreen(_: ScreenProps) {
+  const year = useActiveYear()
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [pl, setPl] = useState<ProfitLoss | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function run(f = from, t = to) {
+    setLoading(true)
+    try { setPl(await api.accounting.profitLoss({ from: f || undefined, to: t || undefined }) as ProfitLoss) }
+    catch { setPl(null) }
+    finally { setLoading(false) }
+  }
+  useEffect(() => {
+    if (year === undefined) return
+    const f = year?.startDate ?? ''
+    const t = year?.endDate ?? ''
+    setFrom(f); setTo(t); run(f, t)
+  }, [year]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const income = pl?.sections.filter((s) => s.normalBalance === 'credit') ?? []
+  const expenses = pl?.sections.filter((s) => s.normalBalance === 'debit') ?? []
+
+  return (
+    <div style={{ maxWidth: 860 }}>
+      <PageHead crumbs="Accounting" title="Profit & Loss" icon="chart" sub="Income less expenses for the period, from the general ledger."
+        actions={<Btn variant="ghost" icon="doc" onClick={() => window.print()}>Print</Btn>} />
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
+          <Field label="From"><DateInput value={from} onChange={setFrom} /></Field>
+          <Field label="To"><DateInput value={to} onChange={setTo} /></Field>
+          <Btn variant="primary" icon="bolt" onClick={() => run()} disabled={loading}>{loading ? 'Loading…' : 'Run'}</Btn>
+        </div>
+      </Card>
+
+      {!pl && loading && <Loading />}
+      {pl && (
+        <>
+          <StatementSections sections={income} empty="No income in this period." />
+          <StatementSections sections={expenses} empty="No expenses in this period." />
+          <ResultBar label={pl.netProfit >= 0 ? 'Net Profit' : 'Net Loss'} value={Math.abs(pl.netProfit)}
+            tone={pl.netProfit >= 0 ? 'var(--ok)' : 'var(--bad)'} />
+        </>
+      )}
+    </div>
+  )
+}
+
+export function BalanceSheetScreen(_: ScreenProps) {
+  const [asOf, setAsOf] = useState(today())
+  const [bs, setBs] = useState<BalanceSheet | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function run() {
+    setLoading(true)
+    try { setBs(await api.accounting.balanceSheet({ asOf: asOf || undefined }) as BalanceSheet) }
+    catch { setBs(null) }
+    finally { setLoading(false) }
+  }
+  useEffect(() => { run() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const part = (code: string) => bs?.sections.filter((s) => s.categoryCode === code) ?? []
+
+  return (
+    <div style={{ maxWidth: 860 }}>
+      <PageHead crumbs="Accounting" title="Balance Sheet" icon="layers"
+        sub={bs ? <>As at {bs.asOf}{bs.financialYear ? ` · ${bs.financialYear}` : ''}</> : 'Assets, liabilities and equity at a date.'}
+        actions={<Btn variant="ghost" icon="doc" onClick={() => window.print()}>Print</Btn>} />
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
+          <Field label="As at"><DateInput value={asOf} onChange={setAsOf} /></Field>
+          <Btn variant="primary" icon="bolt" onClick={run} disabled={loading}>{loading ? 'Loading…' : 'Run'}</Btn>
+        </div>
+      </Card>
+
+      {!bs && loading && <Loading />}
+      {bs && (
+        <>
+          <StatementSections sections={part('1000')} empty="No assets." />
+          <ResultBar label="Total Assets" value={bs.totalAssets} />
+          <StatementSections sections={part('2000')} empty="No liabilities." />
+          <StatementSections sections={part('3000')} empty="No equity." />
+          <ResultBar label="Total Liabilities + Equity" value={bs.totalLiabilities + bs.totalEquity} />
+          <div style={{ fontSize: 13, fontWeight: 700, color: bs.balanced ? 'var(--ok)' : 'var(--bad)' }}>
+            {bs.balanced ? '✓ Balanced — assets equal liabilities plus equity' : '✗ Not balanced — check the Trial Balance'}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/* =====================================================================
+   Cash Book — receipts and payments through each cash / bank account with a
+   running balance, plus vouchers for money that isn't on another document
+   (supplier payments, other income, deposits and withdrawals).
+   ===================================================================== */
+const VOUCHER_TITLE: Record<CashVoucherType, string> = { receipt: 'Cash Receipt', payment: 'Cash Payment', transfer: 'Transfer / Deposit' }
+const monthStart = () => today().slice(0, 8) + '01'
+
+function VoucherModal({ type, cashAccounts, accounts, defaultAccountId, onClose, onSaved }: {
+  type: CashVoucherType | null
+  cashAccounts: CashBookAccount[]
+  accounts: AccountRow[]
+  defaultAccountId: number | ''
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const notify = useNotify()
+  const [date, setDate] = useState(today())
+  const [accountId, setAccountId] = useState<number | ''>('')
+  const [counterId, setCounterId] = useState<number | ''>('')
+  const [amount, setAmount] = useState('')
+  const [party, setParty] = useState('')
+  const [supplier, setSupplier] = useState('')
+  const [reference, setReference] = useState('')
+  const [memo, setMemo] = useState('')
+  const [suppliers, setSuppliers] = useState<SupplierBalance[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!type) return
+    setDate(today()); setAccountId(defaultAccountId); setCounterId(''); setAmount('')
+    setParty(''); setSupplier(''); setReference(''); setMemo(''); setError('')
+    if (type === 'payment') api.accounting.cashbook.suppliers().then((s) => setSuppliers(s as SupplierBalance[])).catch(() => setSuppliers([]))
+  }, [type, defaultAccountId])
+
+  const postableCash = cashAccounts.filter((a) => a.isPostable)
+  // Receipts/payments hit a non-cash account; a transfer goes to another cash/bank account.
+  const counterGroups = useMemo(() => groupAccounts(accounts.filter((a) => a.isActive && a.isPostable && !a.isCashbook)), [accounts])
+  const payable = accounts.find((a) => a.code === '210000')
+  const sup = suppliers.find((s) => s.name === supplier)
+
+  function pickSupplier(name: string) {
+    setSupplier(name)
+    if (name && payable && !counterId) setCounterId(payable.id)
+    const s = suppliers.find((x) => x.name === name)
+    if (s && s.balance > 0 && !amount) setAmount(String(s.balance))
+  }
+
+  async function save() {
+    if (!accountId || !counterId) { setError('Choose both accounts.'); return }
+    if (!(parseFloat(amount) > 0)) { setError('Enter an amount.'); return }
+    setBusy(true); setError('')
+    try {
+      await api.accounting.cashbook.createVoucher({
+        type, date, accountId, counterAccountId: counterId, amount: parseFloat(amount),
+        party: party.trim() || null, supplier: supplier || null, reference: reference.trim() || null, memo: memo.trim() || null,
+      })
+      notify.success(`${VOUCHER_TITLE[type!]} posted`)
+      onSaved()
+    } catch (e) {
+      setError(errMsg(e, 'Could not post the voucher.'))
+    } finally { setBusy(false) }
+  }
+
+  const fromLabel = type === 'receipt' ? 'Into (cash / bank)' : type === 'payment' ? 'Paid from (cash / bank)' : 'From'
+
+  return (
+    <Modal open={!!type} onClose={onClose} width={560} title={type ? VOUCHER_TITLE[type] : ''}
+      sub={type === 'transfer' ? 'Move money between cash and bank accounts (deposits, withdrawals).' : 'Posted straight to the ledger.'}
+      footer={<>
+        <Btn variant="plain" onClick={onClose}>Cancel</Btn>
+        <Btn variant="primary" icon="check" onClick={save} disabled={busy}>{busy ? 'Posting…' : 'Post'}</Btn>
+      </>}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <Field label="Date"><DateInput value={date} onChange={setDate} /></Field>
+        <Field label="Amount (LKR)"><Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ textAlign: 'right' }} /></Field>
+        <Field label={fromLabel} full>
+          <Select value={accountId} onChange={(e) => setAccountId(e.target.value ? Number(e.target.value) : '')}>
+            <option value="">Select…</option>
+            {postableCash.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name} ({money(a.balance)})</option>)}
+          </Select>
+        </Field>
+        {type === 'payment' && (
+          <Field label="Supplier (optional)" full>
+            <Select value={supplier} onChange={(e) => pickSupplier(e.target.value)}>
+              <option value="">— Not a supplier payment —</option>
+              {suppliers.map((s) => <option key={s.name} value={s.name}>{s.name}{s.balance ? ` · owed ${money(s.balance)}` : ''}</option>)}
+            </Select>
+            {sup && <span className="t-2" style={{ fontSize: 12 }}>GRNs {money(sup.received)} · paid {money(sup.paid)} · balance {money(sup.balance)}</span>}
+          </Field>
+        )}
+        <Field label={type === 'receipt' ? 'Received for (credit account)' : type === 'payment' ? 'Paid for (debit account)' : 'To'} full>
+          <Select value={counterId} onChange={(e) => setCounterId(e.target.value ? Number(e.target.value) : '')}>
+            <option value="">Select…</option>
+            {type === 'transfer'
+              ? postableCash.filter((a) => a.id !== accountId).map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)
+              : counterGroups.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.accounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
+                </optgroup>
+              ))}
+          </Select>
+        </Field>
+        {type !== 'transfer' && (
+          <Field label={type === 'receipt' ? 'Received from' : 'Paid to'}><Input value={party} onChange={(e) => setParty(e.target.value)} placeholder="Name" /></Field>
+        )}
+        <Field label="Cheque / ref no"><Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Optional" /></Field>
+        <Field label="Narration" full><Input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="What it was for" /></Field>
+        {error && <ErrBox>{error}</ErrBox>}
+      </div>
+    </Modal>
+  )
+}
+
+export function CashBookScreen({ user }: ScreenProps) {
+  const notify = useNotify()
+  const [cashAccounts, setCashAccounts] = useState<CashBookAccount[]>([])
+  const [accounts, setAccounts] = useState<AccountRow[]>([])
+  const [accountId, setAccountId] = useState<number | ''>('')
+  const [from, setFrom] = useState(monthStart())
+  const [to, setTo] = useState(today())
+  const [book, setBook] = useState<CashBook | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [voucher, setVoucher] = useState<CashVoucherType | null>(null)
+  const canCreate = userCan(user, 'Accounting', 'Create')
+  const canDelete = userCan(user, 'Accounting', 'Delete')
+
+  async function loadAccounts() {
+    const [c, a] = await Promise.all([api.accounting.cashbook.accounts(), api.accounting.accounts.list()])
+    setCashAccounts(c as CashBookAccount[])
+    setAccounts(a as AccountRow[])
+    return c as CashBookAccount[]
+  }
+  async function run(id: number | '' = accountId) {
+    if (!id) return
+    setLoading(true)
+    try { setBook(await api.accounting.cashbook.book({ accountId: Number(id), from: from || undefined, to: to || undefined }) as CashBook) }
+    catch (e) { notify.error('Could not load the cash book', errMsg(e, '')); setBook(null) }
+    finally { setLoading(false) }
+  }
+  useEffect(() => {
+    loadAccounts().then((c) => {
+      const first = c.find((a) => a.isActive)
+      if (first) { setAccountId(first.id); run(first.id) }
+    }).catch(() => notify.error('Could not load cash / bank accounts.'))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function removeVoucher(l: CashBookLine) {
+    const ok = await notify.confirm({ title: `Delete ${l.reference}?`, msg: 'The voucher and its journal entry are removed.', danger: true, okText: 'Delete' })
+    if (!ok || l.sourceId == null) return
+    try {
+      await api.accounting.cashbook.removeVoucher(l.sourceId)
+      notify.success('Voucher deleted')
+      await loadAccounts(); await run()
+    } catch (e) { notify.error('Delete failed', errMsg(e, '')) }
+  }
+
+  const select = (id: number) => { setAccountId(id); run(id) }
+
+  return (
+    <div>
+      <PageHead crumbs="Accounting" title="Cash Book" icon="wallet"
+        sub="Every receipt and payment through your cash and bank accounts, with a running balance."
+        actions={<div className="row gap-2 wrap">
+          {canCreate && <>
+            <Btn variant="primary" icon="plus" onClick={() => setVoucher('receipt')}>Receipt</Btn>
+            <Btn variant="primary" icon="plus" onClick={() => setVoucher('payment')}>Payment</Btn>
+            <Btn variant="ghost" icon="swap" onClick={() => setVoucher('transfer')}>Transfer</Btn>
+          </>}
+          <Btn variant="ghost" icon="doc" onClick={() => window.print()}>Print</Btn>
+        </div>} />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+        {cashAccounts.map((a) => (
+          <button key={a.id} onClick={() => select(a.id)}
+            style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 'var(--r-s)', cursor: 'pointer', background: 'var(--bg-1)',
+              border: `1px solid ${a.id === accountId ? 'var(--ac)' : 'var(--line)'}`, opacity: a.isActive ? 1 : 0.5 }}>
+            <div className="t-2" style={{ fontSize: 12 }}><span className="mono">{a.code}</span> · {a.name}</div>
+            <div className="mono" style={{ fontSize: 18, fontWeight: 700, color: a.balance < 0 ? 'var(--bad)' : 'var(--tx-0)' }}>{money(a.balance)}</div>
+          </button>
+        ))}
+        {cashAccounts.length === 0 && <Card><Empty>No cash / bank accounts — tick “Cash / bank account” on an account in Chart of Accounts.</Empty></Card>}
+      </div>
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
+          <Field label="Account" style={{ gridColumn: 'span 2' }}>
+            <Select value={accountId} onChange={(e) => setAccountId(e.target.value ? Number(e.target.value) : '')}>
+              {cashAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="From"><DateInput value={from} onChange={setFrom} /></Field>
+          <Field label="To"><DateInput value={to} onChange={setTo} /></Field>
+          <Btn variant="primary" icon="search" onClick={() => run()} disabled={loading || !accountId}>{loading ? 'Loading…' : 'View'}</Btn>
+        </div>
+      </Card>
+
+      {book && (
+        <Card pad={0} style={{ overflow: 'hidden' }}>
+          <div className="row between wrap gap-3" style={{ padding: '14px 20px', borderBottom: '1px solid var(--line)' }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>
+              <span className="mono" style={{ color: 'var(--ac-bright)' }}>{book.account.code}</span> · {book.account.name}
+            </div>
+            <div className="row gap-6 wrap" style={{ fontSize: 13 }}>
+              <span><span className="t-2">Receipts </span><b className="mono" style={{ color: 'var(--ok)' }}>{money(book.totalReceipts)}</b></span>
+              <span><span className="t-2">Payments </span><b className="mono" style={{ color: 'var(--bad)' }}>{money(book.totalPayments)}</b></span>
+            </div>
+          </div>
+          <Table cols={[
+            { label: 'Date', w: 100 }, { label: 'Doc', w: 110 }, { label: 'Source', w: 130 }, { label: 'Particulars' },
+            { label: 'Receipts', align: 'right', w: 120 }, { label: 'Payments', align: 'right', w: 120 }, { label: 'Balance', align: 'right', w: 130 }, { label: '', w: 44 },
+          ]}
+            rows={[
+              { kind: 'open' as const },
+              ...(book.lines.length ? book.lines.map((l) => ({ kind: 'line' as const, l })) : [{ kind: 'empty' as const }]),
+              { kind: 'close' as const },
+            ]}
+            render={(r) => {
+              if (r.kind === 'empty') return <td colSpan={8} style={{ padding: '16px 14px', fontSize: 13, color: 'var(--tx-3)' }}>No receipts or payments in this period.</td>
+              if (r.kind === 'open' || r.kind === 'close') {
+                const open = r.kind === 'open'
+                return (
+                  <>
+                    <Td mono style={totalCell}>{open ? (book.from ?? '') : (book.to ?? '')}</Td>
+                    <Td style={totalCell} /><Td style={totalCell} />
+                    <Td c="var(--tx-0)" style={totalCell}>{open ? 'Opening balance' : 'Closing balance'}</Td>
+                    <Td align="right" mono style={totalCell}>{open ? '' : money(book.totalReceipts)}</Td>
+                    <Td align="right" mono style={totalCell}>{open ? '' : money(book.totalPayments)}</Td>
+                    <Td align="right" mono c="var(--tx-0)" style={totalCell}>{money(open ? book.openingBalance : book.closingBalance)}</Td>
+                    <Td style={totalCell} />
+                  </>
+                )
+              }
+              const l = r.l
+              return (
+                <>
+                  <Td mono>{l.date}</Td>
+                  <Td mono style={{ fontSize: 12 }}>{l.reference ?? '—'}</Td>
+                  <Td><Badge tone={l.sourceType === 'cash_voucher' ? 'blue' : l.sourceType ? 'neutral' : 'amber'}>{l.source}</Badge></Td>
+                  <Td c="var(--tx-2)" style={{ whiteSpace: 'normal', fontSize: 12.5 }}>
+                    <div style={{ color: 'var(--tx-0)' }}>{l.particulars ?? '—'}</div>
+                    {l.counterAccounts && <div>{l.counterAccounts}{l.detail ? ` · ${l.detail}` : ''}</div>}
+                  </Td>
+                  <Td align="right" mono c="var(--ok)">{l.receipt ? money(l.receipt) : ''}</Td>
+                  <Td align="right" mono c="var(--bad)">{l.payment ? money(l.payment) : ''}</Td>
+                  <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{money(l.balance)}</Td>
+                  <Td align="right">
+                    {l.sourceType === 'cash_voucher' && canDelete && (
+                      <button className="mms-act danger" title="Delete voucher" onClick={() => removeVoucher(l)}><Icon n="trash" s={15} /></button>
+                    )}
+                  </Td>
+                </>
+              )
+            }} />
+        </Card>
+      )}
+
+      <VoucherModal type={voucher} cashAccounts={cashAccounts} accounts={accounts} defaultAccountId={accountId}
+        onClose={() => setVoucher(null)}
+        onSaved={async () => { setVoucher(null); await loadAccounts(); await run() }} />
     </div>
   )
 }

@@ -33,6 +33,7 @@ class AccountController extends Controller
                 'accounts.name',
                 'accounts.is_active',
                 'accounts.is_default',
+                'accounts.is_cashbook',
                 'accounts.created_by',
                 'accounts.group_id',
                 'accounts.parent_id',
@@ -47,6 +48,7 @@ class AccountController extends Controller
             ->map(function ($r) {
                 $r->is_active = (bool) $r->is_active;
                 $r->is_default = (bool) $r->is_default;
+                $r->is_cashbook = (bool) $r->is_cashbook;
                 $r->has_children = (bool) $r->has_children;
                 $r->is_postable = ! $r->has_children; // only leaves can be posted to
                 return $r;
@@ -60,6 +62,7 @@ class AccountController extends Controller
             'parent_id' => ['nullable', 'integer', 'exists:accounts,id'],
             'name' => ['required', 'string', 'max:150'],
             'is_active' => ['nullable', 'boolean'],
+            'is_cashbook' => ['nullable', 'boolean'],
         ]);
 
         // A sub-account inherits its parent's group and gets a parent-derived code.
@@ -93,6 +96,7 @@ class AccountController extends Controller
             'name' => $data['name'],
             'is_active' => $data['is_active'] ?? true,
             'is_default' => false,
+            'is_cashbook' => (bool) ($data['is_cashbook'] ?? false),
             'created_by' => 'admin',
         ]);
 
@@ -108,7 +112,13 @@ class AccountController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:150'],
             'is_active' => ['nullable', 'boolean'],
+            'is_cashbook' => ['nullable', 'boolean'],
         ]);
+
+        $cashbook = $data['is_cashbook'] ?? $account->is_cashbook;
+        if ($cashbook && $account->children()->exists()) {
+            return response()->json(['message' => 'A header account cannot be a Cash Book account — flag its sub-accounts instead.'], 422);
+        }
 
         $active = $data['is_active'] ?? $account->is_active;
         if (! $active && $account->is_active && in_array($account->id, Posting::roleAccountIds(), true)) {
@@ -120,6 +130,7 @@ class AccountController extends Controller
         $account->update([
             'name' => $data['name'],
             'is_active' => $active,
+            'is_cashbook' => $cashbook,
         ]);
 
         return response()->json($account);

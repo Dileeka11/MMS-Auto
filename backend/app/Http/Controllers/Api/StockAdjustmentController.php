@@ -30,7 +30,7 @@ class StockAdjustmentController extends Controller
         return DB::transaction(function () use ($data) {
             $item = ! empty($data['item_code']) ? Item::where('code', $data['item_code'])->first() : null;
             $adj = StockAdjustment::create([
-                'code' => 'ADJ-' . (100 + StockAdjustment::count() + 1),
+                'code' => StockAdjustment::nextCode(),
                 'item' => $data['item'] ?? ($item->name ?? ''),
                 'item_code' => $data['item_code'] ?? ($item->code ?? null),
                 'type' => $data['type'],

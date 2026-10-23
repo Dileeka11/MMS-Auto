@@ -45,6 +45,9 @@ const ManualJournalScreen = named(() => import('./screens/Accounting'), 'ManualJ
 const GeneralLedgerScreen = named(() => import('./screens/Accounting'), 'GeneralLedgerScreen')
 const TrialBalanceScreen = named(() => import('./screens/Accounting'), 'TrialBalanceScreen')
 const PostingSetupScreen = named(() => import('./screens/Accounting'), 'PostingSetupScreen')
+const CashBookScreen = named(() => import('./screens/Accounting'), 'CashBookScreen')
+const ProfitLossScreen = named(() => import('./screens/Accounting'), 'ProfitLossScreen')
+const BalanceSheetScreen = named(() => import('./screens/Accounting'), 'BalanceSheetScreen')
 const UsersScreen = named(() => import('./screens/Admin'), 'UsersScreen')
 const PermScreen = named(() => import('./screens/Admin'), 'PermScreen')
 const CompanyScreen = named(() => import('./screens/Admin'), 'CompanyScreen')
@@ -91,6 +94,9 @@ const SCREENS: Record<string, ScreenComp> = {
   'ac/ledger': GeneralLedgerScreen,
   'ac/tb': TrialBalanceScreen,
   'ac/posting': PostingSetupScreen,
+  'ac/cashbook': CashBookScreen,
+  'ac/pl': ProfitLossScreen,
+  'ac/bs': BalanceSheetScreen,
   reports: ReportsScreen,
   'ad/reps': RepsScreen,
   'ad/users': UsersScreen,

@@ -221,6 +221,18 @@ export const api = {
       http.get('/accounting/general-ledger', { params: snakeize(params) }).then((r) => camelize(r.data)),
     trialBalance: (params: { from?: string; to?: string }) =>
       http.get('/accounting/trial-balance', { params }).then((r) => camelize(r.data)),
+    cashbook: {
+      accounts: () => http.get('/accounting/cashbook/accounts').then((r) => camelize(r.data) as any[]),
+      book: (params: { accountId: number; from?: string; to?: string }) =>
+        http.get('/accounting/cashbook', { params: snakeize(params) }).then((r) => camelize(r.data)),
+      suppliers: () => http.get('/accounting/cashbook/suppliers').then((r) => camelize(r.data) as any[]),
+      createVoucher: (body: any) => http.post('/accounting/cash-vouchers', snakeize(body)).then((r) => camelize(r.data)),
+      removeVoucher: (id: number) => http.delete(`/accounting/cash-vouchers/${id}`).then((r) => r.data),
+    },
+    profitLoss: (params: { from?: string; to?: string }) =>
+      http.get('/accounting/profit-loss', { params }).then((r) => camelize(r.data)),
+    balanceSheet: (params: { asOf?: string }) =>
+      http.get('/accounting/balance-sheet', { params: snakeize(params) }).then((r) => camelize(r.data)),
     years: {
       list: () => http.get('/accounting/financial-years').then((r) => camelize(r.data) as any[]),
       create: (body: any) => http.post('/accounting/financial-years', snakeize(body)).then((r) => camelize(r.data)),

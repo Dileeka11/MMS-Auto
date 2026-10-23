@@ -68,23 +68,17 @@ class AccountingSeeder extends Seeder
             // Merged into the existing chart; each account sits under the group
             // that matches its accounting type.
             ['code' => '1001', 'name' => 'HNB Bank Account',        'group' => '1100'],
-            ['code' => '1002', 'name' => 'Cash in Hand',            'group' => '1100'],
-            ['code' => '1003', 'name' => 'Trade Receivables',       'group' => '1100'],
             ['code' => '1004', 'name' => 'Prepayments',             'group' => '1100'],
             ['code' => '1005', 'name' => 'Fixed Assets',            'group' => '1200'],
-            ['code' => '5001', 'name' => 'Inventory / Stock',       'group' => '1100'],
             ['code' => '2001', 'name' => 'Accounts Payable',        'group' => '2100'],
-            ['code' => '2002', 'name' => 'Trade Payables',          'group' => '2100'],
             ['code' => '2003', 'name' => 'Accrued Expenses',        'group' => '2100'],
             ['code' => '2004', 'name' => 'Loans',                   'group' => '2200'],
             ['code' => '2005', 'name' => 'Tax Payable',             'group' => '2100'],
             ['code' => '3001', 'name' => 'Share Capital',           'group' => '3100'],
             ['code' => '3002', 'name' => 'Retained Earnings',       'group' => '3100'],
-            ['code' => '4001', 'name' => 'Sales Revenue (Stage 01)', 'group' => '4100'],
             ['code' => '4002', 'name' => 'Other Income',            'group' => '4100'],
             ['code' => '5002', 'name' => 'Office Stationery Expense', 'group' => '5100'],
             ['code' => '5003', 'name' => 'IT Equipment Expense',    'group' => '5100'],
-            ['code' => '5004', 'name' => 'Cost of Sales (Stage 01)', 'group' => '5100'],
             ['code' => '5005', 'name' => 'Salaries',                'group' => '5100'],
             ['code' => '5006', 'name' => 'Rent',                    'group' => '5100'],
             ['code' => '5007', 'name' => 'Utilities',               'group' => '5100'],
@@ -105,6 +99,9 @@ class AccountingSeeder extends Seeder
                 ],
             );
         }
+
+        // Cash Book runs on the cash / bank accounts.
+        Account::whereIn('code', ['110000', '110100', '1001'])->update(['is_cashbook' => true]);
 
         // 4. Auto-posting roles → their default accounts (Accounting → Posting Setup).
         $accountIdByCode = Account::pluck('id', 'code');

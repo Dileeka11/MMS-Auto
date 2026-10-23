@@ -4,6 +4,7 @@ namespace App\Services\Accounting;
 
 use App\Models\Account;
 use App\Models\AccountMapping;
+use App\Models\CashVoucher;
 use App\Models\Expense;
 use App\Models\FinancialYear;
 use App\Models\Grn;
@@ -42,6 +43,7 @@ class Posting
     public const SALES_RETURN = 'sales_return';
     public const STOCK_ADJUSTMENT = 'stock_adjustment';
     public const OPENING_BALANCE = 'opening_balance';
+    public const CASH_VOUCHER = 'cash_voucher';
 
     /** Posting roles: key => [label, default account code, where it is used]. */
     public const ROLES = [
@@ -58,6 +60,7 @@ class Posting
         'stock_adjustment' => ['Stock Adjustment (Gain)/Loss', '510100', 'Stock adjustment value at avg cost'],
         'discount' => ['Discount Given', '520000', 'Approved invoice discounts (Dr)'],
         'expense' => ['Default Expense', '5009', 'Expenses whose type has no valid GL account'],
+        'retained_earnings' => ['Retained Earnings', '3002', "Prior years' profit carried into the next year's opening balances and the Balance Sheet"],
     ];
 
     /** Human labels for source_type, shown on journal lists. */
@@ -69,6 +72,7 @@ class Posting
         self::SALES_RETURN => 'Sales Return',
         self::STOCK_ADJUSTMENT => 'Stock Adjustment',
         self::OPENING_BALANCE => 'Opening Balance',
+        self::CASH_VOUCHER => 'Cash Book',
     ];
 
     /** Resolved role -> account id, per request. */
@@ -98,9 +102,10 @@ class Posting
             $gross += $l->qty * (float) $l->rate;
             $cost += $l->qty * (float) ($l->method === 'Average' ? $l->avg_cost : $l->fifo_cost);
         }
-        $gross = round($gross, 2);
         $vat = round((float) $invoice->vat_amount, 2);
         $total = round((float) $invoice->total, 2);
+        // An invoice without lines (imported / legacy) books its total as sales.
+        $gross = $invoice->lines->isEmpty() ? $total - $vat : round($gross, 2);
 
         static::post(self::INVOICE, $invoice->id, [
             'entry_date' => static::day($invoice->date),
@@ -123,6 +128,8 @@ class Posting
     {
         $cash = strcasecmp(trim((string) $receipt->mode), 'Cash') === 0;
         $amount = (float) $receipt->amount;
+        // A receipt may name the exact cash / bank account it went into.
+        $into = $receipt->account_id ? static::checkAccount((int) $receipt->account_id) : static::accountFor($cash ? 'cash' : 'bank');
 
         static::post(self::RECEIPT, $receipt->id, [
             'entry_date' => static::day($receipt->date),
@@ -131,9 +138,9 @@ class Posting
             'invoice_number' => $receipt->against,
             'customer_name' => $receipt->customer,
             'payment_method' => $cash ? 'cash_in_hand' : 'bank',
-            'payment_account_id' => static::accountFor($cash ? 'cash' : 'bank'),
+            'payment_account_id' => $into,
         ], [
-            [$cash ? 'cash' : 'bank', $amount, $receipt->mode . ($receipt->cheque_no ? " #{$receipt->cheque_no}" : '')],
+            [$into, $amount, $receipt->mode . ($receipt->cheque_no ? " #{$receipt->cheque_no}" : '')],
             ['receivable', -$amount, $receipt->customer],
         ]);
     }
@@ -150,17 +157,44 @@ class Posting
         $code = $type ? trim((string) ($type->data['account'] ?? '')) : '';
         $account = $code !== '' ? Account::where('code', $code)->first() : null;
         $debit = $account && static::isPostable($account) ? $account->id : 'expense';
+        // Paid from a chosen cash / bank account, else the Cash role.
+        $from = $expense->payment_account_id ? static::checkAccount((int) $expense->payment_account_id) : static::accountFor('cash');
 
         static::post(self::EXPENSE, $expense->id, [
             'entry_date' => static::day($expense->date),
             'reference' => $expense->code,
             'branch' => $expense->branch,
             'memo' => "Expense {$expense->code} · {$expense->type}" . ($expense->note ? " · {$expense->note}" : ''),
-            'payment_method' => 'cash_in_hand',
-            'payment_account_id' => static::accountFor('cash'),
+            'payment_method' => $from === static::accountFor('cash') ? 'cash_in_hand' : 'bank',
+            'payment_account_id' => $from,
         ], [
             [$debit, $amount, $expense->type],
-            ['cash', -$amount],
+            [$from, -$amount],
+        ]);
+    }
+
+    /**
+     * Cash Book voucher. Receipt: Dr cash/bank / Cr the other account.
+     * Payment: Dr the other account / Cr cash/bank. Transfer: Dr the "to"
+     * cash/bank account / Cr the "from" one.
+     */
+    public static function cashVoucher(CashVoucher $v): void
+    {
+        $amount = (float) $v->amount;
+        $in = $v->type === 'receipt';
+        $label = ['receipt' => 'Cash receipt', 'payment' => 'Cash payment', 'transfer' => 'Transfer'][$v->type] ?? 'Cash voucher';
+        $who = $v->supplier ?: $v->party;
+
+        static::post(self::CASH_VOUCHER, $v->id, [
+            'entry_date' => static::day($v->date),
+            'reference' => $v->code,
+            'memo' => trim("{$label} {$v->code}" . ($who ? " · {$who}" : '') . ($v->memo ? " · {$v->memo}" : '')),
+            'customer_name' => $v->party,
+            'payment_method' => $v->account_id === static::roleAccountIds()['cash'] ? 'cash_in_hand' : 'bank',
+            'payment_account_id' => $v->account_id,
+        ], [
+            [static::checkAccount($v->account_id), $in ? $amount : -$amount, $v->reference],
+            [static::checkAccount($v->counter_account_id), $in ? -$amount : $amount, $who],
         ]);
     }
 
@@ -199,7 +233,13 @@ class Posting
             static::remove(self::SALES_RETURN, $return->id);
             return;
         }
-        $amount = (float) $return->amount;
+        $return->load('lines');
+        $amount = round((float) $return->amount, 2);
+        $vat = round((float) $return->vat_amount, 2);
+        // Goods that came back go into stock at the cost they were sold at.
+        $cost = $return->restocked
+            ? $return->lines->sum(function ($l) { return $l->qty * (float) $l->unit_cost; })
+            : 0;
 
         static::post(self::SALES_RETURN, $return->id, [
             'entry_date' => static::day($return->date),
@@ -208,8 +248,11 @@ class Posting
             'invoice_number' => $return->invoice,
             'customer_name' => $return->customer,
         ], [
-            ['sales_returns', $amount, $return->reason],
+            ['sales_returns', $amount - $vat, $return->reason],
+            ['vat_output', $vat, $vat ? 'VAT reversed' : null],
             ['receivable', -$amount, $return->customer],
+            ['inventory', $cost, 'Returned stock'],
+            ['cogs', -$cost, 'Returned stock'],
         ]);
     }
 
@@ -242,7 +285,16 @@ class Posting
     /** A financial year's opening balances as one journal dated on its start date. */
     public static function openingBalances(FinancialYear $year): void
     {
-        $legs = OpeningBalance::where('financial_year_id', $year->id)->get()
+        $rows = OpeningBalance::where('financial_year_id', $year->id)->get();
+        // Once the ledger has history before this year, its balances carry
+        // forward on their own — a second set of opening balances would count twice.
+        if ($rows->isNotEmpty() && Ledger::hasHistoryBefore(static::day($year->start_date))) {
+            throw ValidationException::withMessages([
+                'balances' => "{$year->year_name} already has balances carried forward from earlier entries — opening balances can only be entered for the first year.",
+            ]);
+        }
+
+        $legs = $rows
             ->map(function (OpeningBalance $ob) {
                 return [(int) $ob->account_id, (float) $ob->debit - (float) $ob->credit];
             })
@@ -270,6 +322,7 @@ class Posting
             self::SALES_RETURN => [SalesReturn::query(), 'salesReturn'],
             self::STOCK_ADJUSTMENT => [StockAdjustment::query(), 'stockAdjustment'],
             self::OPENING_BALANCE => [FinancialYear::query(), 'openingBalances'],
+            self::CASH_VOUCHER => [CashVoucher::query(), 'cashVoucher'],
         ];
 
         $posted = [];
@@ -298,6 +351,7 @@ class Posting
             self::INVOICE => 'invoices', self::RECEIPT => 'receipts', self::EXPENSE => 'expenses',
             self::GRN => 'grns', self::SALES_RETURN => 'sales_returns',
             self::STOCK_ADJUSTMENT => 'stock_adjustments', self::OPENING_BALANCE => 'financial_years',
+            self::CASH_VOUCHER => 'cash_vouchers',
         ];
         foreach ($tables as $type => $table) {
             $ids = JournalEntry::where('source_type', $type)

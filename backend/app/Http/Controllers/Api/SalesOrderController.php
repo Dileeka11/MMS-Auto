@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Item;
 use App\Models\SalesOrder;
@@ -118,6 +119,11 @@ class SalesOrderController extends Controller
                 $methods[$l->method] = true;
             }
             $costing = count($methods) > 1 ? 'Mixed' : (array_key_first($methods) ?: 'FIFO');
+            // A discount already approved on the order applies straight away; a
+            // pending one is approved later on the invoice (approve-discount).
+            if ($salesOrder->discount_status === 'approved' && $salesOrder->discount_pct > 0) {
+                $supply = round($supply * (1 - $salesOrder->discount_pct / 100), 2);
+            }
             [$vatPct, $vatAmount] = Invoice::vatFor($supply, ! empty($data['vat_applied']));
             $total = round($supply + $vatAmount, 2);
 
@@ -163,6 +169,7 @@ class SalesOrderController extends Controller
             }
 
             Posting::invoice($inv);
+            Customer::adjustOutstanding($inv->customer, $total);
 
             $salesOrder->update([
                 'status' => 'invoiced',

@@ -2,13 +2,19 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasRunningCode;
 use App\Models\Concerns\HasTwoStepApproval;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Grn extends Model
 {
-    use HasFactory, HasTwoStepApproval;
+    use HasFactory, HasTwoStepApproval, HasRunningCode;
+
+    public static function nextCode(): string
+    {
+        return static::runningCode('GRN-', 7700);
+    }
 
     protected $guarded = [];
 

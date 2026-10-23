@@ -8,9 +8,13 @@ use App\Models\Invoice;
 use App\Models\Item;
 use App\Models\Quotation;
 use App\Models\Receipt;
+use App\Models\SalesOrder;
+use App\Models\SalesRep;
+use App\Models\SalesReturn;
 use App\Services\Accounting\Posting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class InvoiceController extends Controller
 {
@@ -103,6 +107,7 @@ class InvoiceController extends Controller
             }
 
             Posting::invoice($inv);
+            Customer::adjustOutstanding($inv->customer, $total);
 
             return response()->json($inv->load('lines'), 201);
         });
@@ -117,6 +122,8 @@ class InvoiceController extends Controller
         $data = $request->validate([
             'amount' => 'required|numeric|min:0.01',
             'mode' => 'nullable|string',
+            // which Cash Book account the money went into (null = by mode)
+            'account_id' => ['nullable', 'integer', Rule::exists('accounts', 'id')->where('is_cashbook', 1)->where('is_active', 1)],
             'reference' => 'nullable|string',
             'cheque_no' => 'nullable|string|max:48',
             'cheque_bank_name' => 'nullable|string|max:100',
@@ -144,16 +151,11 @@ class InvoiceController extends Controller
                 'cheque_no' => $data['cheque_no'] ?? null,
                 'cheque_bank_name' => $data['cheque_bank_name'] ?? null,
                 'cheque_date' => $data['cheque_date'] ?? null,
+                'account_id' => $data['account_id'] ?? null,
                 'bank_acc' => $data['bank_acc'] ?? null,
             ]);
             Posting::receipt($receipt);
-
-            $cust = Customer::where('name', $invoice->customer)->first();
-            if ($cust) {
-                $cust->outstanding = max(0, $cust->outstanding - $amount);
-                $cust->status = $cust->outstanding > $cust->limit * 0.7 ? 'risk' : 'ok';
-                $cust->save();
-            }
+            Customer::adjustOutstanding($invoice->customer, -$amount);
 
             return response()->json($invoice->load('lines'));
         });
@@ -162,6 +164,7 @@ class InvoiceController extends Controller
     public function approveDiscount(Invoice $invoice)
     {
         return DB::transaction(function () use ($invoice) {
+            $oldTotal = (float) $invoice->total;
             $invoice->discount_status = 'approved';
             // recalculate total and due based on discount
             $totalBeforeDiscount = $invoice->lines()->sum(DB::raw('qty * rate'));
@@ -173,6 +176,7 @@ class InvoiceController extends Controller
             $invoice->save();
             // The discounted total replaces the original posting.
             Posting::invoice($invoice);
+            Customer::adjustOutstanding($invoice->customer, $invoice->total - $oldTotal);
 
             return $invoice->load('lines');
         });
@@ -185,10 +189,52 @@ class InvoiceController extends Controller
         return $invoice->load('lines');
     }
 
+    /**
+     * Delete an invoice and undo everything posting it did: stock comes back
+     * (at the cost the sale was booked at), a sales-order invoice returns its
+     * order to "dispatched" with the stock reserved again, the customer's
+     * outstanding drops, and the journal goes. Paid or returned invoices are
+     * kept — their receipts / returns must be removed first.
+     */
     public function destroy(Invoice $invoice)
     {
+        if ((float) $invoice->paid > 0) {
+            return response()->json([
+                'message' => 'Cannot delete: payments of ' . number_format($invoice->paid, 2) . ' are recorded against this invoice. Delete its receipts first.',
+            ], 409);
+        }
+        // Older returns stored the invoice id instead of its code.
+        if (SalesReturn::whereIn('invoice', [$invoice->code, (string) $invoice->id])->where('status', '!=', 'Rejected')->exists()) {
+            return response()->json(['message' => 'Cannot delete: this invoice has sales returns. Delete those first.'], 409);
+        }
+
         DB::transaction(function () use ($invoice) {
+            $invoice->load('lines');
+            $order = SalesOrder::where('invoice_code', $invoice->code)->first();
+
+            foreach ($invoice->lines as $l) {
+                $item = ! empty($l->code) ? Item::where('code', $l->code)->first() : null;
+                if (! $item) {
+                    continue;
+                }
+                if ($order) {
+                    $item->reserved = (int) $item->reserved + (int) $l->qty;
+                }
+                $item->addStock((int) $l->qty, (float) ($l->method === 'Average' ? $l->avg_cost : $l->fifo_cost));
+            }
+
+            if ($order) {
+                $order->update(['status' => 'dispatched', 'invoice_code' => null]);
+                $rep = SalesRep::where('name', $order->rep)->orWhere('code', $order->rep)->first();
+                if ($rep) {
+                    $rep->decrement('invoices');
+                    $rep->decrement('achieved', (float) $invoice->total);
+                }
+            }
+
+            Customer::adjustOutstanding($invoice->customer, -(float) $invoice->due);
             Posting::remove(Posting::INVOICE, $invoice->id);
+            $invoice->lines()->delete();
             $invoice->delete();
         });
 
