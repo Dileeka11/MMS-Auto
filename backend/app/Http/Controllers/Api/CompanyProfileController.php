@@ -29,11 +29,18 @@ class CompanyProfileController extends Controller
 
     public function update(Request $request)
     {
+        // QQQQ part of the IRD tax invoice no: 1-15 letters/digits, no spaces
+        $request->validate(['invoice_class' => ['sometimes', 'nullable', 'regex:/^[A-Za-z0-9]{1,15}$/']]);
+
         $profile = CompanyProfile::firstOrCreate(['id' => 1]);
-        $profile->update($request->only([
+        $fields = $request->only([
             'name', 'tagline', 'address', 'phone', 'email',
-            'tax_no', 'vat_pct', 'currency', 'logo_path', 'favicon_path', 'accent',
-        ]));
+            'tax_no', 'vat_pct', 'currency', 'logo_path', 'favicon_path', 'accent', 'invoice_class',
+        ]);
+        if (array_key_exists('invoice_class', $fields)) {
+            $fields['invoice_class'] = strtoupper($fields['invoice_class'] ?: 'VAT');
+        }
+        $profile->update($fields);
 
         return $profile;
     }

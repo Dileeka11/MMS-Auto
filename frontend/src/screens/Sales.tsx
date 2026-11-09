@@ -221,7 +221,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
         <Table cols={[{ label: 'Invoice No' }, { label: 'Customer' }, { label: 'Rep' }, { label: 'Date' }, { label: 'Terms', align: 'center' }, { label: 'Costing', align: 'center' }, { label: 'Total', align: 'right' }, { label: 'Due', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 60 }]}
           rows={shown}
           render={(r) => <>
-            <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.code || r.id}</Td>
+            <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.code || r.id}{r.taxInvoiceNo && <div className="t-2" style={{ fontSize: 11, fontWeight: 500 }}>{r.taxInvoiceNo}</div>}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.customer}</Td>
             <Td>{r.rep}</Td><Td mono>{fmtDate(r.date)}</Td>
             <Td align="center"><Badge tone="neutral">{r.terms || 'Cash'}</Badge></Td>

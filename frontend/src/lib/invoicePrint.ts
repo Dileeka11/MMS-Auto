@@ -90,7 +90,7 @@ function taxHtml(r: Invoice, co: any, cu: any) {
     <div class="brand">${co.logoUrl ? `<img src="${esc(co.logoUrl)}" alt="">` : ''}<h1>${esc((co.name || '').toUpperCase())}</h1></div>
     <div class="box">
       <div class="title">TAX INVOICE</div>
-      <div class="sec"><div class="kv"><span>Invoice Date</span><span>${fmtDate(r.date)}</span></div><div class="kv"><span>Tax Invoice No</span><span>${esc(r.code || r.id)}</span></div></div>
+      <div class="sec"><div class="kv"><span>Invoice Date</span><span>${fmtDate(r.date)}</span></div><div class="kv"><span>Tax Invoice No</span><span>${esc(r.taxInvoiceNo || r.code || r.id)}</span></div></div>
       <div class="sec">
         <div class="kv"><span>Supplier's TIN</span><span>${esc(co.taxNo)}</span><span>Supplier's Name</span><span>${esc(co.name)}</span><span>Address</span><span>${esc(co.address)}</span><span>Telephone No</span><span>${esc(co.phone)}</span></div>
         <div class="kv"><span>Purchaser's TIN</span><span>${esc(cu?.taxNo)}</span><span>Purchaser's Name</span><span>${esc(r.customer)}</span><span>Address</span><span>${esc(cu?.address || cu?.city)}</span><span>Telephone No</span><span>${esc(cu?.contact)}</span></div>
@@ -128,7 +128,7 @@ export async function printInvoice(r: Invoice) {
   const cu = (customers as any[]).find((c) => c.name === r.customer)
   const body = r.vatApplied ? taxHtml(r, co, cu) : normalHtml(r, co)
   w.document.open()
-  w.document.write(`<!doctype html><html><head><title>${r.vatApplied ? 'Tax Invoice' : 'Invoice'} ${esc(r.code || r.id)}</title><meta charset="utf-8"></head>
+  w.document.write(`<!doctype html><html><head><title>${r.vatApplied ? 'Tax Invoice' : 'Invoice'} ${esc((r.vatApplied && r.taxInvoiceNo) || r.code || r.id)}</title><meta charset="utf-8"></head>
     <body>${body}<script>window.onload=function(){window.focus();window.print()}</script></body></html>`)
   w.document.close()
 }

@@ -51,4 +51,25 @@ class Invoice extends Model
 
         return 'INV-' . (max(5500, $max) + 1);
     }
+
+    /**
+     * IRD Tax Invoice serial (SEC/2026/E/03 clause 4.4): YYMMM_QQQQ_XXXXX,
+     * e.g. "26NOV_VAT_00001". YYMMM comes from the invoice date, QQQQ is the
+     * company-profile invoice class, and XXXXX runs on from the last tax
+     * invoice issued (it does not restart each month). Call inside the
+     * invoice transaction; the unique index stops a duplicate.
+     */
+    public static function nextTaxNo($date): string
+    {
+        $d = \Carbon\Carbon::parse($date ?: now());
+        $class = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) (CompanyProfile::find(1)->invoice_class ?? ''))) ?: 'VAT';
+
+        $max = (int) static::query()
+            ->whereNotNull('tax_invoice_no')
+            ->lockForUpdate()
+            ->max(\Illuminate\Support\Facades\DB::raw("CAST(SUBSTRING_INDEX(tax_invoice_no, '_', -1) AS UNSIGNED)"));
+
+        return $d->format('y') . strtoupper($d->format('M')) . '_' . substr($class, 0, 15) . '_'
+            . str_pad((string) ($max + 1), 5, '0', STR_PAD_LEFT);
+    }
 }

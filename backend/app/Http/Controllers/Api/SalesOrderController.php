@@ -135,14 +135,16 @@ class SalesOrderController extends Controller
             }
             [$vatPct, $vatAmount] = Invoice::vatFor($supply, ! empty($data['vat_applied']));
             $total = round($supply + $vatAmount, 2);
+            $date = $data['date'] ?? now()->toDateString();
 
             $inv = Invoice::create([
                 'code' => Invoice::nextCode(),
+                'tax_invoice_no' => $vatPct > 0 ? Invoice::nextTaxNo($date) : null,
                 'customer' => $salesOrder->customer,
                 'rep' => $salesOrder->rep,
                 'source' => 'app',
                 'terms' => $data['terms'] ?? 'Cash',
-                'date' => $data['date'] ?? now()->toDateString(),
+                'date' => $date,
                 'total' => $total,
                 'paid' => 0,
                 'due' => $total,

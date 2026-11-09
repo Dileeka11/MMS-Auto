@@ -317,6 +317,7 @@ export function CompanyScreen({ go: _go, setBrand, setLogoUrl }: { go: Go; setBr
               <Field label="Email"><Input value={data.email || ''} onChange={(e) => set('email', e.target.value)} /></Field>
               <Field label="Tax / VAT No (TIN)"><Input value={data.taxNo || ''} onChange={(e) => set('taxNo', e.target.value)} /></Field>
               <Field label="VAT %"><Input type="number" value={data.vatPct ?? ''} onChange={(e) => set('vatPct', e.target.value)} placeholder="18" /></Field>
+              <Field label="Tax Invoice Code (QQQQ)"><Input value={data.invoiceClass ?? ''} onChange={(e) => set('invoiceClass', e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 15))} placeholder="VAT" title="Middle part of the IRD tax invoice no — 26NOV_VAT_00001" /></Field>
               <Field label="Currency"><Select value={data.currency || ''} onChange={(e) => set('currency', e.target.value)}>{['LKR — Sri Lankan Rupee', 'PKR — Pakistani Rupee', 'INR — Indian Rupee', 'USD — US Dollar'].map((c) => <option key={c}>{c}</option>)}</Select></Field>
             </div>
           </Card>

@@ -146,6 +146,7 @@ export interface Invoice {
   discountPct?: number
   discountStatus?: 'pending' | 'approved' | 'rejected' | null
   vatApplied?: boolean // printed as a Tax Invoice
+  taxInvoiceNo?: string | null // IRD serial YYMMM_QQQQ_XXXXX (VAT invoices only)
   vatPct?: number
   vatAmount?: number   // included in total
   lines?: Array<{ id?: number; code?: string; name: string; qty: number; rate: number }>
