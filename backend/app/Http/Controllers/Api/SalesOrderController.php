@@ -9,6 +9,8 @@ use App\Models\Item;
 use App\Models\SalesOrder;
 use App\Models\SalesRep;
 use App\Services\Accounting\Posting;
+use App\Support\Fifo;
+use App\Support\StockCheck;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -54,6 +56,9 @@ class SalesOrderController extends Controller
         ]);
 
         return DB::transaction(function () use ($data, $salesOrder) {
+            // Only free stock (on hand less what other dispatches hold) can be dispatched.
+            StockCheck::assertAvailable($data['lines']);
+
             // Replace the order lines with the (possibly edited) dispatch lines.
             $salesOrder->lines()->delete();
             $total = 0;
@@ -71,9 +76,9 @@ class SalesOrderController extends Controller
                 ]);
                 $total += $l['qty'] * $l['rate'];
 
-                // Reserve the dispatched quantity (never above on-hand).
+                // Reserve the dispatched quantity (checked free above).
                 if ($item) {
-                    $item->reserved = min((int) $item->qty, (int) $item->reserved + (int) $l['qty']);
+                    $item->reserved = (int) $item->reserved + (int) $l['qty'];
                     $item->save();
                 }
             }
@@ -111,6 +116,10 @@ class SalesOrderController extends Controller
 
         return DB::transaction(function () use ($data, $salesOrder) {
             $salesOrder->load('lines');
+            // The dispatch reserved this stock; it must still physically be there.
+            StockCheck::assertOnHand($salesOrder->lines->map(function ($l) {
+                return ['code' => $l->code, 'name' => $l->name, 'qty' => $l->qty];
+            })->all());
 
             $supply = 0;
             $methods = [];
@@ -148,24 +157,29 @@ class SalesOrderController extends Controller
             ]);
 
             foreach ($salesOrder->lines as $l) {
+                $item = ! empty($l->code) ? Item::where('code', $l->code)->lockForUpdate()->first() : null;
+                $fifo = (float) $l->fifo_cost;
+                $avg = (float) $l->avg_cost;
+                if ($item) {
+                    // Cost at the moment of sale: FIFO from the layers actually taken.
+                    $avg = (float) $item->avg_cost;
+                    $fifo = round(Fifo::consume($item, (int) $l->qty, Fifo::INVOICE, $inv->id) / max(1, (int) $l->qty), 2);
+                    // Release the reservation and reduce on-hand stock.
+                    $item->reserved = max(0, (int) $item->reserved - (int) $l->qty);
+                    $item->qty = max(0, (int) $item->qty - (int) $l->qty);
+                    $item->refreshStatus();
+                    $item->save();
+                }
+
                 $inv->lines()->create([
                     'code' => $l->code,
                     'name' => $l->name,
                     'qty' => $l->qty,
                     'rate' => $l->rate,
-                    'fifo_cost' => $l->fifo_cost,
-                    'avg_cost' => $l->avg_cost,
+                    'fifo_cost' => $fifo,
+                    'avg_cost' => $avg,
                     'method' => $l->method,
                 ]);
-
-                $item = ! empty($l->code) ? Item::where('code', $l->code)->first() : null;
-                if ($item) {
-                    // Release the reservation and reduce on-hand stock.
-                    $item->reserved = max(0, (int) $item->reserved - (int) $l->qty);
-                    $item->qty = max(0, (int) $item->qty - (int) $l->qty);
-                    $item->status = $item->qty <= 0 ? 'out' : ($item->qty <= $item->reorder ? 'low' : 'in');
-                    $item->save();
-                }
             }
 
             Posting::invoice($inv);

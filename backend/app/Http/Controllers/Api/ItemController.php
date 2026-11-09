@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Item;
+use App\Support\Fifo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -42,7 +43,10 @@ class ItemController extends Controller
         }
         $data['status'] = $this->stockStatus($data['qty'] ?? 0, $data['reorder'] ?? 12);
 
-        return response()->json(Item::create($data), 201);
+        $item = Item::create($data);
+        Fifo::sync($item); // opening stock becomes the first FIFO layer
+
+        return response()->json($item->fresh(), 201);
     }
 
     /** Generate the next available ITM-NNN code. */
@@ -77,13 +81,18 @@ class ItemController extends Controller
         ]);
         $item->fill($data);
         $item->status = $this->stockStatus($item->qty, $item->reorder);
+        $qtyChanged = $item->isDirty('qty');
         $item->save();
+        if ($qtyChanged) {
+            Fifo::sync($item); // a hand-edited qty adds / trims FIFO layers to match
+        }
 
         return $item;
     }
 
     public function destroy(Item $item)
     {
+        Fifo::forget($item->id);
         $item->delete();
 
         return response()->noContent();
@@ -153,6 +162,7 @@ class ItemController extends Controller
                 if ($code === '') {
                     $row['code'] = $nextCode();
                     $item = Item::create($row);
+                    Fifo::sync($item);
                     $existingByCode->put($norm($item->code), $item);
                     $created++;
                     continue;
@@ -163,10 +173,15 @@ class ItemController extends Controller
                     // A later row in the same sheet updates the earlier one rather
                     // than trying (and failing) to insert a case-variant duplicate.
                     $existing->fill($row);
+                    $qtyChanged = $existing->isDirty('qty');
                     $existing->save();
+                    if ($qtyChanged) {
+                        Fifo::sync($existing);
+                    }
                     $updated++;
                 } else {
                     $item = Item::create($row);
+                    Fifo::sync($item);
                     $existingByCode->put($norm($code), $item); // guard against dupes within the same file
                     $created++;
                 }
@@ -220,6 +235,7 @@ class ItemController extends Controller
     public function clearAll()
     {
         $count = Item::count();
+        Fifo::forget();
         Item::query()->delete();
 
         return response()->json(['deleted' => $count]);

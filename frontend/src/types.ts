@@ -126,6 +126,7 @@ export interface GRN {
   rejectedById?: number | null; rejectedAt?: string | null; rejectReason?: string | null;
   rejectedBy?: { id: number; name: string } | null;
   approvalsCount?: number; approvalsRequired?: number;
+  stockPostedAt?: string | null;
 }
 export interface TrackingRow {
   poCode: string; supplier: string; piNumber?: string; date: string;

@@ -969,7 +969,7 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
   }
   const approveGrn = async (g: GRN) => {
     const ok = await runApprovalAction(() => api.grns.approve(g.id), notify.error)
-    if (ok) { await refreshGrns(); notify.success('GRN approved', g.id) }
+    if (ok) { await refreshGrns(); notify.success('GRN approved', (g.approvalsCount || 0) >= 1 ? `${g.id} · stock received` : `${g.id} · one more approval to receive stock`) }
   }
   const rejectGrn = async (g: GRN) => {
     const reason = prompt('Reject reason (optional):') ?? ''
@@ -1020,6 +1020,7 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
       } as any)
       await reload()
       reset()
+      notify.success('GRN submitted for approval', 'Stock is updated after the second admin approval.')
     } catch (e: any) {
       setErr(e?.response?.data?.message || 'Post failed')
     } finally { setSubmitting(false) }
@@ -1090,6 +1091,7 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
               <KV k="Shipment" v={viewGrn.shipmentCode} />
               <KV k="Items"    v={String(viewGrn.items)} />
               <KV k="Value"    v={fmtMoney(viewGrn.total)} />
+              <KV k="Stock"    v={viewGrn.stockPostedAt ? 'Received into stock' : viewGrn.status === 'Rejected' ? 'Not received (rejected)' : 'Not yet — needs 2 approvals'} />
             </div>
           </div>
         )}
@@ -1100,7 +1102,7 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
         sub={step === 3 ? `${po?.supplier} · ${(shipment?.lines || []).length} items in shipment` : undefined}
         footer={step === 3 ? <>
           <Btn variant="plain" onClick={() => setStep(2)}>Back</Btn>
-          <Btn variant="primary" icon="check" disabled={submitting} onClick={post}>{submitting ? 'Posting…' : 'Post GRN & Update Stock'}</Btn>
+          <Btn variant="primary" icon="check" disabled={submitting} onClick={post}>{submitting ? 'Submitting…' : 'Submit GRN for Approval'}</Btn>
         </> : step === 2 ? <Btn variant="plain" onClick={() => setStep(1)}>Back</Btn> : <Btn variant="plain" onClick={reset}>Cancel</Btn>}
       >
         {err && <ErrBox text={err} />}

@@ -12,6 +12,8 @@ use App\Models\SalesOrder;
 use App\Models\SalesRep;
 use App\Models\SalesReturn;
 use App\Services\Accounting\Posting;
+use App\Support\Fifo;
+use App\Support\StockCheck;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -31,7 +33,9 @@ class InvoiceController extends Controller
     /**
      * Post a sales invoice. Each line carries a per-line costing method
      * (FIFO or Average); COGS uses that method's stored cost. Stock is
-     * reduced by the sold quantity.
+     * reduced by the sold quantity and taken from the FIFO layers oldest-first,
+     * so the line's fifo_cost is what those units actually cost. Refused when
+     * a line asks for more than is free (on hand less reserved for dispatch).
      */
     public function store(Request $request)
     {
@@ -51,6 +55,8 @@ class InvoiceController extends Controller
         ]);
 
         return DB::transaction(function () use ($data) {
+            StockCheck::assertAvailable($data['lines']);
+
             $supply = 0;
             $methods = [];
             foreach ($data['lines'] as $l) {
@@ -82,9 +88,17 @@ class InvoiceController extends Controller
             ]);
 
             foreach ($data['lines'] as $l) {
-                $item = ! empty($l['code']) ? Item::where('code', $l['code'])->first() : null;
-                $fifo = $item->fifo_cost ?? 0;
-                $avg = $item->avg_cost ?? 0;
+                $item = ! empty($l['code']) ? Item::where('code', $l['code'])->lockForUpdate()->first() : null;
+                $fifo = 0;
+                $avg = 0;
+                if ($item) {
+                    // Cost at the moment of sale: FIFO from the layers actually taken.
+                    $avg = (float) $item->avg_cost;
+                    $fifo = round(Fifo::consume($item, (int) $l['qty'], Fifo::INVOICE, $inv->id) / $l['qty'], 2);
+                    $item->qty = max(0, $item->qty - $l['qty']);
+                    $item->refreshStatus();
+                    $item->save();
+                }
                 $inv->lines()->create([
                     'code' => $l['code'] ?? null,
                     'name' => $l['name'],
@@ -94,11 +108,6 @@ class InvoiceController extends Controller
                     'avg_cost' => $avg,
                     'method' => $l['method'] ?? 'FIFO',
                 ]);
-                if ($item) {
-                    $item->qty = max(0, $item->qty - $l['qty']);
-                    $item->status = $item->qty <= 0 ? 'out' : ($item->qty <= $item->reorder ? 'low' : 'in');
-                    $item->save();
-                }
             }
 
             // mark source quotation converted
@@ -211,7 +220,8 @@ class InvoiceController extends Controller
         DB::transaction(function () use ($invoice) {
             $invoice->load('lines');
             $order = SalesOrder::where('invoice_code', $invoice->code)->first();
-
+            // FIFO layers get back exactly what this invoice took from them.
+            Fifo::restore(Fifo::INVOICE, $invoice->id);
             foreach ($invoice->lines as $l) {
                 $item = ! empty($l->code) ? Item::where('code', $l->code)->first() : null;
                 if (! $item) {
@@ -221,6 +231,7 @@ class InvoiceController extends Controller
                     $item->reserved = (int) $item->reserved + (int) $l->qty;
                 }
                 $item->addStock((int) $l->qty, (float) ($l->method === 'Average' ? $l->avg_cost : $l->fifo_cost));
+                Fifo::sync($item); // invoices from before FIFO layers have no moves to restore
             }
 
             if ($order) {

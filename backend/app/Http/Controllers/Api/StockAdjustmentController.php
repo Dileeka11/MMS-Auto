@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Item;
 use App\Models\StockAdjustment;
 use App\Services\Accounting\Posting;
+use App\Support\Fifo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -44,6 +45,11 @@ class StockAdjustmentController extends Controller
                 $item->qty = max(0, $item->qty + ($data['type'] === 'Increase' ? $data['qty'] : -$data['qty']));
                 $item->status = $item->qty <= 0 ? 'out' : ($item->qty <= $item->reorder ? 'low' : 'in');
                 $item->save();
+                if ($data['type'] === 'Increase') {
+                    Fifo::receive($item, (int) $data['qty'], (float) $adj->unit_cost, Fifo::ADJUST, $adj->id);
+                } else {
+                    Fifo::consume($item, (int) $data['qty'], Fifo::ADJUST, $adj->id);
+                }
             }
 
             Posting::stockAdjustment($adj);

@@ -9,6 +9,7 @@ use App\Models\InvoiceLine;
 use App\Models\Item;
 use App\Models\SalesReturn;
 use App\Services\Accounting\Posting;
+use App\Support\Fifo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -124,6 +125,7 @@ class SalesReturnController extends Controller
                 $item = $l->code ? Item::where('code', $l->code)->first() : null;
                 if ($item) {
                     $item->addStock($l->qty, $l->unit_cost);
+                    Fifo::receive($item, (int) $l->qty, (float) $l->unit_cost, Fifo::SALES_RETURN, $salesReturn->id);
                 }
             }
             $salesReturn->update(['status' => 'Approved', 'restocked' => $salesReturn->lines->isNotEmpty()]);
@@ -161,6 +163,7 @@ class SalesReturnController extends Controller
                         ]);
                     }
                     $item->removeStock($l->qty, $l->unit_cost);
+                    Fifo::removeReceipt($item, Fifo::SALES_RETURN, $salesReturn->id, (int) $l->qty);
                 }
                 Customer::adjustOutstanding($salesReturn->customer, $salesReturn->amount);
             }

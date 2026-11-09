@@ -6,6 +6,7 @@ import { StatRow } from '../components/doc'
 import { api } from '../api'
 import { money, moneyK, fmtDate } from '../data'
 import { printInvoice } from '../lib/invoicePrint'
+import { useNotify } from '../components/Notify'
 import type { SalesOrder, Invoice } from '../types'
 import type { Go } from './types'
 
@@ -14,6 +15,7 @@ const TERMS = ['Cash', 'Cheque', 'Credit (30 days)']
 type EditLine = { id?: number; code?: string; name: string; qty: number; rate: number; method?: string }
 
 export function DispatchScreen({ go: _go }: { go: Go }) {
+  const notify = useNotify()
   const [rows, setRows] = useState<SalesOrder[]>([])
   const [avail, setAvail] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
@@ -56,6 +58,8 @@ export function DispatchScreen({ go: _go }: { go: Go }) {
     try {
       await api.salesOrders.dispatch(disp.id, { lines: dispLines })
       setDisp(null); refresh()
+    } catch (e: any) {
+      notify.error('Not dispatched', e?.response?.data?.message || e?.message || 'Please try again.')
     } finally { setDispatching(false) }
   }
 
@@ -67,6 +71,8 @@ export function DispatchScreen({ go: _go }: { go: Go }) {
       const created = await api.salesOrders.invoice(inv.id, { terms, vatApplied: vat }) as Invoice
       setInv(null); refresh()
       printInvoice(created)
+    } catch (e: any) {
+      notify.error('Invoice not created', e?.response?.data?.message || e?.message || 'Please try again.')
     } finally { setInvoicing(false) }
   }
 

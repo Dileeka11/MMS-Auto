@@ -27,6 +27,7 @@ class Grn extends Model
         'approver1_at' => 'datetime',
         'approver2_at' => 'datetime',
         'rejected_at' => 'datetime',
+        'stock_posted_at' => 'datetime',
     ];
 
     public function lines()

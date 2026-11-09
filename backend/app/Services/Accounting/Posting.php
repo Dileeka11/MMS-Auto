@@ -204,6 +204,12 @@ class Posting
      */
     public static function grn(Grn $grn): void
     {
+        // A GRN only hits the books once its approval has received the stock.
+        if (! $grn->stock_posted_at) {
+            static::remove(self::GRN, $grn->id);
+
+            return;
+        }
         $grn->load('lines');
 
         $stock = 0.0;

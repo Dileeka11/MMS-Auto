@@ -5,15 +5,25 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\HandlesApprovals;
 use App\Http\Controllers\Controller;
 use App\Models\Grn;
+use App\Models\GrnLine;
 use App\Models\Item;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderLine;
 use App\Models\Shipment;
 use App\Models\ShipmentLine;
 use App\Services\Accounting\Posting;
+use App\Support\Fifo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
+/**
+ * Goods received notes.
+ *
+ * Saving a GRN only records what arrived (status "Awaiting Approval"). Stock,
+ * costs, selling prices, PO balances and the journal move on the SECOND admin
+ * approval — see receive(). A rejected GRN never touches stock.
+ */
 class GrnController extends Controller
 {
     use HandlesApprovals;
@@ -24,10 +34,18 @@ class GrnController extends Controller
             ->orderByDesc('id')->get();
     }
 
+    /** Second approval receives the goods into stock and posts the journal. */
     public function approve(Request $request, Grn $grn)
     {
-        return $this->performApprove($request, $grn, 'grn')
-            ->load(['lines', 'approver1:id,name', 'approver2:id,name']);
+        return DB::transaction(function () use ($request, $grn) {
+            $grn = Grn::whereKey($grn->id)->lockForUpdate()->firstOrFail();
+            $grn = $this->performApprove($request, $grn, 'grn');
+            if ($grn->isFullyApproved() && ! $grn->stock_posted_at) {
+                $this->receive($grn);
+            }
+
+            return $grn->fresh()->load(['lines', 'approver1:id,name', 'approver2:id,name']);
+        });
     }
 
     public function reject(Request $request, Grn $grn)
@@ -37,11 +55,9 @@ class GrnController extends Controller
     }
 
     /**
-     * Post a GRN against a PO + Shipment. Each received line:
-     *  - increases the matched item's stock
-     *  - recalculates weighted-average cost using the landed (ex-VAT) cost
-     *  - decrements the PO line's balance_qty / increments received_qty
-     *  - updates the item's selling prices to the latest entered values
+     * Record a GRN against an approved PO + Shipment. Nothing moves yet — the
+     * quantities are only checked against what the PO still owes (less what
+     * other GRNs awaiting approval already claim).
      */
     public function store(Request $request)
     {
@@ -63,19 +79,33 @@ class GrnController extends Controller
 
         return DB::transaction(function () use ($data) {
             $po = PurchaseOrder::where('code', $data['po'])->firstOrFail();
-
-            if (!$po->isFullyApproved()) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+            if (! $po->isFullyApproved()) {
+                throw ValidationException::withMessages([
                     'po' => 'This PO is not fully approved yet. Two admin approvals are required before GRN.',
                 ]);
             }
-
             $shipment = Shipment::where('code', $data['shipment_code'])->firstOrFail();
-
-            if (!$shipment->isFullyApproved()) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+            if (! $shipment->isFullyApproved()) {
+                throw ValidationException::withMessages([
                     'shipment_code' => 'This shipment (costing) is not fully approved yet. Two admin approvals are required before GRN.',
                 ]);
+            }
+
+            $pending = $this->pendingByPoLine($po->code);
+            $claim = [];
+            foreach ($data['lines'] as $l) {
+                $pl = $this->poLineFor($l['shipment_line_id'] ?? null);
+                if (! $pl || (int) $l['qty'] <= 0) {
+                    continue;
+                }
+                $claim[$pl->id] = ($claim[$pl->id] ?? 0) + (int) $l['qty'];
+                $open = (int) $pl->balance_qty - ($pending[$pl->id] ?? 0);
+                if ($claim[$pl->id] > $open) {
+                    throw ValidationException::withMessages([
+                        'lines' => "{$l['item']}: only " . max(0, $open) . " still to receive on {$po->code}"
+                            . (($pending[$pl->id] ?? 0) > 0 ? " ({$pending[$pl->id]} more are on GRNs awaiting approval)" : '') . '.',
+                    ]);
+                }
             }
 
             $grn = Grn::create([
@@ -92,20 +122,14 @@ class GrnController extends Controller
 
             $total = 0;
             $linesPosted = 0;
-
             foreach ($data['lines'] as $l) {
                 $recv = (int) $l['qty'];
                 if ($recv <= 0) {
                     continue;
                 }
-                $unitWoVat = (float) ($l['unit_cost_wo_vat'] ?? $l['cost']);
                 $unitWithVat = (float) ($l['unit_cost_with_vat'] ?? $l['cost']);
-                $sellWoVat = (float) ($l['selling_price_wo_vat'] ?? 0);
-                $sellWithVat = (float) ($l['selling_price_with_vat'] ?? 0);
-
                 $total += $recv * $unitWithVat;
                 $linesPosted++;
-
                 $grn->lines()->create([
                     'shipment_line_id' => $l['shipment_line_id'] ?? null,
                     'code' => $l['code'] ?? null,
@@ -113,104 +137,57 @@ class GrnController extends Controller
                     'qty' => $recv,
                     'cost' => $unitWithVat,
                     'total' => round($recv * $unitWithVat, 2),
-                    'unit_cost_wo_vat' => $unitWoVat,
+                    'unit_cost_wo_vat' => (float) ($l['unit_cost_wo_vat'] ?? $l['cost']),
                     'unit_cost_with_vat' => $unitWithVat,
-                    'selling_price_wo_vat' => $sellWoVat,
-                    'selling_price_with_vat' => $sellWithVat,
+                    'selling_price_wo_vat' => (float) ($l['selling_price_wo_vat'] ?? 0),
+                    'selling_price_with_vat' => (float) ($l['selling_price_with_vat'] ?? 0),
                 ]);
-
-                // Decrement PO line balance via the shipment line linkage.
-                if (! empty($l['shipment_line_id'])) {
-                    $sl = ShipmentLine::find($l['shipment_line_id']);
-                    if ($sl && $sl->purchase_order_line_id) {
-                        $pl = PurchaseOrderLine::find($sl->purchase_order_line_id);
-                        if ($pl) {
-                            $take = min($recv, $pl->balance_qty);
-                            $pl->balance_qty = max(0, $pl->balance_qty - $take);
-                            $pl->received_qty = $pl->received_qty + $take;
-                            $pl->save();
-                        }
-                    }
-                }
-
-                // Stock + weighted-average cost using landed ex-VAT cost,
-                // and persist latest selling prices on the item master.
-                if (! empty($l['code'])) {
-                    $item = Item::where('code', $l['code'])->first();
-                    if ($item) {
-                        $oldQty = $item->qty;
-                        $newQty = $oldQty + $recv;
-                        $item->avg_cost = $newQty > 0
-                            ? round(($oldQty * $item->avg_cost + $recv * $unitWoVat) / $newQty, 2)
-                            : $item->avg_cost;
-                        $item->qty = $newQty;
-                        $item->status = $newQty <= 0 ? 'out' : ($newQty <= $item->reorder ? 'low' : 'in');
-                        if ($sellWoVat > 0) {
-                            $item->selling_price_wo_vat = $sellWoVat;
-                            $item->price = $sellWoVat;
-                        }
-                        if ($sellWithVat > 0) {
-                            $item->selling_price_with_vat = $sellWithVat;
-                        }
-                        $item->save();
-                    }
-                }
+            }
+            if ($linesPosted === 0) {
+                throw ValidationException::withMessages(['lines' => 'Enter a received quantity on at least one line.']);
             }
 
             $grn->update(['items' => $linesPosted, 'total' => round($total, 2)]);
-
-            // Stock moves when the GRN is posted (not on approval), so the books do too.
-            Posting::grn($grn);
-
-            // Recompute PO status from balance
-            $totalBalance = $po->lines()->sum('balance_qty');
-            $totalReceived = $po->lines()->sum('received_qty');
-            if ($totalBalance <= 0) {
-                $po->update(['status' => 'Completed']);
-            } elseif ($totalReceived > 0) {
-                $po->update(['status' => 'Partial GRN']);
-            }
-
-            // Shipment status
-            $shipBalance = $shipment->lines()->get()->sum(function ($sl) {
-                return optional($sl->purchaseOrderLine)->balance_qty ?? 0;
-            });
-            $shipment->update(['status' => $shipBalance <= 0 ? 'Received' : 'Partially Received']);
 
             return response()->json($grn->load('lines'), 201);
         });
     }
 
     /**
-     * Delete a GRN and undo what posting it did: the received stock comes back
-     * out (re-weighting the avg cost), the PO lines are owed again, PO and
-     * shipment statuses are recomputed, and the journal goes. Refused when the
-     * goods have already been sold or moved on.
+     * Delete a GRN. One awaiting approval (or rejected) never moved stock, so
+     * it just goes. A received one is undone: the stock comes back out
+     * (re-weighting the avg cost and its FIFO layer), the PO lines are owed
+     * again, PO and shipment statuses are recomputed, and the journal goes.
+     * Refused when the goods have already been sold or moved on.
      */
     public function destroy(Grn $grn)
     {
         DB::transaction(function () use ($grn) {
             $grn->load('lines');
 
-            foreach ($grn->lines as $l) {
-                $item = $l->code ? Item::where('code', $l->code)->lockForUpdate()->first() : null;
-                if ($item && $item->qty < $l->qty) {
-                    throw \Illuminate\Validation\ValidationException::withMessages([
-                        'grn' => "Cannot delete: only {$item->qty} of {$item->name} left in stock, {$l->qty} came in on this GRN.",
-                    ]);
-                }
-                if ($item) {
-                    $unit = (float) $l->unit_cost_wo_vat > 0 ? (float) $l->unit_cost_wo_vat : (float) $l->cost;
-                    $item->removeStock((int) $l->qty, $unit);
-                }
+            if ($grn->stock_posted_at) {
+                foreach ($grn->lines as $l) {
+                    $item = $l->code ? Item::where('code', $l->code)->lockForUpdate()->first() : null;
+                    if ($item) {
+                        $left = Fifo::receivedLeft($item, Fifo::GRN, $l->id);
+                        $onHand = $left === null ? (int) $item->qty : min($left, (int) $item->qty);
+                        if ($onHand < $l->qty) {
+                            throw ValidationException::withMessages([
+                                'grn' => "Cannot delete: only {$onHand} of the {$l->qty} {$item->name} on this GRN are still in stock — the rest are sold or moved.",
+                            ]);
+                        }
+                        $unit = (float) $l->unit_cost_wo_vat > 0 ? (float) $l->unit_cost_wo_vat : (float) $l->cost;
+                        $item->removeStock((int) $l->qty, $unit);
+                        Fifo::removeReceipt($item, Fifo::GRN, $l->id, (int) $l->qty);
+                    }
 
-                $sl = $l->shipment_line_id ? ShipmentLine::find($l->shipment_line_id) : null;
-                $pl = $sl && $sl->purchase_order_line_id ? PurchaseOrderLine::find($sl->purchase_order_line_id) : null;
-                if ($pl) {
-                    $back = min((int) $l->qty, (int) $pl->received_qty);
-                    $pl->received_qty = $pl->received_qty - $back;
-                    $pl->balance_qty = $pl->balance_qty + $back;
-                    $pl->save();
+                    $pl = $this->poLineFor($l->shipment_line_id);
+                    if ($pl) {
+                        $back = min((int) $l->qty, (int) $pl->received_qty);
+                        $pl->received_qty = $pl->received_qty - $back;
+                        $pl->balance_qty = $pl->balance_qty + $back;
+                        $pl->save();
+                    }
                 }
             }
 
@@ -218,21 +195,113 @@ class GrnController extends Controller
             $grn->lines()->delete();
             $grn->delete();
 
-            $po = PurchaseOrder::where('code', $grn->po)->first();
-            if ($po) {
-                $received = $po->lines()->sum('received_qty');
-                $balance = $po->lines()->sum('balance_qty');
-                $po->update(['status' => $received <= 0 ? 'Approved' : ($balance <= 0 ? 'Completed' : 'Partial GRN')]);
-            }
-            $shipment = $grn->shipment_id ? Shipment::find($grn->shipment_id) : null;
-            if ($shipment) {
-                $lines = $shipment->lines()->get();
-                $received = $lines->sum(fn ($sl) => optional($sl->purchaseOrderLine)->received_qty ?? 0);
-                $balance = $lines->sum(fn ($sl) => optional($sl->purchaseOrderLine)->balance_qty ?? 0);
-                $shipment->update(['status' => $received <= 0 ? 'Approved' : ($balance <= 0 ? 'Received' : 'Partially Received')]);
+            if ($grn->stock_posted_at) {
+                $this->refreshStatuses($grn);
             }
         });
 
         return response()->noContent();
+    }
+
+    /**
+     * Receive an approved GRN. Each line:
+     *  - increases the matched item's stock and adds a FIFO layer at the
+     *    landed ex-VAT cost
+     *  - recalculates the weighted-average cost with that same cost
+     *  - decrements the PO line's balance_qty / increments received_qty
+     *  - updates the item's selling prices to the latest entered values
+     * then posts the journal and recomputes PO / shipment status.
+     */
+    protected function receive(Grn $grn): void
+    {
+        $grn->load('lines');
+
+        foreach ($grn->lines as $l) {
+            $recv = (int) $l->qty;
+            if ($recv <= 0) {
+                continue;
+            }
+
+            $pl = $this->poLineFor($l->shipment_line_id);
+            if ($pl) {
+                $pl = PurchaseOrderLine::whereKey($pl->id)->lockForUpdate()->first();
+                if ($recv > (int) $pl->balance_qty) {
+                    throw ValidationException::withMessages([
+                        'grn' => "{$l->item}: only {$pl->balance_qty} still to receive on {$grn->po}, this GRN has {$recv}. Reject it and raise a corrected GRN.",
+                    ]);
+                }
+                $pl->balance_qty = (int) $pl->balance_qty - $recv;
+                $pl->received_qty = (int) $pl->received_qty + $recv;
+                $pl->save();
+            }
+
+            $item = $l->code ? Item::where('code', $l->code)->lockForUpdate()->first() : null;
+            if (! $item) {
+                continue;
+            }
+            $unitWoVat = (float) $l->unit_cost_wo_vat > 0 ? (float) $l->unit_cost_wo_vat : (float) $l->cost;
+            $item->addStock($recv, $unitWoVat);
+            if ((float) $l->selling_price_wo_vat > 0) {
+                $item->selling_price_wo_vat = $l->selling_price_wo_vat;
+                $item->price = $l->selling_price_wo_vat;
+            }
+            if ((float) $l->selling_price_with_vat > 0) {
+                $item->selling_price_with_vat = $l->selling_price_with_vat;
+            }
+            $item->save();
+            Fifo::receive($item, $recv, $unitWoVat, Fifo::GRN, $l->id, optional($grn->date)->toDateString());
+        }
+
+        $grn->stock_posted_at = now();
+        $grn->save();
+        Posting::grn($grn);
+
+        $this->refreshStatuses($grn);
+    }
+
+    /** Recompute PO and shipment status from the PO line balances. */
+    protected function refreshStatuses(Grn $grn): void
+    {
+        $po = PurchaseOrder::where('code', $grn->po)->first();
+        if ($po) {
+            $received = $po->lines()->sum('received_qty');
+            $balance = $po->lines()->sum('balance_qty');
+            $po->update(['status' => $received <= 0 ? 'Approved' : ($balance <= 0 ? 'Completed' : 'Partial GRN')]);
+        }
+        $shipment = $grn->shipment_id ? Shipment::find($grn->shipment_id) : null;
+        if ($shipment) {
+            $lines = $shipment->lines()->get();
+            $received = $lines->sum(function ($sl) { return optional($sl->purchaseOrderLine)->received_qty ?? 0; });
+            $balance = $lines->sum(function ($sl) { return optional($sl->purchaseOrderLine)->balance_qty ?? 0; });
+            $shipment->update(['status' => $received <= 0 ? 'Approved' : ($balance <= 0 ? 'Received' : 'Partially Received')]);
+        }
+    }
+
+    protected function poLineFor($shipmentLineId): ?PurchaseOrderLine
+    {
+        $sl = $shipmentLineId ? ShipmentLine::find($shipmentLineId) : null;
+
+        return $sl && $sl->purchase_order_line_id ? PurchaseOrderLine::find($sl->purchase_order_line_id) : null;
+    }
+
+    /** Qty per PO line already claimed by this PO's GRNs that are still awaiting approval. */
+    protected function pendingByPoLine(string $poCode): array
+    {
+        $rows = GrnLine::query()
+            ->join('grns', 'grns.id', '=', 'grn_lines.grn_id')
+            ->join('shipment_lines', 'shipment_lines.id', '=', 'grn_lines.shipment_line_id')
+            ->where('grns.po', $poCode)
+            ->whereNull('grns.stock_posted_at')
+            ->where('grns.status', '!=', 'Rejected')
+            ->whereNotNull('shipment_lines.purchase_order_line_id')
+            ->groupBy('shipment_lines.purchase_order_line_id')
+            ->select('shipment_lines.purchase_order_line_id as pl', DB::raw('SUM(grn_lines.qty) as qty'))
+            ->get();
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(int) $r->pl] = (int) $r->qty;
+        }
+
+        return $out;
     }
 }

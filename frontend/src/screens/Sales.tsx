@@ -5,6 +5,7 @@ import { Icon } from '../components/Icon'
 import { StatRow, LineEditor } from '../components/doc'
 import { api, company as companyApi } from '../api'
 import { printInvoice } from '../lib/invoicePrint'
+import { useNotify } from '../components/Notify'
 import { money, moneyK, fmtDate } from '../data'
 import type { EditorLine, Quotation, Invoice } from '../types'
 import type { Go } from './types'
@@ -73,7 +74,7 @@ export function QuoteScreen({ go }: { go: Go }) {
   )
 }
 
-function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, profit, post, back, customers, saving, vat, setVat, vatPct, vatAmt }: { src: any | null; cust: string; setCust: (v: string) => void; lines: EditorLine[]; setLines: (fn: (l: EditorLine[]) => EditorLine[]) => void; total: number; cogs: number; profit: number; post: () => void; back: () => void; customers: any[]; saving: boolean; vat: boolean; setVat: (v: boolean) => void; vatPct: number; vatAmt: number }) {
+function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, profit, post, back, customers, saving, vat, setVat, vatPct, vatAmt, discPct, setDiscPct, discAmt }: { src: any | null; cust: string; setCust: (v: string) => void; lines: EditorLine[]; setLines: (fn: (l: EditorLine[]) => EditorLine[]) => void; total: number; cogs: number; profit: number; post: () => void; back: () => void; customers: any[]; saving: boolean; vat: boolean; setVat: (v: boolean) => void; vatPct: number; vatAmt: number; discPct: number; setDiscPct: (v: number) => void; discAmt: number }) {
   return (
     <div>
       <PageHead crumbs="Data Capture · Sales Invoice" title={src ? 'Invoice from ' + src.id : 'New Sales Invoice'} icon="receipt"
@@ -97,24 +98,36 @@ function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, prof
         <div className="col gap-4" style={{ position: 'sticky', top: 80 }}>
           <Card>
             <div className="eyebrow" style={{ marginBottom: 14 }}>Invoice Summary</div>
-            {([['Sub-total', total], ['Discount', 0], [`VAT (${vat ? vatPct : 0}%)`, vatAmt]] as [string, number][]).map(([l, v]) => (
-              <div key={l} className="row between" style={{ marginBottom: 9, fontSize: 13 }}>
-                <span className="t-2">{l}</span><span className="num">{money(v)}</span>
-              </div>
-            ))}
+            <div className="row between" style={{ marginBottom: 9, fontSize: 13 }}>
+              <span className="t-2">Sub-total</span><span className="num">{money(total)}</span>
+            </div>
+            <div className="row between" style={{ marginBottom: 9, fontSize: 13, gap: 8 }}>
+              <span className="t-2 row gap-2" style={{ alignItems: 'center' }}>Discount
+                <Input type="number" min={0} max={100} step="0.01" value={discPct || ''} placeholder="0"
+                  onChange={(e) => { const n = parseFloat(e.target.value); setDiscPct(isNaN(n) ? 0 : Math.min(100, Math.max(0, n))) }}
+                  style={{ width: 64, height: 28, padding: '0 8px', textAlign: 'right' }} aria-label="Discount percent" />%
+              </span>
+              <span className="num" style={{ color: discAmt ? 'var(--warn)' : undefined }}>{discAmt ? '− ' : ''}{money(discAmt)}</span>
+            </div>
+            <div className="row between" style={{ marginBottom: 9, fontSize: 13 }}>
+              <span className="t-2">{`VAT (${vat ? vatPct : 0}%)`}</span><span className="num">{money(vatAmt)}</span>
+            </div>
             <div className="row between" style={{ paddingTop: 12, marginTop: 6, borderTop: '1px solid var(--line)' }}>
               <span style={{ fontWeight: 700, fontFamily: 'Saira', fontSize: 16 }}>Total</span>
-              <span className="num" style={{ fontWeight: 700, fontFamily: 'Saira', fontSize: 20, color: 'var(--ac-bright)' }}>{money(total + vatAmt)}</span>
+              <span className="num" style={{ fontWeight: 700, fontFamily: 'Saira', fontSize: 20, color: 'var(--ac-bright)' }}>{money(total - discAmt + vatAmt)}</span>
             </div>
+            {discPct > 0 && <div className="t-2" style={{ fontSize: 11.5, marginTop: 10, color: 'var(--warn)' }}>
+              Discount needs admin approval. Until it is approved, the invoice is posted at {money(total + (vat ? Math.round(total * vatPct) / 100 : 0))} and payments can't be added.
+            </div>}
           </Card>
           <Card style={{ background: 'linear-gradient(160deg, var(--bg-1), oklch(0.22 0.04 155 / 0.4))', border: '1px solid var(--ok)' }}>
             <div className="row between" style={{ marginBottom: 12 }}><span className="eyebrow" style={{ color: 'var(--ok)' }}>Costing &amp; Margin</span><Icon n="chart" s={16} c="var(--ok)" /></div>
             <div className="row between" style={{ marginBottom: 8, fontSize: 13 }}><span className="t-2">Cost of goods</span><span className="num">{money(cogs)}</span></div>
-            <div className="row between" style={{ marginBottom: 12, fontSize: 13 }}><span className="t-2">Gross profit</span><span className="num" style={{ color: 'var(--ok)', fontWeight: 700 }}>{money(profit)}</span></div>
+            <div className="row between" style={{ marginBottom: 12, fontSize: 13 }}><span className="t-2">Gross profit</span><span className="num" style={{ color: profit < 0 ? 'var(--bad)' : 'var(--ok)', fontWeight: 700 }}>{money(profit)}</span></div>
             <div style={{ height: 7, background: 'var(--bg-3)', borderRadius: 6, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: Math.min(100, (profit / (total || 1)) * 100) + '%', background: 'var(--ok)', borderRadius: 6, transition: 'width .4s' }} />
+              <div style={{ height: '100%', width: Math.max(0, Math.min(100, (profit / ((total - discAmt) || 1)) * 100)) + '%', background: 'var(--ok)', borderRadius: 6, transition: 'width .4s' }} />
             </div>
-            <div className="t-2" style={{ fontSize: 11.5, marginTop: 8 }}>Margin <b className="num" style={{ color: 'var(--ok)' }}>{total ? Math.round((profit / total) * 100) : 0}%</b></div>
+            <div className="t-2" style={{ fontSize: 11.5, marginTop: 8 }}>Margin <b className="num" style={{ color: 'var(--ok)' }}>{total - discAmt ? Math.round((profit / (total - discAmt)) * 100) : 0}%</b></div>
           </Card>
         </div>
       </div>
@@ -123,6 +136,7 @@ function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, prof
 }
 
 export function InvoiceScreen({ go: _go }: { go: Go }) {
+  const notify = useNotify()
   const [rows, setRows] = useState<Invoice[]>([])
   const [openQuotes, setOpenQuotes] = useState<any[]>([])
   const [customers, setCustomers] = useState<any[]>([])
@@ -131,6 +145,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   const [src, setSrc] = useState<any>(null); const [lines, setLines] = useState<EditorLine[]>([]); const [cust, setCust] = useState('')
   const [saving, setSaving] = useState(false)
   const [vat, setVat] = useState(false); const [vatPct, setVatPct] = useState(18)
+  const [discPct, setDiscPct] = useState(0)
   const [payFor, setPayFor] = useState<Invoice | null>(null)
   const [payAmt, setPayAmt] = useState(''); const [payMode, setPayMode] = useState('Cash'); const [payRef, setPayRef] = useState(''); const [paying, setPaying] = useState(false)
   const [chequeBank, setChequeBank] = useState(''); const [chequeNo, setChequeNo] = useState(''); const [chequeDate, setChequeDate] = useState('')
@@ -165,26 +180,31 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   const fromQuote = (q: any) => {
     setSrc(q); setCust(q.customer)
     const picks: EditorLine[] = (q.lines || []).map((l: any) => ({ id: l.id || l.itemId, code: l.code, name: l.name, qty: l.qty, rate: l.rate, fifo: l.fifo || l.rate, avg: l.avg || l.rate, method: 'FIFO', cost: l.avg || l.rate }))
-    setLines(picks); setVat(false); setStep(2)
+    setLines(picks); setVat(false); setDiscPct(0); setStep(2)
   }
-  const blank = () => { setSrc(null); setCust(''); setLines([]); setVat(false); setStep(2) }
+  const blank = () => { setSrc(null); setCust(''); setLines([]); setVat(false); setDiscPct(0); setStep(2) }
   const total = lines.reduce((a, l) => a + l.qty * l.rate, 0)
-  const vatAmt = vat ? Math.round(total * vatPct) / 100 : 0
+  // Same maths as the server: discount comes off the supply, VAT is charged on what's left.
+  const discAmt = Math.round(total * discPct) / 100
+  const vatAmt = vat ? Math.round((total - discAmt) * vatPct) / 100 : 0
   const cogs = lines.reduce((a, l) => a + l.qty * (l.method === 'FIFO' ? l.fifo : l.avg), 0)
-  const profit = total - cogs
+  const profit = total - discAmt - cogs
   const post = async () => {
     setSaving(true)
     try {
       await api.invoices.create({
         customer: cust, rep: 'R. Fernando', date: new Date().toISOString().slice(0, 10),
-        total: total + vatAmt, paid: 0, due: total + vatAmt, items: lines.length, cost: 'Mixed', status: 'Unpaid', lines,
+        items: lines.length, lines,
         vatApplied: vat,
+        discountPct: discPct || undefined,
       } as any)
-      setStep(0); setLines([]); setVat(false); refresh()
+      setStep(0); setLines([]); setVat(false); setDiscPct(0); refresh()
+    } catch (e: any) {
+      notify.error('Invoice not posted', e?.response?.data?.message || e?.message || 'Please try again.')
     } finally { setSaving(false) }
   }
 
-  if (step === 2) return <InvoiceBuilder {...{ src, cust, setCust, lines, setLines, total, cogs, profit, post, back: () => setStep(0), customers, saving, vat, setVat, vatPct, vatAmt }} />
+  if (step === 2) return <InvoiceBuilder {...{ src, cust, setCust, lines, setLines, total, cogs, profit, post, back: () => setStep(0), customers, saving, vat, setVat, vatPct, vatAmt, discPct, setDiscPct, discAmt }} />
   const shown = rows
   return (
     <div>
