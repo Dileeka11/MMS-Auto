@@ -13,6 +13,7 @@ class Account extends Model
         'parent_id',
         'code',
         'name',
+        'description',
         'is_active',
         'is_default',
         'is_cashbook',

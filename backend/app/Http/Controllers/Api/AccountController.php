@@ -15,14 +15,25 @@ use Illuminate\Support\Facades\DB;
  * Individual GL accounts — the "Chart of Accounts" screen. The chart is a tree:
  * a top-level account belongs to a group (parent_id NULL); a sub-account nests
  * under another account and inherits its group. Codes are always system
- * generated (never user-editable). An account that has children is a "header"
- * and is not postable — only leaf accounts may be used in journal entries.
+ * generated (never user-editable) in the NMS cost-code format: a letter for
+ * the side of the books (R income, E expense, A asset, L liability/equity) and
+ * a number — R1000 header, R1100 / R1200 under it. An account that has children
+ * is a "header" and is not postable — only leaf accounts may be used in journal
+ * entries. System (cost-code) accounts can be edited but not deleted.
  */
 class AccountController extends Controller
 {
     /** Flat chart list, each row joined up to group + category + statement type. */
     public function index()
     {
+        // account id => the auto-posting roles that use it (the Cash Book's supplier payment needs "payable").
+        $roles = [];
+        foreach (Posting::roleAccountIds() as $key => $id) {
+            if ($id) {
+                $roles[$id][] = $key;
+            }
+        }
+
         return Account::query()
             ->join('account_groups as g', 'g.id', '=', 'accounts.group_id')
             ->join('account_categories as c', 'c.id', '=', 'g.category_id')
@@ -31,6 +42,7 @@ class AccountController extends Controller
                 'accounts.id',
                 'accounts.code',
                 'accounts.name',
+                'accounts.description',
                 'accounts.is_active',
                 'accounts.is_default',
                 'accounts.is_cashbook',
@@ -45,12 +57,13 @@ class AccountController extends Controller
                 // has_children drives the header/postable distinction on the client.
                 DB::raw('EXISTS(SELECT 1 FROM accounts AS ch WHERE ch.parent_id = accounts.id) AS has_children'),
             ])
-            ->map(function ($r) {
+            ->map(function ($r) use ($roles) {
                 $r->is_active = (bool) $r->is_active;
                 $r->is_default = (bool) $r->is_default;
                 $r->is_cashbook = (bool) $r->is_cashbook;
                 $r->has_children = (bool) $r->has_children;
                 $r->is_postable = ! $r->has_children; // only leaves can be posted to
+                $r->posting_roles = $roles[$r->id] ?? [];
                 return $r;
             });
     }
@@ -61,6 +74,7 @@ class AccountController extends Controller
             'group_id' => ['nullable', 'integer', 'exists:account_groups,id'],
             'parent_id' => ['nullable', 'integer', 'exists:accounts,id'],
             'name' => ['required', 'string', 'max:150'],
+            'description' => ['nullable', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
             'is_cashbook' => ['nullable', 'boolean'],
         ]);
@@ -94,6 +108,7 @@ class AccountController extends Controller
             'parent_id' => $parentId,
             'code' => $code,
             'name' => $data['name'],
+            'description' => $data['description'] ?? null,
             'is_active' => $data['is_active'] ?? true,
             'is_default' => false,
             'is_cashbook' => (bool) ($data['is_cashbook'] ?? false),
@@ -104,13 +119,14 @@ class AccountController extends Controller
     }
 
     /**
-     * Only the name and active flag are editable. Codes are system-generated and
+     * Only the name, description and flags are editable. Codes are system-generated and
      * locked; group/parent moves are out of scope so the tree stays consistent.
      */
     public function update(Request $request, Account $account)
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:150'],
+            'description' => ['nullable', 'string', 'max:255'],
             'is_active' => ['nullable', 'boolean'],
             'is_cashbook' => ['nullable', 'boolean'],
         ]);
@@ -129,6 +145,7 @@ class AccountController extends Controller
 
         $account->update([
             'name' => $data['name'],
+            'description' => array_key_exists('description', $data) ? $data['description'] : $account->description,
             'is_active' => $active,
             'is_cashbook' => $cashbook,
         ]);
@@ -138,6 +155,12 @@ class AccountController extends Controller
 
     public function destroy(Account $account)
     {
+        if ($account->is_default) {
+            return response()->json([
+                'message' => 'Cannot delete: this is a system cost-code account. Deactivate it instead.',
+            ], 409);
+        }
+
         // A header account owns sub-accounts; deleting it would orphan them.
         if ($account->children()->exists()) {
             return response()->json([
@@ -179,46 +202,92 @@ class AccountController extends Controller
     }
 
     /**
-     * Next free account code for a group: {groupCode}00, +100 each account.
-     * e.g. group 1100 -> 110000, 110100, 110200 … skipping any code already
-     * taken. Codes are unique across all groups, so we keep stepping until free.
+     * Cost-code letter for a group, read from the DB: the letter its own code
+     * starts with (A31 -> A, R1 -> R), else the letter its accounts use.
      */
-    private function nextAccountCode(AccountGroup $group): string
+    private function prefixFor(AccountGroup $group): string
     {
-        $base = (int) $group->code * 100;
-
-        $current = (int) Account::where('group_id', $group->id)
-            ->whereNull('parent_id')
-            ->max(DB::raw('CAST(code AS UNSIGNED)'));
-
-        $next = $current >= $base ? $current + 100 : $base;
-
-        while (Account::where('code', (string) $next)->exists()) {
-            $next += 100;
+        if (preg_match('/^([A-Za-z]+)/', (string) $group->code, $m)) {
+            return $m[1];
         }
+        $code = Account::where('group_id', $group->id)->orderBy('code')->value('code');
 
-        return (string) $next;
+        return $code ? $this->split($code)[0] : '';
     }
 
     /**
-     * Next free code for a sub-account, derived from the parent's code by
-     * appending a running sequence. e.g. parent 1130 -> 1131, 1132; parent
-     * 110100 -> 110101, 110102. Steps until the code is unique chart-wide.
+     * Next free top-level code in a group: one step past the group's highest
+     * top-level code — a thousand after a round thousand (E8000 -> E9000),
+     * else a hundred (A3600 -> A3700). Skips codes taken anywhere in the chart.
+     */
+    private function nextAccountCode(AccountGroup $group): string
+    {
+        $prefix = $this->prefixFor($group);
+
+        $top = $this->numbers(Account::where('group_id', $group->id)->whereNull('parent_id')->pluck('code'), $prefix);
+        if ($top) {
+            $max = max($top);
+            $next = $max + ($max % 1000 === 0 ? 1000 : 100);
+        } else {
+            // Empty group: the next free thousand after everything on this side.
+            $all = $this->numbers(Account::pluck('code'), $prefix);
+            $next = $all ? (intdiv(max($all), 1000) + 1) * 1000 : 1000;
+        }
+
+        return $this->free($prefix, $next, 100);
+    }
+
+    /**
+     * Next free sub-account code, in the parent's numbering: the step follows
+     * the last sibling (R1400 -> R1500, E4520 -> E4530, A3544 -> A3545); a
+     * first child steps one level below the parent (R1000 -> R1100,
+     * A3500 -> A3510, A3120 -> A3121).
      */
     private function nextChildCode(Account $parent): string
     {
-        $base = (int) $parent->code;
+        [$prefix, $base] = $this->split($parent->code);
 
-        // Highest existing child code (children live just above the parent code).
-        $current = (int) Account::where('parent_id', $parent->id)
-            ->max(DB::raw('CAST(code AS UNSIGNED)'));
-
-        $next = $current >= $base ? $current + 1 : $base + 1;
-
-        while (Account::where('code', (string) $next)->exists()) {
-            $next += 1;
+        $siblings = $this->numbers(Account::where('parent_id', $parent->id)->pluck('code'), $prefix);
+        if ($siblings) {
+            $last = max($siblings);
+            $step = $last % 100 === 0 ? 100 : ($last % 10 === 0 ? 10 : 1);
+            $next = $last + $step;
+        } else {
+            $step = $base % 1000 === 0 ? 100 : ($base % 100 === 0 ? 10 : 1);
+            $next = $base + $step;
         }
 
-        return (string) $next;
+        return $this->free($prefix, $next, $step);
+    }
+
+    /** "R1100" -> ["R", 1100]; a legacy "110100" -> ["", 110100]. */
+    private function split(string $code): array
+    {
+        return preg_match('/^([A-Za-z]*)(\d+)$/', $code, $m) ? [$m[1], (int) $m[2]] : ['', 0];
+    }
+
+    /** The numeric parts of the codes that carry $prefix. */
+    private function numbers($codes, string $prefix): array
+    {
+        $out = [];
+        foreach ($codes as $code) {
+            [$p, $n] = $this->split((string) $code);
+            if ($p === $prefix && $n > 0) {
+                $out[] = $n;
+            }
+        }
+
+        return $out;
+    }
+
+    /** First code from $next (stepping by $step) not already used anywhere in the chart. */
+    private function free(string $prefix, int $next, int $step): string
+    {
+        $taken = array_flip(Account::pluck('code')->all());
+        while (isset($taken[$prefix . $next])) {
+            $next += $step;
+        }
+
+        return $prefix . $next;
     }
 }

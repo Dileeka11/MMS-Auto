@@ -225,6 +225,7 @@ export interface AccountRow {
   id: number
   code: string
   name: string
+  description: string | null
   isActive: boolean
   isDefault: boolean
   createdBy: string
@@ -241,6 +242,8 @@ export interface AccountRow {
   isPostable: boolean
   /** A cash / bank account the Cash Book runs on. */
   isCashbook: boolean
+  /** Auto-posting roles (Posting Setup) mapped to this account, e.g. "payable". */
+  postingRoles: string[]
 }
 
 /* ---------- Cash Book ---------- */

@@ -80,7 +80,7 @@ function buildTree(rows: AccountRow[]): TreeNode[] {
 /* =====================================================================
    Chart of Accounts
    ===================================================================== */
-interface AccountSaveData { groupId?: number; parentId?: number; name: string; isActive: boolean; isCashbook: boolean }
+interface AccountSaveData { groupId?: number; parentId?: number; name: string; description: string; isActive: boolean; isCashbook: boolean }
 
 function AccountModal({ open, editing, parent, chart, accounts, onClose, onSave }: {
   open: boolean
@@ -96,6 +96,7 @@ function AccountModal({ open, editing, parent, chart, accounts, onClose, onSave 
   const [groupId, setGroupId] = useState<number | ''>('')
   const [selectedParentId, setSelectedParentId] = useState<number | ''>('')
   const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
   const [isActive, setIsActive] = useState(true)
   const [isCashbook, setIsCashbook] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -113,6 +114,7 @@ function AccountModal({ open, editing, parent, chart, accounts, onClose, onSave 
     setGroupId(editing?.groupId ?? '')
     setSelectedParentId('')
     setName(editing?.name ?? '')
+    setDescription(editing?.description ?? '')
     setIsActive(editing ? editing.isActive : true)
     setIsCashbook(editing ? editing.isCashbook : false)
   }, [open, editing, parent])
@@ -124,7 +126,7 @@ function AccountModal({ open, editing, parent, chart, accounts, onClose, onSave 
     if (!name.trim()) { setError('Account name is required.'); return }
     setBusy(true); setError('')
     try {
-      const data: AccountSaveData = { name: name.trim(), isActive, isCashbook }
+      const data: AccountSaveData = { name: name.trim(), description: description.trim(), isActive, isCashbook }
       if (isSubAccount && parent) data.parentId = parent.id
       else if (selectedParentId) data.parentId = Number(selectedParentId)
       else if (showGroupSelector) data.groupId = Number(groupId)
@@ -177,6 +179,10 @@ function AccountModal({ open, editing, parent, chart, accounts, onClose, onSave 
 
         <Field label="Account Name">
           <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Petty Cash" />
+        </Field>
+
+        <Field label="Description (optional)">
+          <Input value={description} maxLength={255} onChange={(e) => setDescription(e.target.value)} placeholder="What is posted to this account" />
         </Field>
 
         <label className="row gap-2" style={{ fontSize: 13.5, cursor: 'pointer' }}>
@@ -232,7 +238,7 @@ export function ChartOfAccountsScreen(_: ScreenProps) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return accounts.filter((a) => {
-      if (q && !(a.code.toLowerCase().includes(q) || a.name.toLowerCase().includes(q))) return false
+      if (q && !(a.code.toLowerCase().includes(q) || a.name.toLowerCase().includes(q) || (a.description ?? '').toLowerCase().includes(q))) return false
       if (categoryFilter && a.categoryName !== categoryFilter) return false
       if (typeFilter && a.type !== typeFilter) return false
       if (statusFilter === 'active' && !a.isActive) return false
@@ -274,7 +280,7 @@ export function ChartOfAccountsScreen(_: ScreenProps) {
 
   async function handleSave(data: AccountSaveData) {
     if (editing) {
-      await api.accounting.accounts.update(editing.id, { name: data.name, isActive: data.isActive, isCashbook: data.isCashbook })
+      await api.accounting.accounts.update(editing.id, { name: data.name, description: data.description, isActive: data.isActive, isCashbook: data.isCashbook })
       notify.success('Account updated')
     } else {
       await api.accounting.accounts.create(data)
@@ -348,6 +354,9 @@ export function ChartOfAccountsScreen(_: ScreenProps) {
                 <Td c="var(--tx-0)" style={{ fontWeight: hasChildren ? 700 : 500 }}>
                   {a.name}
                   {hasChildren && <span className="t-2" style={{ marginLeft: 8, fontSize: 11, fontWeight: 600 }}>· header</span>}
+                  {a.description && a.description !== a.name && (
+                    <div className="t-2" style={{ fontSize: 11.5, fontWeight: 400, marginTop: 2 }}>{a.description}</div>
+                  )}
                 </Td>
                 <Td c="var(--tx-2)">{a.groupName}</Td>
                 <Td c="var(--tx-2)">{a.categoryName}</Td>
@@ -356,12 +365,11 @@ export function ChartOfAccountsScreen(_: ScreenProps) {
                 <Td align="right">
                   <div className="row gap-1" style={{ justifyContent: 'flex-end' }}>
                     <button className="mms-act" title="Add sub-account" onClick={() => openAddChild(a)}><Icon n="plus" s={15} /></button>
-                    <button className="mms-act" disabled={a.isDefault} style={a.isDefault ? locked : undefined}
-                      title={a.isDefault ? 'System account — cannot edit' : 'Edit'} onClick={() => !a.isDefault && openEdit(a)}>
+                    <button className="mms-act" title="Edit" onClick={() => openEdit(a)}>
                       <Icon n="edit" s={15} />
                     </button>
                     <button className="mms-act danger" disabled={a.isDefault} style={a.isDefault ? locked : undefined}
-                      title={a.isDefault ? 'System account — cannot delete' : 'Delete'} onClick={() => !a.isDefault && handleDelete(a)}>
+                      title={a.isDefault ? 'Cost-code account — cannot delete (deactivate it instead)' : 'Delete'} onClick={() => !a.isDefault && handleDelete(a)}>
                       <Icon n="trash" s={15} />
                     </button>
                   </div>
@@ -1488,7 +1496,7 @@ function VoucherModal({ type, cashAccounts, accounts, defaultAccountId, onClose,
   const postableCash = cashAccounts.filter((a) => a.isPostable)
   // Receipts/payments hit a non-cash account; a transfer goes to another cash/bank account.
   const counterGroups = useMemo(() => groupAccounts(accounts.filter((a) => a.isActive && a.isPostable && !a.isCashbook)), [accounts])
-  const payable = accounts.find((a) => a.code === '210000')
+  const payable = accounts.find((a) => a.postingRoles?.includes('payable'))
   const sup = suppliers.find((s) => s.name === supplier)
 
   function pickSupplier(name: string) {

@@ -47,20 +47,20 @@ class Posting
 
     /** Posting roles: key => [label, default account code, where it is used]. */
     public const ROLES = [
-        'cash' => ['Cash', '110000', 'Cash receipts (Dr) · expenses paid (Cr)'],
-        'bank' => ['Bank', '110100', 'Cheque / bank transfer / card receipts (Dr)'],
-        'receivable' => ['Trade Receivable', '110200', 'Sales invoices (Dr) · receipts & returns (Cr)'],
-        'inventory' => ['Inventory', '110300', 'GRN (Dr) · cost of invoices sold (Cr) · stock adjustments'],
-        'vat_input' => ['VAT Input (Recoverable)', '110400', 'VAT portion of GRN landed cost (Dr)'],
-        'payable' => ['Trade Payable', '210000', 'GRN value incl. VAT (Cr)'],
-        'vat_output' => ['VAT Output (Payable)', '210100', 'VAT charged on sales invoices (Cr)'],
-        'sales' => ['Sales Revenue', '410000', 'Invoice value of supply before discount (Cr)'],
-        'sales_returns' => ['Sales Returns', '410100', 'Approved sales returns (Dr)'],
-        'cogs' => ['Cost of Sales', '510000', 'Cost of invoiced items, FIFO / Average per line (Dr)'],
-        'stock_adjustment' => ['Stock Adjustment (Gain)/Loss', '510100', 'Stock adjustment value at avg cost'],
-        'discount' => ['Discount Given', '520000', 'Approved invoice discounts (Dr)'],
-        'expense' => ['Default Expense', '5009', 'Expenses whose type has no valid GL account'],
-        'retained_earnings' => ['Retained Earnings', '3002', "Prior years' profit carried into the next year's opening balances and the Balance Sheet"],
+        'cash' => ['Cash', 'A3140', 'Cash receipts (Dr) · expenses paid (Cr)'],
+        'bank' => ['Bank', 'A3121', 'Cheque / bank transfer / card receipts (Dr)'],
+        'receivable' => ['Trade Receivable', 'A3210', 'Sales invoices (Dr) · receipts & returns (Cr)'],
+        'inventory' => ['Inventory', 'A3810', 'GRN (Dr) · cost of invoices sold (Cr) · stock adjustments'],
+        'vat_input' => ['VAT Input (Recoverable)', 'A3543', 'VAT portion of GRN landed cost (Dr)'],
+        'payable' => ['Trade Payable', 'L4140', 'GRN value incl. VAT (Cr)'],
+        'vat_output' => ['VAT Output (Payable)', 'L4610', 'VAT charged on sales invoices (Cr)'],
+        'sales' => ['Sales Revenue', 'R1100', 'Invoice value of supply before discount (Cr)'],
+        'sales_returns' => ['Sales Returns', 'R1200', 'Approved sales returns (Dr)'],
+        'cogs' => ['Cost of Sales', 'E3110', 'Cost of invoiced items, FIFO / Average per line (Dr)'],
+        'stock_adjustment' => ['Stock Adjustment (Gain)/Loss', 'E3320', 'Stock adjustment value at avg cost'],
+        'discount' => ['Discount Given', 'R1400', 'Approved invoice discounts (Dr)'],
+        'expense' => ['Default Expense', 'E4520', 'Expenses whose type has no valid GL account'],
+        'retained_earnings' => ['Retained Earnings', 'L7000', "Prior years' profit carried into the next year's opening balances and the Balance Sheet"],
     ];
 
     /** Human labels for source_type, shown on journal lists. */
