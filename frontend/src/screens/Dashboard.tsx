@@ -4,7 +4,7 @@ import { Card, PageHead, Btn, Badge } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { AreaChart, Donut, Spark, ProgressRow } from '../components/charts'
 import { api } from '../api'
-import { moneyK } from '../data'
+import { moneyK, moneyShort } from '../data'
 import type { Go } from './types'
 
 function KPI({ icon, label, value, delta, up, spark, sparkColor, tone = 'blue' }: { icon: string; label: string; value: string; delta?: string; up?: boolean; spark?: number[]; sparkColor?: string; tone?: 'blue' | 'green' | 'amber' | 'red' }) {
@@ -77,7 +77,7 @@ export default function DashScreen({ go }: { go: Go }) {
               height={180}
               labels={trend.map((t) => t.label)}
               series={[{ data: trend.map((t) => t.value), color: 'var(--ac-bright)' }]}
-              format={(v) => moneyK(v)}
+              format={(v) => moneyShort(v)}
             />
           ) : <div className="t-3" style={{ padding: 20 }}>No sales recorded yet</div>}
           <div style={{ marginTop: 12 }}>

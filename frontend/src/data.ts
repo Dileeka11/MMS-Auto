@@ -26,7 +26,10 @@ export const fmtDate = (v: string | Date | null | undefined): string => {
   const yy = String(d.getFullYear()).slice(-2)
   return `${dd}-${mm}-${yy}`
 }
-export const moneyK = (n: number) => {
+/** Totals on cards / reports — always the full amount (no K / M abbreviation). */
+export const moneyK = (n: number) => money(n)
+/** Compact form for tight spaces such as chart axes only. */
+export const moneyShort = (n: number) => {
   if (Math.abs(n) >= 1e6) return 'Rs ' + (n / 1e6).toFixed(2) + 'M'
   if (Math.abs(n) >= 1e3) return 'Rs ' + (n / 1e3).toFixed(1) + 'K'
   return 'Rs ' + n
