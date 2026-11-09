@@ -1,9 +1,10 @@
 /* NMS-Auto — shared document helpers (StatRow, LineEditor), from procurement.jsx */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, Badge, Select, inputStyle } from './ui'
 import { Icon } from './Icon'
 import DB from '../data'
-import type { EditorLine } from '../types'
+import { api } from '../api'
+import type { EditorLine, Item } from '../types'
 
 const D = DB
 
@@ -28,14 +29,24 @@ export function StatRow({ items }: { items: Stat[] }) {
 
 export function LineEditor({ lines, setLines, mode = 'buy', perLineCost }: { lines: EditorLine[]; setLines: (fn: (l: EditorLine[]) => EditorLine[]) => void; mode?: 'buy' | 'sell'; perLineCost?: boolean }) {
   const [search, setSearch] = useState('')
-  const add = (it: typeof D.items[number]) => {
-    if (lines.some((l) => l.id === it.id)) return
-    setLines((l) => [...l, { id: it.id, code: it.code, name: it.name, qty: 1, rate: mode === 'buy' ? it.avgCost : it.price, cost: it.avgCost, fifo: it.fifoCost, avg: it.avgCost, method: 'FIFO', max: it.qty }])
+  // Parts come from the Item Master (live stock, costs and selling price).
+  const [items, setItems] = useState<Item[]>([])
+  const [loadErr, setLoadErr] = useState(false)
+  useEffect(() => {
+    api.items.list().then((d) => setItems(d as Item[])).catch(() => setLoadErr(true))
+  }, [])
+  const add = (it: Item) => {
+    const id = String(it.id)
+    if (lines.some((l) => l.id === id)) return
+    const avg = Number(it.avgCost) || 0
+    const fifo = Number(it.fifoCost) || avg
+    setLines((l) => [...l, { id, code: it.code, name: it.name, qty: 1, rate: mode === 'buy' ? avg : Number(it.price) || 0, cost: avg, fifo, avg, method: 'FIFO', max: Number(it.qty) || 0 }])
     setSearch('')
   }
   const upd = (id: string, k: keyof EditorLine, v: any) => setLines((l) => l.map((x) => (x.id === id ? { ...x, [k]: v } : x)))
   const rm = (id: string) => setLines((l) => l.filter((x) => x.id !== id))
-  const results = search ? D.items.filter((i) => (i.name + i.code).toLowerCase().includes(search.toLowerCase())).slice(0, 6) : []
+  const q = search.trim().toLowerCase()
+  const results = q ? items.filter((i) => `${i.code ?? ''} ${i.name ?? ''}`.toLowerCase().includes(q)).slice(0, 8) : []
   const total = lines.reduce((a, l) => a + l.qty * l.rate, 0)
   return (
     <div>
@@ -49,10 +60,13 @@ export function LineEditor({ lines, setLines, mode = 'buy', perLineCost }: { lin
             {results.map((it) => (
               <button key={it.id} onClick={() => add(it)} className="row between" style={{ width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--line-soft)', padding: '9px 12px', textAlign: 'left', color: 'var(--tx-0)' }}>
                 <span className="row gap-2"><span className="mono t-3" style={{ fontSize: 11, width: 64 }}>{it.code}</span><span style={{ fontSize: 13 }}>{it.name}</span></span>
-                <span className="row gap-3"><Badge tone={it.status === 'out' ? 'red' : it.status === 'low' ? 'amber' : 'green'}>{it.qty} {it.unit}</Badge><span className="mono t-2" style={{ fontSize: 12 }}>{D.money(mode === 'buy' ? it.avgCost : it.price)}</span></span>
+                <span className="row gap-3"><Badge tone={(it.qty || 0) <= 0 ? 'red' : it.status === 'low' || (it.qty || 0) <= (it.reorder || 0) ? 'amber' : 'green'}>{it.qty || 0} {it.unit}</Badge><span className="mono t-2" style={{ fontSize: 12 }}>{D.money(mode === 'buy' ? it.avgCost : it.price)}</span></span>
               </button>
             ))}
           </div>
+        )}
+        {q && results.length === 0 && (
+          <div className="t-3" style={{ fontSize: 12, marginTop: 6 }}>{loadErr ? 'Could not load items from Item Master' : 'No matching items in Item Master'}</div>
         )}
       </div>
       <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-m)', overflow: 'hidden' }}>
