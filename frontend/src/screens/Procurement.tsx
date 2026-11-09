@@ -22,6 +22,13 @@ import type { Go } from './types'
 
 const D = DB
 const fmtMoney = (n: number) => D.money(n || 0)
+const CURRENCY_SYMBOL: Record<string, string> = { USD: '$', LKR: 'Rs', EUR: '€', JPY: '¥', GBP: '£', CNY: 'CN¥', INR: '₹' }
+/** Format an amount in the PO's own currency (defaults to LKR when unknown). */
+const fmtCur = (n: number, cur?: string | null) => {
+  const c = (cur || 'LKR').toUpperCase()
+  if (c === 'LKR') return fmtMoney(n)
+  return `${CURRENCY_SYMBOL[c] || c} ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
 const fmtDate = (v: any) => D.fmtDate(v)
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -195,7 +202,7 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
             <Td mono>{r.piNumber || '—'}</Td>
             <Td mono>{fmtDate(r.date)}</Td>
             <Td align="right" mono>{r.lines?.length || 0}</Td>
-            <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{fmtMoney(r.total)}</Td>
+            <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{fmtCur(r.total, r.currency)}</Td>
             <Td align="center">
               <div className="col gap-1" style={{ alignItems: 'center' }}>
                 <Badge tone={statusTone(r.status)} dot>{r.status}</Badge>
@@ -281,15 +288,15 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
                       <td style={tdSty}>{l.item}</td>
                       <td style={tdSty} className="mono t-2">{l.hsCode || '—'}</td>
                       <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{l.qty}</td>
-                      <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(l.cost)}</td>
-                      <td style={{ ...tdSty, textAlign: 'right', fontWeight: 600 }} className="mono">{fmtMoney(l.qty * l.cost)}</td>
+                      <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtCur(l.cost, form.currency)}</td>
+                      <td style={{ ...tdSty, textAlign: 'right', fontWeight: 600 }} className="mono">{fmtCur(l.qty * l.cost, form.currency)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr style={{ background: 'var(--bg-0)' }}>
                     <td colSpan={6} style={{ ...tdSty, textAlign: 'right', fontWeight: 700 }}>Total</td>
-                    <td style={{ ...tdSty, textAlign: 'right', fontWeight: 700, color: 'var(--ac-bright)' }} className="mono">{fmtMoney(total)}</td>
+                    <td style={{ ...tdSty, textAlign: 'right', fontWeight: 700, color: 'var(--ac-bright)' }} className="mono">{fmtCur(total, form.currency)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -335,8 +342,8 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
                     <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{l.qty}</td>
                     <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{l.receivedQty ?? 0}</td>
                     <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{l.balanceQty ?? l.qty}</td>
-                    <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtMoney(l.cost)}</td>
-                    <td style={{ ...tdSty, textAlign: 'right', fontWeight: 600 }} className="mono">{fmtMoney(l.total)}</td>
+                    <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtCur(l.cost, view.currency)}</td>
+                    <td style={{ ...tdSty, textAlign: 'right', fontWeight: 600 }} className="mono">{fmtCur(l.total, view.currency)}</td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -743,7 +750,7 @@ function POPicker({ pos, onPick }: { pos: PurchaseOrder[]; onPick: (p: PurchaseO
               <div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{p.supplier} · {p.lines?.length || 0} items · {fmtDate(p.date)}{p.piNumber ? ' · PI ' + p.piNumber : ''}</div>
             </div>
           </div>
-          <div className="row gap-3"><span className="num" style={{ fontWeight: 600 }}>{fmtMoney(p.total)}</span><Icon n="chev" s={16} c="var(--tx-3)" /></div>
+          <div className="row gap-3"><span className="num" style={{ fontWeight: 600 }}>{fmtCur(p.total, p.currency)}</span><Icon n="chev" s={16} c="var(--tx-3)" /></div>
         </button>
       ))}
     </div>
@@ -1260,7 +1267,7 @@ export function TrackingScreen({ go: _go }: { go: Go }) {
                 <Mini k="Ordered" v={r.orderedQty} />
                 <Mini k="Received" v={r.receivedQty} c="var(--ok)" />
                 <Mini k="Balance" v={r.balanceQty} c={r.balanceQty > 0 ? 'var(--warn)' : 'var(--ok)'} />
-                <Mini k="PO Value" v={fmtMoney(r.total)} mono />
+                <Mini k="PO Value" v={fmtCur(r.total, r.currency)} mono />
                 <Mini k="Stock Value" v={fmtMoney(r.stockValue ?? 0)} c="var(--ac-bright)" mono />
               </div>
             </div>
