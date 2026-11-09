@@ -112,6 +112,8 @@ class SalesOrderController extends Controller
             'terms' => 'nullable|string|max:24',
             'date' => 'nullable|date',
             'vat_applied' => 'nullable|boolean',
+            'credit_days' => 'nullable|integer|min:0|max:3650',
+            'due_date' => 'nullable|date|after_or_equal:' . ($request->input('date') ?: now()->toDateString()),
         ]);
 
         return DB::transaction(function () use ($data, $salesOrder) {
@@ -136,6 +138,7 @@ class SalesOrderController extends Controller
             [$vatPct, $vatAmount] = Invoice::vatFor($supply, ! empty($data['vat_applied']));
             $total = round($supply + $vatAmount, 2);
             $date = $data['date'] ?? now()->toDateString();
+            [$creditDays, $dueDate] = Invoice::creditTerms($data['terms'] ?? 'Cash', $date, $data['credit_days'] ?? null, $data['due_date'] ?? null, $salesOrder->customer);
 
             $inv = Invoice::create([
                 'code' => Invoice::nextCode(),
@@ -144,6 +147,8 @@ class SalesOrderController extends Controller
                 'rep' => $salesOrder->rep,
                 'source' => 'app',
                 'terms' => $data['terms'] ?? 'Cash',
+                'credit_days' => $creditDays,
+                'due_date' => $dueDate,
                 'date' => $date,
                 'total' => $total,
                 'paid' => 0,

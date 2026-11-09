@@ -38,15 +38,24 @@ const NORMAL_CSS = `
   .totals div{display:flex;justify-content:space-between;padding:4px 0}
   .totals .grand{font-weight:700;font-size:15px;border-top:2px solid #111;margin-top:6px;padding-top:8px}`
 
+const isCredit = (t?: string) => /credit/i.test(t || '')
+const termsText = (r: Invoice) => r.terms || 'Cash'
+/** "Credit Sale · 30 days · Due 09-12-2026" for credit, else the terms alone. */
+const termsLine = (r: Invoice) => [
+  termsText(r),
+  isCredit(r.terms) && r.creditDays != null ? `${r.creditDays} days` : '',
+  isCredit(r.terms) && r.dueDate ? `Due ${fmtDate(r.dueDate)}` : '',
+].filter(Boolean).join(' · ')
+
 function normalHtml(r: Invoice, co: any) {
   const no = r.code || r.id
   const items = (r.lines || []).map((l) => `<tr><td>${esc(l.code)}</td><td>${esc(l.name)}</td><td class="r">${l.qty}</td><td class="r">${money(l.rate)}</td><td class="r">${money(l.qty * l.rate)}</td></tr>`).join('')
   return `<style>${NORMAL_CSS}</style>
     <div class="head">
       <div><h1>${esc(co.name || 'NMS-Auto')}</h1><div class="muted">${esc(co.tagline || '')}</div></div>
-      <div class="r"><h1 style="font-size:16px">SALES INVOICE</h1><div class="muted">${esc(no)}</div><div class="muted">${fmtDate(r.date)}</div></div>
+      <div class="r"><h1 style="font-size:16px">SALES INVOICE</h1><div class="muted">${esc(no)}</div><div class="muted">${fmtDate(r.date)}</div><div class="muted"><b>${esc(isCredit(r.terms) ? 'CREDIT' : 'CASH')}</b></div></div>
     </div>
-    <div><strong>Bill To:</strong> ${esc(r.customer)}${r.rep ? ` &nbsp;·&nbsp; <span class="muted">Rep: ${esc(r.rep)}</span>` : ''}${r.terms ? ` &nbsp;·&nbsp; <span class="muted">Terms: ${esc(r.terms)}</span>` : ''}</div>
+    <div><strong>Bill To:</strong> ${esc(r.customer)}${r.rep ? ` &nbsp;·&nbsp; <span class="muted">Rep: ${esc(r.rep)}</span>` : ''} &nbsp;·&nbsp; <span class="muted">Terms: ${esc(termsLine(r))}</span></div>
     <table><thead><tr><th>Code</th><th>Item</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${items || '<tr><td colspan="5" class="muted">No line items</td></tr>'}</tbody></table>
     <div class="totals">
       <div><span>Total</span><span>${money(r.total || 0)}</span></div>
@@ -90,14 +99,14 @@ function taxHtml(r: Invoice, co: any, cu: any) {
     <div class="brand">${co.logoUrl ? `<img src="${esc(co.logoUrl)}" alt="">` : ''}<h1>${esc((co.name || '').toUpperCase())}</h1></div>
     <div class="box">
       <div class="title">TAX INVOICE</div>
-      <div class="sec"><div class="kv"><span>Invoice Date</span><span>${fmtDate(r.date)}</span></div><div class="kv"><span>Tax Invoice No</span><span>${esc(r.taxInvoiceNo || r.code || r.id)}</span></div></div>
+      <div class="sec"><div class="kv"><span>Invoice Date</span><span>${fmtDate(r.date)}</span><span>Payment Terms</span><span>${esc(termsText(r))}</span>${isCredit(r.terms) ? `<span>Credit Period</span><span>${r.creditDays ?? ''} days</span><span>Payment Due</span><span>${fmtDate(r.dueDate)}</span>` : ''}</div><div class="kv"><span>Tax Invoice No</span><span>${esc(r.taxInvoiceNo || r.code || r.id)}</span><span>Invoice No</span><span>${esc(r.code || r.id)}</span></div></div>
       <div class="sec">
         <div class="kv"><span>Supplier's TIN</span><span>${esc(co.taxNo)}</span><span>Supplier's Name</span><span>${esc(co.name)}</span><span>Address</span><span>${esc(co.address)}</span><span>Telephone No</span><span>${esc(co.phone)}</span></div>
         <div class="kv"><span>Purchaser's TIN</span><span>${esc(cu?.taxNo)}</span><span>Purchaser's Name</span><span>${esc(r.customer)}</span><span>Address</span><span>${esc(cu?.address || cu?.city)}</span><span>Telephone No</span><span>${esc(cu?.contact)}</span></div>
       </div>
       <div class="sec"><div class="kv"><span>Date of Delivery</span><span>${fmtDate(r.date)}</span></div><div class="kv"><span>Place of Supply</span><span>${esc(co.address)}</span></div></div>
       <div class="sec" style="min-height:70px"><div>Additional Information if any:</div><div class="kv"><span>Saleman</span><span>${esc(r.rep)}</span><span>Po No</span><span></span><span>Vehicle No</span><span></span></div></div>
-      <div class="one kv"><span>Remark</span><span>${esc(r.terms ? 'Terms: ' + r.terms : '')}</span></div>
+      <div class="one kv"><span>Remark</span><span>${esc('Terms: ' + termsLine(r))}</span></div>
       <table>
         <thead><tr><th style="width:40px">No</th><th>Item Description</th><th class="r" style="width:120px">Unit Price</th><th class="r" style="width:60px">Qty</th><th class="r" style="width:130px">Amount</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="5">No line items</td></tr>'}

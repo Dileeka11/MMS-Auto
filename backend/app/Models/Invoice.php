@@ -15,7 +15,46 @@ class Invoice extends Model
         'total' => 'float', 'paid' => 'float', 'due' => 'float',
         'items' => 'integer', 'date' => 'date:Y-m-d',
         'vat_applied' => 'boolean', 'vat_pct' => 'float', 'vat_amount' => 'float',
+        'credit_days' => 'integer', 'due_date' => 'date:Y-m-d',
     ];
+
+    /** True for credit terms ("Credit Sale", "Credit (30 days)", ...). */
+    public static function isCredit(?string $terms): bool
+    {
+        return $terms !== null && stripos($terms, 'credit') !== false;
+    }
+
+    /**
+     * Credit period for an invoice: [credit_days, due_date].
+     * Cash / card terms give [null, null]. For credit, an explicit due date
+     * wins; otherwise due = invoice date + days, where days come from the
+     * request, then the terms text ("Credit (30 days)"), then the customer's
+     * credit period, then 30.
+     */
+    public static function creditTerms(?string $terms, string $date, $days = null, $dueDate = null, ?string $customer = null): array
+    {
+        if (! static::isCredit($terms)) {
+            return [null, null];
+        }
+        $start = \Carbon\Carbon::parse($date)->startOfDay();
+        if ($dueDate) {
+            $due = \Carbon\Carbon::parse($dueDate)->startOfDay();
+
+            return [max(0, $start->diffInDays($due, false)), $due->toDateString()];
+        }
+        if ($days === null || $days === '') {
+            if (preg_match('/(\d+)\s*day/i', (string) $terms, $m)) {
+                $days = (int) $m[1];
+            } elseif ($customer && ($c = Customer::where('name', $customer)->first()) && $c->credit) {
+                $days = (int) $c->credit;
+            } else {
+                $days = 30;
+            }
+        }
+        $days = max(0, (int) $days);
+
+        return [$days, $start->copy()->addDays($days)->toDateString()];
+    }
 
     /**
      * VAT on a value of supply at the company-profile rate.

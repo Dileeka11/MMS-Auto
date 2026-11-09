@@ -74,21 +74,55 @@ export function QuoteScreen({ go }: { go: Go }) {
   )
 }
 
-function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, profit, post, back, customers, saving, vat, setVat, vatPct, vatAmt, discPct, setDiscPct, discAmt }: { src: any | null; cust: string; setCust: (v: string) => void; lines: EditorLine[]; setLines: (fn: (l: EditorLine[]) => EditorLine[]) => void; total: number; cogs: number; profit: number; post: () => void; back: () => void; customers: any[]; saving: boolean; vat: boolean; setVat: (v: boolean) => void; vatPct: number; vatAmt: number; discPct: number; setDiscPct: (v: number) => void; discAmt: number }) {
+/** Today as yyyy-mm-dd in the browser's local time zone (toISOString is UTC). */
+const todayIso = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10) }
+const addDays = (iso: string, n: number) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(to + 'T00:00:00Z') - Date.parse(from + 'T00:00:00Z')) / 86400000)
+const PAY_TERMS = ['Cash', 'Credit Sale', 'Card', 'Bank Transfer']
+const isCredit = (t?: string) => /credit/i.test(t || '')
+
+type InvHead = { date: string; terms: string; creditDays: number; dueDate: string }
+
+function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, profit, post, back, customers, saving, vat, setVat, vatPct, vatAmt, discPct, setDiscPct, discAmt, head, setHead }: { src: any | null; cust: string; setCust: (v: string) => void; lines: EditorLine[]; setLines: (fn: (l: EditorLine[]) => EditorLine[]) => void; total: number; cogs: number; profit: number; post: () => void; back: () => void; customers: any[]; saving: boolean; vat: boolean; setVat: (v: boolean) => void; vatPct: number; vatAmt: number; discPct: number; setDiscPct: (v: number) => void; discAmt: number; head: InvHead; setHead: (h: InvHead) => void }) {
+  const credit = isCredit(head.terms)
+  // Customer master credit period (days) is the default for a credit sale.
+  const custDays = (name: string) => { const c = customers.find((x) => x.name === name); return c?.credit != null ? Number(c.credit) : 30 }
+  const pickCust = (name: string) => {
+    setCust(name)
+    if (credit) { const d = custDays(name); setHead({ ...head, creditDays: d, dueDate: addDays(head.date, d) }) }
+  }
+  const pickTerms = (t: string) => {
+    if (isCredit(t) && !credit) { const d = custDays(cust); setHead({ ...head, terms: t, creditDays: d, dueDate: addDays(head.date, d) }) }
+    else setHead({ ...head, terms: t })
+  }
+  // Moving the invoice date keeps the credit period and shifts the due date with it.
+  const pickDate = (iso: string) => { if (!iso) return; setHead({ ...head, date: iso, dueDate: addDays(iso, head.creditDays) }) }
+  const pickDays = (n: number) => { const d = Math.max(0, Math.min(3650, isNaN(n) ? 0 : Math.round(n))); setHead({ ...head, creditDays: d, dueDate: addDays(head.date, d) }) }
+  const pickDue = (iso: string) => { if (!iso) return; setHead({ ...head, dueDate: iso, creditDays: Math.max(0, daysBetween(head.date, iso)) }) }
+  const badDue = credit && head.dueDate < head.date
   return (
     <div>
       <PageHead crumbs="Data Capture · Sales Invoice" title={src ? 'Invoice from ' + src.id : 'New Sales Invoice'} icon="receipt"
         sub="Choose FIFO or Average costing per line — profit recalculates instantly"
         actions={<><Btn variant="plain" icon="x" onClick={back}>Discard</Btn>
           <Btn variant={vat ? 'primary' : 'solid'} icon={vat ? 'check' : 'coins'} onClick={() => setVat(!vat)} title="Add VAT and print as a Tax Invoice">{vat ? `VAT ${vatPct}% Applied` : 'Apply VAT'}</Btn>
-          <Btn variant="primary" icon="check" onClick={post} disabled={!cust || !lines.length || saving}>{saving ? 'Posting…' : 'Post Invoice'}</Btn></>} />
+          <Btn variant="primary" icon="check" onClick={post} disabled={!cust || !lines.length || saving || !head.date || badDue}>{saving ? 'Posting…' : 'Post Invoice'}</Btn></>} />
       <div className="inv-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
         <Card>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 18 }}>
-            <Field label="Customer"><Select value={cust} onChange={(e) => setCust(e.target.value)}><option value="">Select…</option>{customers.map((c) => <option key={c.id}>{c.name}</option>)}</Select></Field>
-            <Field label="Invoice Date"><DateInput value={new Date().toISOString().slice(0, 10)} /></Field>
-            <Field label="Payment"><Select defaultValue="Credit Sale">{['Cash', 'Credit Sale', 'Card', 'Bank Transfer'].map((p) => <option key={p}>{p}</option>)}</Select></Field>
+            <Field label="Customer"><Select value={cust} onChange={(e) => pickCust(e.target.value)}><option value="">Select…</option>{customers.map((c) => <option key={c.id}>{c.name}</option>)}</Select></Field>
+            <Field label="Invoice Date"><DateInput value={head.date} onChange={pickDate} /></Field>
+            <Field label="Payment"><Select value={head.terms} onChange={(e) => pickTerms(e.target.value)}>{PAY_TERMS.map((p) => <option key={p}>{p}</option>)}</Select></Field>
           </div>
+          {credit && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 18, alignItems: 'end' }}>
+              <Field label="Credit Period (days)"><Input type="number" min={0} max={3650} value={head.creditDays} onChange={(e) => pickDays(parseInt(e.target.value, 10))} /></Field>
+              <Field label="Payment Due Date"><DateInput value={head.dueDate} onChange={pickDue} /></Field>
+              <div className="t-2" style={{ fontSize: 12, paddingBottom: 10, color: badDue ? 'var(--bad)' : undefined }}>
+                {badDue ? 'Due date is before the invoice date' : <>Credit from <b className="mono">{fmtDate(head.date)}</b> to <b className="mono">{fmtDate(head.dueDate)}</b></>}
+              </div>
+            </div>
+          )}
           <div className="row between" style={{ marginBottom: 10 }}>
             <div className="eyebrow">Invoice Lines</div>
             <div className="row gap-2"><Badge tone="blue" dot>FIFO</Badge><Badge tone="green" dot>Average Cost</Badge></div>
@@ -146,6 +180,8 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   const [saving, setSaving] = useState(false)
   const [vat, setVat] = useState(false); const [vatPct, setVatPct] = useState(18)
   const [discPct, setDiscPct] = useState(0)
+  const newHead = (): InvHead => ({ date: todayIso(), terms: 'Cash', creditDays: 30, dueDate: addDays(todayIso(), 30) })
+  const [head, setHead] = useState<InvHead>(newHead)
   const [payFor, setPayFor] = useState<Invoice | null>(null)
   const [payAmt, setPayAmt] = useState(''); const [payMode, setPayMode] = useState('Cash'); const [payRef, setPayRef] = useState(''); const [paying, setPaying] = useState(false)
   const [chequeBank, setChequeBank] = useState(''); const [chequeNo, setChequeNo] = useState(''); const [chequeDate, setChequeDate] = useState('')
@@ -180,9 +216,9 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   const fromQuote = (q: any) => {
     setSrc(q); setCust(q.customer)
     const picks: EditorLine[] = (q.lines || []).map((l: any) => ({ id: l.id || l.itemId, code: l.code, name: l.name, qty: l.qty, rate: l.rate, fifo: l.fifo || l.rate, avg: l.avg || l.rate, method: 'FIFO', cost: l.avg || l.rate }))
-    setLines(picks); setVat(false); setDiscPct(0); setStep(2)
+    setLines(picks); setVat(false); setDiscPct(0); setHead(newHead()); setStep(2)
   }
-  const blank = () => { setSrc(null); setCust(''); setLines([]); setVat(false); setDiscPct(0); setStep(2) }
+  const blank = () => { setSrc(null); setCust(''); setLines([]); setVat(false); setDiscPct(0); setHead(newHead()); setStep(2) }
   const total = lines.reduce((a, l) => a + l.qty * l.rate, 0)
   // Same maths as the server: discount comes off the supply, VAT is charged on what's left.
   const discAmt = Math.round(total * discPct) / 100
@@ -193,7 +229,9 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
     setSaving(true)
     try {
       await api.invoices.create({
-        customer: cust, rep: 'R. Fernando', date: new Date().toISOString().slice(0, 10),
+        customer: cust, rep: 'R. Fernando', date: head.date,
+        terms: head.terms,
+        ...(isCredit(head.terms) ? { creditDays: head.creditDays, dueDate: head.dueDate } : {}),
         items: lines.length, lines,
         vatApplied: vat,
         discountPct: discPct || undefined,
@@ -204,7 +242,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
     } finally { setSaving(false) }
   }
 
-  if (step === 2) return <InvoiceBuilder {...{ src, cust, setCust, lines, setLines, total, cogs, profit, post, back: () => setStep(0), customers, saving, vat, setVat, vatPct, vatAmt, discPct, setDiscPct, discAmt }} />
+  if (step === 2) return <InvoiceBuilder {...{ src, cust, setCust, lines, setLines, total, cogs, profit, post, back: () => setStep(0), customers, saving, vat, setVat, vatPct, vatAmt, discPct, setDiscPct, discAmt, head, setHead }} />
   const shown = rows
   return (
     <div>
@@ -224,7 +262,8 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.code || r.id}{r.taxInvoiceNo && <div className="t-2" style={{ fontSize: 11, fontWeight: 500 }}>{r.taxInvoiceNo}</div>}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.customer}</Td>
             <Td>{r.rep}</Td><Td mono>{fmtDate(r.date)}</Td>
-            <Td align="center"><Badge tone="neutral">{r.terms || 'Cash'}</Badge></Td>
+            <Td align="center"><Badge tone={isCredit(r.terms) ? 'amber' : 'neutral'}>{r.terms || 'Cash'}</Badge>
+              {r.dueDate && <div className="t-2 mono" style={{ fontSize: 11, marginTop: 3 }}>Due {fmtDate(r.dueDate)}</div>}</Td>
             <Td align="center"><Badge tone="blue">{r.cost}</Badge></Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{money(r.total || 0)}</Td>
             <Td align="right" mono c={(r.due || 0) > 0 ? 'var(--warn)' : 'var(--tx-3)'}>{(r.due || 0) > 0 ? money(r.due) : '—'}</Td>

@@ -17,6 +17,7 @@ use App\Support\StockCheck;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class InvoiceController extends Controller
 {
@@ -52,9 +53,18 @@ class InvoiceController extends Controller
             'lines.*.method' => 'nullable|in:FIFO,Average',
             'discount_pct' => 'nullable|numeric|min:0|max:100',
             'vat_applied' => 'nullable|boolean',
+            'terms' => 'nullable|string|max:24',
+            'credit_days' => 'nullable|integer|min:0|max:3650',
+            'due_date' => 'nullable|date',
         ]);
+        $date = $data['date'] ?? now()->toDateString();
+        $terms = $data['terms'] ?? 'Cash';
+        if (! empty($data['due_date']) && Invoice::isCredit($terms) && $data['due_date'] < $date) {
+            throw ValidationException::withMessages(['due_date' => 'Due date cannot be before the invoice date.']);
+        }
+        [$creditDays, $dueDate] = Invoice::creditTerms($terms, $date, $data['credit_days'] ?? null, $data['due_date'] ?? null, $data['customer']);
 
-        return DB::transaction(function () use ($data) {
+        return DB::transaction(function () use ($data, $date, $terms, $creditDays, $dueDate) {
             StockCheck::assertAvailable($data['lines']);
 
             $supply = 0;
@@ -66,7 +76,6 @@ class InvoiceController extends Controller
             $costing = count($methods) > 1 ? 'Mixed' : array_key_first($methods);
             [$vatPct, $vatAmount] = Invoice::vatFor($supply, ! empty($data['vat_applied']));
             $total = round($supply + $vatAmount, 2);
-            $date = $data['date'] ?? now()->toDateString();
 
             $inv = Invoice::create([
                 'code' => Invoice::nextCode(),
@@ -75,6 +84,9 @@ class InvoiceController extends Controller
                 'customer' => $data['customer'],
                 'rep' => $data['rep'] ?? null,
                 'source' => 'web',
+                'terms' => $terms,
+                'credit_days' => $creditDays,
+                'due_date' => $dueDate,
                 'date' => $date,
                 'total' => $total,
                 'paid' => 0,

@@ -142,7 +142,9 @@ export interface Quotation {
 export interface Invoice {
   id: string; code?: string; customer: string; rep: string; date: string; total: number; paid: number; due: number; items: number; cost: string; status: string
   source?: string // 'web' (admin) | 'app' (rep mobile app)
-  terms?: string  // Cash | Cheque | Credit (30 days)
+  terms?: string  // Cash | Credit Sale | Card | Bank Transfer | Cheque | Credit (30 days)
+  creditDays?: number | null // credit sales only
+  dueDate?: string | null    // credit sales only: invoice date + creditDays
   discountPct?: number
   discountStatus?: 'pending' | 'approved' | 'rejected' | null
   vatApplied?: boolean // printed as a Tax Invoice
