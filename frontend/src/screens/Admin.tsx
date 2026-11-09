@@ -56,6 +56,7 @@ export function UsersScreen({ go: _go, user: me }: { go: Go; user?: { id: number
 
   const remove = async (u: UserRow) => {
     if (u.id === me?.id) { notify.error('Cannot delete', 'You cannot delete your own account.'); return }
+    if (u.role === 'admin') { notify.error('Cannot delete', 'Administrator accounts cannot be deleted.'); return }
     const ok = await notify.confirm({ title: `Delete user "${u.name}"?`, msg: 'This action cannot be undone.', danger: true, okText: 'Delete' })
     if (!ok) return
     try { await api.users.remove(u.id); refresh(); notify.success('User deleted', u.name) }
@@ -78,7 +79,7 @@ export function UsersScreen({ go: _go, user: me }: { go: Go; user?: { id: number
             <Td align="center"><Badge tone={(u.status || 'Active') === 'Active' ? 'green' : 'red'} dot>{u.status || 'Active'}</Badge></Td>
             <Td align="right"><div className="row gap-1" style={{ justifyContent: 'flex-end' }}>
               <button className="mms-act" title="Edit" onClick={() => openEdit(u)}><Icon n="edit" s={15} /></button>
-              <button className="mms-act" title="Delete" onClick={() => remove(u)} disabled={u.id === me?.id} style={{ opacity: u.id === me?.id ? 0.4 : 1 }}><Icon n="trash" s={15} /></button>
+              <button className="mms-act" title={u.role === 'admin' ? 'Administrators cannot be deleted' : 'Delete'} onClick={() => remove(u)} disabled={u.id === me?.id || u.role === 'admin'} style={{ opacity: u.id === me?.id || u.role === 'admin' ? 0.4 : 1 }}><Icon n="trash" s={15} /></button>
             </div></Td>
           </>} />}
       </Card>
