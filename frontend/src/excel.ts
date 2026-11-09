@@ -272,6 +272,42 @@ export async function parseItemMasterExcel(file: File): Promise<ParsedItem[]> {
   return items
 }
 
+export interface ParsedPrice { code: string; price: number }
+
+/** Price-only update sheet: needs a part-number column and a selling-price
+ *  column; every other column (description, qty, brand…) is ignored. A column
+ *  named "Selling Price" wins over a generic "Price"/"Rate" column, and
+ *  cost/FOB/total columns are never taken as the price. */
+export async function parsePriceUpdateExcel(file: File): Promise<{ items: ParsedPrice[]; skipped: number }> {
+  const wb = await readWorkbook(file)
+  const sheet = pickSheet(wb, /price|item|master|invoice/i)
+  const rows = rowsFromSheet(sheet)
+  const codeRe = /(^|\b)(item\s*code|code|part\s*no\.?|part\s*number|part)\b/
+  for (let i = 0; i < Math.min(rows.length, 25); i++) {
+    const r = (rows[i] || []).map(lower)
+    const codeCol = r.findIndex((c) => codeRe.test(c) && !/hs\s*code/.test(c))
+    let priceCol = r.findIndex((c) => /selling|sale\s*price|retail|mrp/.test(c) && !/w\/?o|without/.test(c))
+    if (priceCol < 0) priceCol = r.findIndex((c) => /price|rate/.test(c) && !/fob|usd|cost|total|amount/.test(c))
+    if (codeCol < 0 || priceCol < 0 || codeCol === priceCol) continue
+
+    const byCode = new Map<string, ParsedPrice>()
+    let skipped = 0
+    for (let j = i + 1; j < rows.length; j++) {
+      const row = rows[j]
+      if (!row) continue
+      if (row.some((c) => /grand\s*total/i.test(String(c ?? '')))) break
+      const code = String(row[codeCol] ?? '').trim()
+      const raw = String(row[priceCol] ?? '').replace(/[, ]|rs\.?/gi, '')
+      if (!code && !raw) continue
+      const price = Number(raw)
+      if (!code || raw === '' || !Number.isFinite(price) || price < 0) { skipped++; continue }
+      byCode.set(code.toLowerCase(), { code, price }) // last row wins for duplicate codes
+    }
+    return { items: [...byCode.values()], skipped }
+  }
+  return { items: [], skipped: 0 }
+}
+
 export async function parsePoExcel(file: File): Promise<ParsedLine[]> {
   const wb = await readWorkbook(file)
   const sheet = pickSheet(wb, /^po\b|purchase/i)
@@ -352,6 +388,16 @@ export function downloadItemMasterTemplate() {
     ...COMMON_NOTES,
     'PART NO and DESCRIPTION are required. HS CODE is optional.',
     'Existing items with the same PART NO are updated; new part numbers are created.',
+  ])
+}
+
+export function downloadPriceUpdateTemplate() {
+  return downloadTemplate('Price_Update_Template.xlsx', 'Price Update', ['PART NO', 'SELLING PRICE'], [], [
+    'PRICE UPDATE TEMPLATE', '',
+    ...COMMON_NOTES,
+    'Only the SELLING PRICE of existing items is changed. Nothing else (name, qty, cost…) is touched.',
+    'Extra columns such as Description, Brand or Quantity are allowed and ignored.',
+    'Part numbers that are not in Item Master are skipped and listed after the upload — no new items are created.',
   ])
 }
 

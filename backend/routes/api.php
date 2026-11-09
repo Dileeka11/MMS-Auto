@@ -97,6 +97,7 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
         return response()->json(['code' => app(\App\Http\Controllers\Api\ItemController::class)->nextCode()]);
     });
     Route::post('items/bulk', [ItemController::class, 'bulk']);
+    Route::post('items/bulk-price', [ItemController::class, 'bulkPrice']);
     Route::delete('items', [ItemController::class, 'clearAll']);
     Route::apiResource('items', ItemController::class);
     Route::apiResource('customers', CustomerController::class);

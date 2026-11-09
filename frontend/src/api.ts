@@ -146,6 +146,7 @@ export const api = {
   items: {
     ...resource('items'),
     bulk: (items: any[]) => http.post('/items/bulk', { items: items.map((i) => snakeize(i)) }).then((r) => camelize(r.data)),
+    bulkPrice: (items: { code: string; price: number }[]) => http.post('/items/bulk-price', { items }).then((r) => r.data as { updated: number; unchanged: number; notFound: string[] }),
     clearAll: () => http.delete('/items').then((r) => r.data),
     nextCode: () => http.get('/items/next-code').then((r) => (r.data?.code as string) || ''),
   },

@@ -176,6 +176,46 @@ class ItemController extends Controller
         return response()->json(['created' => $created, 'updated' => $updated]);
     }
 
+    /**
+     * Price-only update from Excel — keys on `code` (case-insensitive, like the
+     * unique index). Touches nothing but `price`, never creates items, and
+     * reports the codes that are not in Item Master.
+     */
+    public function bulkPrice(Request $request)
+    {
+        $data = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.code' => 'required|string',
+            'items.*.price' => 'required|numeric|min:0',
+        ]);
+
+        $norm = function ($c) { return mb_strtolower(trim((string) $c)); };
+        $existingByCode = Item::all()->keyBy(function ($it) use ($norm) { return $norm($it->code); });
+
+        $updated = 0;
+        $unchanged = 0;
+        $notFound = [];
+        DB::transaction(function () use ($data, $existingByCode, $norm, &$updated, &$unchanged, &$notFound) {
+            foreach ($data['items'] as $row) {
+                $item = $existingByCode->get($norm($row['code']));
+                if (!$item) {
+                    $notFound[] = trim((string) $row['code']);
+                    continue;
+                }
+                $price = round((float) $row['price'], 2);
+                if (round((float) $item->price, 2) === $price) {
+                    $unchanged++;
+                    continue;
+                }
+                $item->price = $price;
+                $item->save();
+                $updated++;
+            }
+        });
+
+        return response()->json(['updated' => $updated, 'unchanged' => $unchanged, 'notFound' => $notFound]);
+    }
+
     /** Delete every item — used by Item Master "Clear All". */
     public function clearAll()
     {

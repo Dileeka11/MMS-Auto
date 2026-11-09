@@ -5,7 +5,7 @@ import { Icon } from '../components/Icon'
 import { api } from '../api'
 import { useNotify } from '../components/Notify'
 import { brands as brandSeed, categories as catSeed, groups as grpSeed, money } from '../data'
-import { parseItemMasterExcel, downloadItemMasterTemplate } from '../excel'
+import { parseItemMasterExcel, downloadItemMasterTemplate, parsePriceUpdateExcel, downloadPriceUpdateTemplate } from '../excel'
 import type { Item, Customer } from '../types'
 import type { Go } from './types'
 
@@ -46,6 +46,36 @@ export function ItemMasterScreen({ go }: { go: Go }) {
     } finally {
       setImporting(false)
       if (importRef.current) importRef.current.value = ''
+    }
+  }
+
+  const priceRef = useRef<HTMLInputElement>(null)
+  const [pricing, setPricing] = useState(false)
+  const [priceResult, setPriceResult] = useState<null | { file: string; updated: number; unchanged: number; skipped: number; notFound: string[] }>(null)
+
+  const onPriceUpdate = async (file: File | null) => {
+    if (!file) return
+    setPricing(true)
+    try {
+      const { items, skipped } = await parsePriceUpdateExcel(file)
+      if (!items.length) {
+        notify.warning('No prices found', 'The sheet needs a Part No / Item Code column and a Selling Price column')
+        return
+      }
+      const ok = await notify.confirm({
+        title: `Update selling price of ${items.length} items?`,
+        msg: `From "${file.name}". Only the selling price changes — name, qty and cost stay as they are. Part numbers not in Item Master are skipped.`,
+        okText: 'Update prices',
+      })
+      if (!ok) return
+      const res = await (api.items as any).bulkPrice(items)
+      await refresh()
+      setPriceResult({ file: file.name, updated: res?.updated || 0, unchanged: res?.unchanged || 0, skipped, notFound: res?.notFound || [] })
+    } catch (e: any) {
+      notify.error('Price update failed', e?.response?.data?.message || e?.message || 'unknown error')
+    } finally {
+      setPricing(false)
+      if (priceRef.current) priceRef.current.value = ''
     }
   }
 
@@ -112,6 +142,11 @@ export function ItemMasterScreen({ go }: { go: Go }) {
           <Btn variant="ghost" icon="upload" onClick={() => importRef.current?.click()} disabled={importing}>
             {importing ? 'Importing…' : 'Import Excel'}
           </Btn>
+          <input ref={priceRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
+            onChange={(e) => onPriceUpdate(e.target.files?.[0] || null)} />
+          <Btn variant="ghost" icon="upload" onClick={() => priceRef.current?.click()} disabled={pricing}>
+            {pricing ? 'Updating…' : 'Update Prices'}
+          </Btn>
           {rows.length > 0 && <Btn variant="danger" icon="trash" onClick={clearAll}>Clear All</Btn>}
           <Btn variant="solid" icon="excel" onClick={exportExcel}>Export Excel</Btn>
           <Btn variant="primary" icon="plus" onClick={() => open()}>Add Item</Btn>
@@ -158,6 +193,32 @@ export function ItemMasterScreen({ go }: { go: Go }) {
           <span className="t-2">Total stock value · <b className="num" style={{ color: 'var(--tx-0)' }}>{money(rows.reduce((a, i) => a + (i.avgCost || 0) * (i.qty || 0), 0))}</b></span>
         </div>
       </Card>
+
+      <Modal open={!!priceResult} onClose={() => setPriceResult(null)} width={560} title="Price update complete" sub={priceResult?.file}
+        footer={<>
+          <Btn variant="ghost" icon="download" onClick={downloadPriceUpdateTemplate}>Template</Btn>
+          {!!priceResult?.notFound.length && <Btn variant="ghost" icon="excel"
+            onClick={() => downloadXls('Price_Update_Not_Found.xls', ['Part No'], priceResult.notFound.map((c) => [c]))}>Download not-found list</Btn>}
+          <Btn variant="primary" icon="check" onClick={() => setPriceResult(null)}>Done</Btn>
+        </>}>
+        {priceResult && <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+            {[['Updated', priceResult.updated, 'var(--ok, #16a34a)'], ['Same price', priceResult.unchanged, 'var(--tx-1)'], ['Not in Item Master', priceResult.notFound.length, priceResult.notFound.length ? 'var(--warn, #d97706)' : 'var(--tx-1)']].map(([l, n, c]) => (
+              <div key={l as string} style={{ background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', padding: '10px 12px' }}>
+                <div style={{ fontSize: 12, color: 'var(--tx-2)' }}>{l}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: c as string }}>{n}</div>
+              </div>
+            ))}
+          </div>
+          {priceResult.skipped > 0 && <div style={{ fontSize: 13, color: 'var(--tx-2)', marginBottom: 10 }}>{priceResult.skipped} rows skipped (blank or invalid price).</div>}
+          {priceResult.notFound.length > 0 && <>
+            <div style={{ fontSize: 13, color: 'var(--tx-1)', marginBottom: 6 }}>These part numbers are not in Item Master, so their prices were not saved:</div>
+            <div style={{ maxHeight: 180, overflow: 'auto', fontFamily: 'var(--mono, monospace)', fontSize: 12, background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', padding: '8px 10px', lineHeight: 1.7 }}>
+              {priceResult.notFound.join(', ')}
+            </div>
+          </>}
+        </div>}
+      </Modal>
 
       <Modal open={!!modal} onClose={() => setModal(null)} width={680} title={(modal === 'add' ? 'Add ' : 'Edit ') + 'Item'} sub="Spare part master record"
         footer={<><Btn variant="plain" onClick={() => setModal(null)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Item'}</Btn></>}>
