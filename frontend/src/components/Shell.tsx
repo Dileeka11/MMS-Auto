@@ -175,7 +175,19 @@ export function ThemeToggle() {
   )
 }
 
-export function Topbar({ setOpen, go }: { setOpen: (fn: (o: boolean) => boolean) => void; route: string; go: (r: string) => void }) {
+/** "Admin2 User" → "AU"; single word → first two letters. */
+export function userInitials(name?: string | null): string {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+const ROLE_LABEL: Record<string, string> = { admin: 'Administrator', manager: 'Manager', storekeeper: 'Store Keeper', accountant: 'Accountant', salesrep: 'Sales Rep', cashier: 'Cashier', user: 'User' }
+export const roleLabel = (role?: string | null) =>
+  !role ? 'User' : ROLE_LABEL[role] || role.charAt(0).toUpperCase() + role.slice(1)
+
+export function Topbar({ setOpen, go, user }: { setOpen: (fn: (o: boolean) => boolean) => void; route: string; go: (r: string) => void; user: AuthUser }) {
   const notify = useNotify()
   // Let notification-center clicks navigate via the app router.
   useEffect(() => { notify.setRouter(go) }, [notify, go])
@@ -195,10 +207,10 @@ export function Topbar({ setOpen, go }: { setOpen: (fn: (o: boolean) => boolean)
         <ThemeToggle />
         <NotificationBell />
         <div className="row gap-2" style={{ paddingLeft: 6, borderLeft: '1px solid var(--line)' }}>
-          <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--bg-3)', border: '1px solid var(--line)', display: 'grid', placeItems: 'center', fontFamily: 'Saira', fontWeight: 700, fontSize: 13, color: 'var(--ac-bright)' }}>AD</div>
+          <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--bg-3)', border: '1px solid var(--line)', display: 'grid', placeItems: 'center', fontFamily: 'Saira', fontWeight: 700, fontSize: 13, color: 'var(--ac-bright)' }} title={user.email}>{userInitials(user.name)}</div>
           <div className="hide-sm" style={{ lineHeight: 1.2 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Admin User</div>
-            <div className="t-2" style={{ fontSize: 11 }}>Administrator</div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{user.name}</div>
+            <div className="t-2" style={{ fontSize: 11 }}>{roleLabel(user.role)}{user.branch ? ` · ${user.branch}` : ''}</div>
           </div>
           <button
             className="mms-icobtn"

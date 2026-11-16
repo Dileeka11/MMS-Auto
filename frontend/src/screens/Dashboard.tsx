@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react'
 import { Card, PageHead, Btn, Badge } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { AreaChart, Donut, Spark, ProgressRow } from '../components/charts'
-import { api } from '../api'
-import { moneyK, moneyShort } from '../data'
+import { api, type AuthUser } from '../api'
+import { moneyK, moneyShort, fmtDate } from '../data'
 import type { Go } from './types'
 
 function KPI({ icon, label, value, delta, up, spark, sparkColor, tone = 'blue' }: { icon: string; label: string; value: string; delta?: string; up?: boolean; spark?: number[]; sparkColor?: string; tone?: 'blue' | 'green' | 'amber' | 'red' }) {
@@ -29,7 +29,72 @@ function KPI({ icon, label, value, delta, up, spark, sparkColor, tone = 'blue' }
   )
 }
 
-export default function DashScreen({ go }: { go: Go }) {
+interface PendingItem { id: number; code: string; party?: string; date?: string; amount: number; approvals?: number; approvedByMe?: boolean }
+interface PendingGroup { key: string; label: string; route: string; twoStep: boolean; count: number; needsMe: number; items: PendingItem[] }
+
+const PENDING_ICON: Record<string, string> = { po: 'cart', shipment: 'box', grn: 'truck', return: 'refund', discount: 'tag', dispatch: 'swap' }
+
+/** Admin-only: everything waiting on an approval or action, grouped by document type. */
+function PendingApprovals({ pending, go }: { pending: { total: number; groups: PendingGroup[] }; go: Go }) {
+  const active = pending.groups.filter((g) => g.count > 0)
+  return (
+    <Card style={{ marginBottom: 16 }}>
+      <div className="row between" style={{ marginBottom: active.length ? 16 : 0 }}>
+        <div>
+          <div className="eyebrow">Action required</div>
+          <h3 style={{ fontSize: 18, marginTop: 3 }}>Pending Approvals &amp; Activities</h3>
+        </div>
+        <Badge tone={pending.total > 0 ? 'amber' : 'green'}>{pending.total > 0 ? `${pending.total} awaiting you` : 'All clear'}</Badge>
+      </div>
+      {active.length === 0 ? (
+        <div className="row gap-2 t-2" style={{ padding: '6px 0', fontSize: 13 }}><Icon n="check" s={16} c="var(--ok)" />Nothing is waiting on you right now.</div>
+      ) : (
+        <div className="dash-3col" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+          {active.map((g) => (
+            <div key={g.key} style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-m)', padding: 12, background: 'var(--bg-0)' }}>
+              <div className="row between" style={{ marginBottom: 8 }}>
+                <div className="row gap-2" style={{ minWidth: 0 }}>
+                  <Icon n={PENDING_ICON[g.key] || 'doc'} s={16} c="var(--warn)" />
+                  <span style={{ fontSize: 13.5, fontWeight: 600 }}>{g.label}</span>
+                </div>
+                <Btn variant="plain" size="sm" iconR="chev" onClick={() => go(g.route)}>Open</Btn>
+              </div>
+              <div className="t-2" style={{ fontSize: 11.5, marginBottom: 8 }}>
+                {g.twoStep
+                  ? <>{g.count} awaiting approval · <b style={{ color: g.needsMe ? 'var(--warn)' : 'var(--tx-2)' }}>{g.needsMe} need your signature</b></>
+                  : <>{g.count} pending</>}
+              </div>
+              <div className="col gap-1">
+                {g.items.map((it) => (
+                  <button key={it.id} onClick={() => go(g.route)} className="row between mms-row"
+                    style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', borderTop: '1px solid var(--line-soft)', padding: '7px 2px', color: 'inherit', cursor: 'pointer' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{it.code}</div>
+                      <div className="t-3" style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {it.party || '—'}{it.date ? ` · ${fmtDate(it.date)}` : ''}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 8 }}>
+                      <div className="num" style={{ fontSize: 12 }}>{moneyK(it.amount || 0)}</div>
+                      {g.twoStep && (
+                        <div className="mono" style={{ fontSize: 10, color: it.approvedByMe ? 'var(--ok)' : 'var(--tx-3)' }}>
+                          {it.approvals ?? 0}/2{it.approvedByMe ? ' · you signed' : ''}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+                {g.count > g.items.length && <div className="t-3" style={{ fontSize: 11, paddingTop: 4 }}>+{g.count - g.items.length} more</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+export default function DashScreen({ go, user }: { go: Go; user?: AuthUser | null }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
@@ -59,6 +124,8 @@ export default function DashScreen({ go }: { go: Go }) {
     <div>
       <PageHead crumbs="Overview" title="Dashboard" sub={`${today} · Main Store`}
         actions={<><Btn variant="solid" size="md" icon="download">Export</Btn><Btn variant="primary" size="md" icon="plus" onClick={() => go('dc/invoice')}>New Invoice</Btn></>} />
+
+      {user?.role === 'admin' && data.pending && <PendingApprovals pending={data.pending} go={go} />}
 
       <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 16 }}>
         <KPI icon="coins" label="Sales · this month" value={moneyK(kpis.salesMonth || 0)} tone="blue" />

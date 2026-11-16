@@ -147,7 +147,7 @@ export default function App() {
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       <Sidebar route={effectiveRoute} go={go} open={open} setOpen={setOpen} company={brand} logoUrl={logoUrl} user={user} />
       <div className="mms-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <Topbar setOpen={setOpen} route={effectiveRoute} go={go} />
+        <Topbar setOpen={setOpen} route={effectiveRoute} go={go} user={user} />
         <main key={effectiveRoute} className="fade-in" style={{ padding: '24px clamp(16px,3vw,32px) 60px', flex: 1 }}>
           {denied
             ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--bad)' }}>You do not have permission to view this screen.</div>
