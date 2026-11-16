@@ -19,7 +19,17 @@ class TrackingController extends Controller
     {
         $pos = PurchaseOrder::with(['lines', 'shipments.lines'])->orderByDesc('id')->get();
 
-        $rows = $pos->map(function ($po) {
+        // Ex-Showroom local purchases are received without a shipment — their
+        // value comes from the GRNs that have been received into stock.
+        $directValue = GrnLine::query()
+            ->join('grns', 'grns.id', '=', 'grn_lines.grn_id')
+            ->whereNull('grns.shipment_id')
+            ->whereNotNull('grns.stock_posted_at')
+            ->groupBy('grns.po')
+            ->select('grns.po', DB::raw('SUM(grn_lines.qty * grn_lines.unit_cost_with_vat) as value'))
+            ->pluck('value', 'grns.po');
+
+        $rows = $pos->map(function ($po) use ($directValue) {
             $orderedQty = (int) $po->lines->sum('qty');
             $receivedQty = (int) $po->lines->sum('received_qty');
             $balanceQty = (int) $po->lines->sum('balance_qty');
@@ -32,6 +42,7 @@ class TrackingController extends Controller
                     $stockValue += ($sl->qty ?? 0) * ($sl->unit_cost_with_vat ?? $sl->landed_cost ?? 0);
                 }
             }
+            $stockValue += (float) ($directValue[$po->code] ?? 0);
 
             return [
                 'po_code' => $po->code,

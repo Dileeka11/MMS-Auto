@@ -47,6 +47,11 @@ const PAYMENT_TERMS = ['100% TT in advance', 'DP at sight', 'DA 30 Days', 'DA 60
 /** Incoterm used for POs issued to local (Sri Lankan) suppliers. */
 const LOCAL_INCO_TERM = 'Ex-Showroom'
 const INCO_TERMS = [LOCAL_INCO_TERM, 'EXW', 'FCA', 'FOB', 'CIF', 'CFR', 'DAP', 'DDP']
+/** Ex-Showroom (local) POs have no freight/duty/clearance to cost, so they
+ *  skip Costing & Shipment and are received straight to GRN. Mirrors
+ *  PurchaseOrder::isExShowroom() on the backend. */
+const isExShowroom = (p?: { incoTerms?: string } | null) =>
+  (p?.incoTerms || '').replace(/[^a-z]/gi, '').toLowerCase() === 'exshowroom'
 const CURRENCIES = ['USD', 'LKR', 'EUR', 'JPY', 'GBP', 'CNY', 'INR']
 /** A supplier is local when its country is Sri Lanka, or — with no country
  *  recorded — when it trades in LKR. */
@@ -232,7 +237,9 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
               <button className="mms-act" onClick={() => setView(r)}><Icon n="eye" s={15} /></button>
               {canApprove(r) && <Btn variant="primary" size="sm" icon="check" onClick={() => approvePo(r)}>Approve</Btn>}
               {canReject(r)  && <Btn variant="ghost"   size="sm" icon="x"     onClick={() => rejectPo(r)}>Reject</Btn>}
-              {r.status === 'Approved' && <Btn variant="ghost" size="sm" onClick={() => go('dc/costing')}>Costing</Btn>}
+              {r.status === 'Approved' && (isExShowroom(r)
+                ? <Btn variant="ghost" size="sm" onClick={() => go('dc/grn')}>GRN</Btn>
+                : <Btn variant="ghost" size="sm" onClick={() => go('dc/costing')}>Costing</Btn>)}
             </div></Td>
           </>} />
       </Card>
@@ -339,7 +346,7 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16, fontSize: 12.5 }}>
               <KV k="Payment" v={view.paymentTerms} />
-              <KV k="Inco" v={view.incoTerms} />
+              <KV k="Inco" v={isExShowroom(view) ? `${view.incoTerms} · direct GRN, no costing` : view.incoTerms} />
               <KV k="Currency" v={view.currency} />
               <KV k="Order Value" v={fmtCur(view.total, view.currency)} />
               <KV k="PI Date" v={fmtDate(view.piDate)} />
@@ -481,7 +488,8 @@ export function CostingScreen({ go, user }: { go: Go; user?: { id: number; role?
   }
   useEffect(() => { reload() }, [])
 
-  const openPOs = pos.filter((p) => p.status !== 'Completed' && isApproved(p))
+  // Ex-Showroom (local) POs don't need costing — they go straight to GRN.
+  const openPOs = pos.filter((p) => p.status !== 'Completed' && isApproved(p) && !isExShowroom(p))
 
   const reset = () => {
     setPo(null); setForm(blankCosting())
@@ -959,6 +967,9 @@ interface RecvRow {
   qty: number
   sellingPriceWoVat: number
   sellingPriceWithVat: number
+  /** Direct (Ex-Showroom) GRN only — there is no costing to take these from. */
+  unitCostWoVat?: number
+  unitCostWithVat?: number
 }
 
 export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role?: string } | null }) {
@@ -1012,7 +1023,24 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
     if (ok) { await refreshGrns(); notify.warning('GRN rejected', g.id) }
   }
 
-  const choosePO = (p: PurchaseOrder) => { setPo(p); setStep(2) }
+  /** Ex-Showroom POs are received straight against their own lines. */
+  const direct = isExShowroom(po)
+
+  const choosePO = (p: PurchaseOrder) => {
+    setPo(p); setErr('')
+    if (!isExShowroom(p)) { setStep(2); return }
+    const r: Record<number, RecvRow> = {}
+    p.lines.forEach((l, i) => {
+      r[i] = {
+        qty: Math.max(0, l.balanceQty ?? l.qty),
+        unitCostWoVat: l.cost || 0,
+        unitCostWithVat: l.cost || 0,
+        sellingPriceWoVat: 0,
+        sellingPriceWithVat: 0,
+      }
+    })
+    setShipment(null); setRecv(r); setStep(3)
+  }
   const chooseShipment = async (s: Shipment) => {
     try {
       const full = await api.shipments.get(s.id!) as any
@@ -1033,14 +1061,33 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
   }
 
   const post = async () => {
-    if (!po || !shipment) return
+    if (!po || (!shipment && !direct)) return
     setSubmitting(true); setErr('')
     try {
-      await api.grns.create({
+      await api.grns.create(direct ? {
         po: po.code || po.id,
-        shipmentCode: shipment.code,
+        shipmentCode: null,
         date: today(),
-        lines: (shipment.lines || []).map((l, i) => ({
+        lines: po.lines.map((l, i) => {
+          const r = recv[i]
+          const woVat = r?.unitCostWoVat || 0
+          const withVat = r?.unitCostWithVat || woVat
+          return {
+            purchaseOrderLineId: l.id,
+            code: l.code, item: l.item,
+            qty: r?.qty || 0,
+            cost: withVat,
+            unitCostWoVat: woVat,
+            unitCostWithVat: withVat,
+            sellingPriceWoVat: r?.sellingPriceWoVat || 0,
+            sellingPriceWithVat: r?.sellingPriceWithVat || 0,
+          }
+        }),
+      } as any : {
+        po: po.code || po.id,
+        shipmentCode: shipment!.code,
+        date: today(),
+        lines: (shipment!.lines || []).map((l, i) => ({
           shipmentLineId: l.id,
           code: l.code, item: l.item,
           qty: recv[i]?.qty || 0,
@@ -1055,7 +1102,9 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
       reset()
       notify.success('GRN submitted for approval', 'Stock is updated after the second admin approval.')
     } catch (e: any) {
-      setErr(e?.response?.data?.message || 'Post failed')
+      const errs = e?.response?.data?.errors
+      const detail = errs ? Object.values(errs).flat().join(' · ') : ''
+      setErr(detail || e?.response?.data?.message || 'Post failed')
     } finally { setSubmitting(false) }
   }
 
@@ -1121,7 +1170,7 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
           <div>
             <ApprovalPanel po={viewGrn} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 12.5 }}>
-              <KV k="Shipment" v={viewGrn.shipmentCode} />
+              <KV k="Shipment" v={viewGrn.shipmentCode || 'Direct — Ex-Showroom (no costing)'} />
               <KV k="Items"    v={String(viewGrn.items)} />
               <KV k="Value"    v={fmtMoney(viewGrn.total)} />
               <KV k="Stock"    v={viewGrn.stockPostedAt ? 'Received into stock' : viewGrn.status === 'Rejected' ? 'Not received (rejected)' : 'Not yet — needs 2 approvals'} />
@@ -1131,10 +1180,10 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
       </Modal>
 
       <Modal open={modal} onClose={reset} width={1080}
-        title={step === 1 ? 'GRN · Step 1 — Select PO' : step === 2 ? `GRN · Step 2 — Select Shipment for ${po?.code || po?.id}` : `Receive Goods · ${shipment?.code}`}
-        sub={step === 3 ? `${po?.supplier} · ${(shipment?.lines || []).length} items in shipment` : undefined}
+        title={step === 1 ? 'GRN · Step 1 — Select PO' : step === 2 ? `GRN · Step 2 — Select Shipment for ${po?.code || po?.id}` : direct ? `Receive Goods · ${po?.code || po?.id} (Ex-Showroom)` : `Receive Goods · ${shipment?.code}`}
+        sub={step === 3 ? (direct ? `${po?.supplier} · ${po?.lines.length || 0} items on PO · local purchase, no costing required` : `${po?.supplier} · ${(shipment?.lines || []).length} items in shipment`) : undefined}
         footer={step === 3 ? <>
-          <Btn variant="plain" onClick={() => setStep(2)}>Back</Btn>
+          <Btn variant="plain" onClick={() => setStep(direct ? 1 : 2)}>Back</Btn>
           <Btn variant="primary" icon="check" disabled={submitting} onClick={post}>{submitting ? 'Submitting…' : 'Submit GRN for Approval'}</Btn>
         </> : step === 2 ? <Btn variant="plain" onClick={() => setStep(1)}>Back</Btn> : <Btn variant="plain" onClick={reset}>Cancel</Btn>}
       >
@@ -1149,7 +1198,7 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
                   <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--ac-dim)', display: 'grid', placeItems: 'center', color: 'var(--ac-bright)' }}><Icon n="cart" s={17} /></div>
                   <div>
                     <div className="row gap-2"><span className="mono" style={{ fontWeight: 600, color: 'var(--ac-bright)' }}>{p.code || p.id}</span><Badge tone={statusTone(p.status)}>{p.status}</Badge></div>
-                    <div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{p.supplier} · {shipmentsFor(p.code || p.id).length} open shipment(s)</div>
+                    <div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{p.supplier} · {isExShowroom(p) ? 'Ex-Showroom · direct GRN, no costing' : `${shipmentsFor(p.code || p.id).length} open shipment(s)`}</div>
                   </div>
                 </div>
                 <Icon n="chev" s={16} c="var(--tx-3)" />
@@ -1180,7 +1229,11 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
           </div>
         )}
 
-        {step === 3 && shipment && (
+        {step === 3 && direct && po && (
+          <DirectReceiveGrid po={po} recv={recv} setRecv={setRecv} />
+        )}
+
+        {step === 3 && !direct && shipment && (
           <div>
             <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-m)', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
@@ -1227,6 +1280,76 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
           </div>
         )}
       </Modal>
+    </div>
+  )
+}
+
+/** Receiving grid for an Ex-Showroom (local) PO: one row per PO line, no
+ *  shipment. With no costing behind it, the unit costs are entered here —
+ *  pre-filled from the PO price. */
+function DirectReceiveGrid({ po, recv, setRecv }: {
+  po: PurchaseOrder
+  recv: Record<number, RecvRow>
+  setRecv: (fn: (s: Record<number, RecvRow>) => Record<number, RecvRow>) => void
+}) {
+  const cur = (po.currency || 'LKR').toUpperCase()
+  const numIn = (w: number) => ({ ...inputStyle, width: w, padding: '4px 8px', textAlign: 'right' as const, fontFamily: 'JetBrains Mono' })
+  return (
+    <div>
+      <div className="row gap-2" style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--ac-dim)', color: 'var(--ac-bright)', border: '1px solid var(--ac-line)', borderRadius: 'var(--r-s)', fontSize: 12.5 }}>
+        <Icon n="truck" s={16} />
+        <span>Local Ex-Showroom purchase — no costing or shipment is needed. Unit costs are pre-filled from the PO price; enter the VAT-inclusive cost if the supplier charges VAT.</span>
+      </div>
+      {cur !== 'LKR' && (
+        <div className="row gap-2" style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--warn-dim, var(--bg-0))', color: 'var(--warn)', border: '1px solid var(--warn)', borderRadius: 'var(--r-s)', fontSize: 12.5 }}>
+          <Icon n="alert" s={16} />
+          <span>This PO is in {cur}. The pre-filled costs are {cur} PO prices — change them to LKR before submitting, since stock is valued in LKR.</span>
+        </div>
+      )}
+      <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-m)', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <thead><tr style={{ background: 'var(--bg-0)' }}>
+            {['Part No', 'Description', 'Ordered', 'PO Bal.', `PO Price (${cur})`, 'U.Cost W/O VAT', 'U.Cost W/ VAT', 'Receiving', 'Sell W/O VAT', 'Sell W/ VAT'].map((h, i) => <th key={i} style={{ padding: '8px 10px', textAlign: i > 1 ? 'right' : 'left', fontSize: 10, color: 'var(--tx-2)', textTransform: 'uppercase', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap' }}>{h}</th>)}
+          </tr></thead>
+          <tbody>{po.lines.map((l, i) => {
+            const cap = Math.max(0, l.balanceQty ?? l.qty)
+            const row = recv[i] || { qty: 0, sellingPriceWoVat: 0, sellingPriceWithVat: 0 }
+            const setRow = (p: Partial<RecvRow>) => setRecv((s) => ({ ...s, [i]: { ...row, ...p } }))
+            return (
+              <tr key={i} style={{ opacity: cap === 0 ? 0.5 : 1 }}>
+                <td style={tdSty} className="mono t-2">{l.code}</td>
+                <td style={tdSty}>{l.item}</td>
+                <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{l.qty}</td>
+                <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{cap}</td>
+                <td style={{ ...tdSty, textAlign: 'right' }} className="mono">{fmtCur(l.cost, cur)}</td>
+                <td style={{ ...tdSty, textAlign: 'right' }}>
+                  <input type="number" min={0} value={row.unitCostWoVat ?? 0}
+                    onChange={(e) => setRow({ unitCostWoVat: Math.max(0, Number(e.target.value) || 0) })} style={numIn(100)} />
+                </td>
+                <td style={{ ...tdSty, textAlign: 'right' }}>
+                  <input type="number" min={0} value={row.unitCostWithVat ?? 0}
+                    onChange={(e) => setRow({ unitCostWithVat: Math.max(0, Number(e.target.value) || 0) })} style={numIn(100)} />
+                </td>
+                <td style={{ ...tdSty, textAlign: 'right' }}>
+                  <input type="number" value={row.qty} max={cap} min={0} disabled={cap === 0}
+                    onChange={(e) => setRow({ qty: Math.min(cap, Math.max(0, +e.target.value)) })} style={numIn(80)} />
+                </td>
+                <td style={tdSty}>
+                  <input type="number" value={row.sellingPriceWoVat}
+                    onChange={(e) => setRow({ sellingPriceWoVat: Number(e.target.value) || 0 })} style={numIn(100)} />
+                </td>
+                <td style={tdSty}>
+                  <input type="number" value={row.sellingPriceWithVat}
+                    onChange={(e) => setRow({ sellingPriceWithVat: Number(e.target.value) || 0 })} style={numIn(100)} />
+                </td>
+              </tr>
+            )
+          })}</tbody>
+        </table>
+      </div>
+      <div className="info-banner row gap-2" style={{ marginTop: 14, padding: '10px 14px', background: 'var(--ok-dim)', border: '1px solid var(--ok)', borderRadius: 'var(--r-s)', fontSize: 12.5, color: 'var(--ok)' }}>
+        <Icon n="check" s={16} /><span>Posting increases stock, recomputes Average Cost using the ex-VAT unit cost, sets the item's selling prices, and reduces the PO balance.</span>
+      </div>
     </div>
   )
 }

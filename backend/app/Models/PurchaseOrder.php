@@ -32,4 +32,14 @@ class PurchaseOrder extends Model
     {
         return $this->hasMany(Shipment::class);
     }
+
+    /**
+     * Local purchases bought Ex-Showroom carry no freight, duty or clearance,
+     * so they skip Costing & Shipment and go straight to GRN. Matches
+     * "Ex-Showroom", "ExShowroom", "Ex Showroom", … in any case.
+     */
+    public function isExShowroom(): bool
+    {
+        return strtolower(preg_replace('/[^a-z]/i', '', (string) $this->inco_terms)) === 'exshowroom';
+    }
 }

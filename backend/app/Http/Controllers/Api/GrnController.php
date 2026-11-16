@@ -55,18 +55,20 @@ class GrnController extends Controller
     }
 
     /**
-     * Record a GRN against an approved PO + Shipment. Nothing moves yet — the
-     * quantities are only checked against what the PO still owes (less what
-     * other GRNs awaiting approval already claim).
+     * Record a GRN against an approved PO + Shipment — or, for a local
+     * Ex-Showroom PO, straight against the PO lines with no costing/shipment.
+     * Nothing moves yet — the quantities are only checked against what the PO
+     * still owes (less what other GRNs awaiting approval already claim).
      */
     public function store(Request $request)
     {
         $data = $request->validate([
             'po' => 'required|string',
-            'shipment_code' => 'required|string',
+            'shipment_code' => 'nullable|string',
             'date' => 'nullable|date',
             'lines' => 'required|array|min:1',
             'lines.*.shipment_line_id' => 'nullable|integer',
+            'lines.*.purchase_order_line_id' => 'nullable|integer',
             'lines.*.code' => 'nullable|string',
             'lines.*.item' => 'required|string',
             'lines.*.qty' => 'required|integer|min:0',
@@ -84,17 +86,46 @@ class GrnController extends Controller
                     'po' => 'This PO is not fully approved yet. Two admin approvals are required before GRN.',
                 ]);
             }
-            $shipment = Shipment::where('code', $data['shipment_code'])->firstOrFail();
-            if (! $shipment->isFullyApproved()) {
+            $shipment = null;
+            if (! empty($data['shipment_code'])) {
+                $shipment = Shipment::where('code', $data['shipment_code'])->where('po_code', $po->code)->firstOrFail();
+                if (! $shipment->isFullyApproved()) {
+                    throw ValidationException::withMessages([
+                        'shipment_code' => 'This shipment (costing) is not fully approved yet. Two admin approvals are required before GRN.',
+                    ]);
+                }
+            } elseif (! $po->isExShowroom()) {
                 throw ValidationException::withMessages([
-                    'shipment_code' => 'This shipment (costing) is not fully approved yet. Two admin approvals are required before GRN.',
+                    'shipment_code' => "{$po->code} is an import PO ({$po->inco_terms}) — select its approved costing shipment. Only Ex-Showroom local purchases can be received without costing.",
                 ]);
+            }
+
+            // Resolve each line's PO line: through its shipment line, or — on a
+            // direct Ex-Showroom GRN — from the PO line id, which must be this PO's.
+            $poLineIds = $po->lines()->pluck('id')->all();
+            foreach ($data['lines'] as $i => $l) {
+                if ($shipment) {
+                    $sl = ! empty($l['shipment_line_id'])
+                        ? ShipmentLine::where('shipment_id', $shipment->id)->find($l['shipment_line_id'])
+                        : null;
+                    $data['lines'][$i]['shipment_line_id'] = $sl ? $sl->id : null;
+                    $data['lines'][$i]['purchase_order_line_id'] = $sl ? $sl->purchase_order_line_id : null;
+                } else {
+                    $plId = (int) ($l['purchase_order_line_id'] ?? 0);
+                    if ((int) $l['qty'] > 0 && ! in_array($plId, $poLineIds, true)) {
+                        throw ValidationException::withMessages([
+                            'lines' => "{$l['item']}: not a line of {$po->code}.",
+                        ]);
+                    }
+                    $data['lines'][$i]['shipment_line_id'] = null;
+                    $data['lines'][$i]['purchase_order_line_id'] = $plId ?: null;
+                }
             }
 
             $pending = $this->pendingByPoLine($po->code);
             $claim = [];
             foreach ($data['lines'] as $l) {
-                $pl = $this->poLineFor($l['shipment_line_id'] ?? null);
+                $pl = $this->poLineFor($l);
                 if (! $pl || (int) $l['qty'] <= 0) {
                     continue;
                 }
@@ -111,8 +142,8 @@ class GrnController extends Controller
             $grn = Grn::create([
                 'code' => Grn::nextCode(),
                 'po' => $po->code,
-                'shipment_code' => $shipment->code,
-                'shipment_id' => $shipment->id,
+                'shipment_code' => $shipment ? $shipment->code : null,
+                'shipment_id' => $shipment ? $shipment->id : null,
                 'supplier' => $po->supplier,
                 'date' => $data['date'] ?? now()->toDateString(),
                 'items' => 0,
@@ -131,7 +162,8 @@ class GrnController extends Controller
                 $total += $recv * $unitWithVat;
                 $linesPosted++;
                 $grn->lines()->create([
-                    'shipment_line_id' => $l['shipment_line_id'] ?? null,
+                    'shipment_line_id' => $l['shipment_line_id'],
+                    'purchase_order_line_id' => $l['purchase_order_line_id'],
                     'code' => $l['code'] ?? null,
                     'item' => $l['item'],
                     'qty' => $recv,
@@ -181,7 +213,7 @@ class GrnController extends Controller
                         Fifo::removeReceipt($item, Fifo::GRN, $l->id, (int) $l->qty);
                     }
 
-                    $pl = $this->poLineFor($l->shipment_line_id);
+                    $pl = $this->poLineFor($l);
                     if ($pl) {
                         $back = min((int) $l->qty, (int) $pl->received_qty);
                         $pl->received_qty = $pl->received_qty - $back;
@@ -222,7 +254,7 @@ class GrnController extends Controller
                 continue;
             }
 
-            $pl = $this->poLineFor($l->shipment_line_id);
+            $pl = $this->poLineFor($l);
             if ($pl) {
                 $pl = PurchaseOrderLine::whereKey($pl->id)->lockForUpdate()->first();
                 if ($recv > (int) $pl->balance_qty) {
@@ -277,25 +309,35 @@ class GrnController extends Controller
         }
     }
 
-    protected function poLineFor($shipmentLineId): ?PurchaseOrderLine
+    /**
+     * The PO line a GRN line (model or request array) receives against: its
+     * direct purchase_order_line_id, else the one behind its shipment line.
+     */
+    protected function poLineFor($line): ?PurchaseOrderLine
     {
-        $sl = $shipmentLineId ? ShipmentLine::find($shipmentLineId) : null;
+        $plId = data_get($line, 'purchase_order_line_id');
+        if (! $plId) {
+            $slId = data_get($line, 'shipment_line_id');
+            $sl = $slId ? ShipmentLine::find($slId) : null;
+            $plId = $sl ? $sl->purchase_order_line_id : null;
+        }
 
-        return $sl && $sl->purchase_order_line_id ? PurchaseOrderLine::find($sl->purchase_order_line_id) : null;
+        return $plId ? PurchaseOrderLine::find($plId) : null;
     }
 
     /** Qty per PO line already claimed by this PO's GRNs that are still awaiting approval. */
     protected function pendingByPoLine(string $poCode): array
     {
+        $plCol = DB::raw('COALESCE(grn_lines.purchase_order_line_id, shipment_lines.purchase_order_line_id)');
         $rows = GrnLine::query()
             ->join('grns', 'grns.id', '=', 'grn_lines.grn_id')
-            ->join('shipment_lines', 'shipment_lines.id', '=', 'grn_lines.shipment_line_id')
+            ->leftJoin('shipment_lines', 'shipment_lines.id', '=', 'grn_lines.shipment_line_id')
             ->where('grns.po', $poCode)
             ->whereNull('grns.stock_posted_at')
             ->where('grns.status', '!=', 'Rejected')
-            ->whereNotNull('shipment_lines.purchase_order_line_id')
-            ->groupBy('shipment_lines.purchase_order_line_id')
-            ->select('shipment_lines.purchase_order_line_id as pl', DB::raw('SUM(grn_lines.qty) as qty'))
+            ->whereNotNull($plCol)
+            ->groupBy($plCol)
+            ->select(DB::raw('COALESCE(grn_lines.purchase_order_line_id, shipment_lines.purchase_order_line_id) as pl'), DB::raw('SUM(grn_lines.qty) as qty'))
             ->get();
         $out = [];
         foreach ($rows as $r) {
