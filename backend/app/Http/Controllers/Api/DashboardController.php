@@ -121,7 +121,9 @@ class DashboardController extends Controller
     private function pendingFor(int $userId): array
     {
         $limit = 5;
-        $twoStep = function (string $table, string $partyCol, string $amountCol) use ($userId, $limit) {
+        // $currencyCol: documents kept in their own currency (POs) report it so
+        // the amount is shown as USD / LKR rather than silently as LKR.
+        $twoStep = function (string $table, string $partyCol, string $amountCol, $currencyCol = null) use ($userId, $limit) {
             $base = DB::table($table)->where('status', 'Awaiting Approval');
             $mine = (clone $base)->where(function ($q) use ($userId) {
                 $q->whereNull('approver1_id')->orWhere('approver1_id', '!=', $userId);
@@ -130,7 +132,8 @@ class DashboardController extends Controller
             });
             $rows = (clone $base)
                 ->select('id', 'code', 'date', 'approver1_id', 'approver2_id',
-                    DB::raw("$partyCol AS party"), DB::raw("$amountCol AS amount"))
+                    DB::raw("$partyCol AS party"), DB::raw("$amountCol AS amount"),
+                    DB::raw($currencyCol ? "$currencyCol AS currency" : "'LKR' AS currency"))
                 ->orderBy('date')->orderBy('id')
                 ->limit($limit)->get()
                 ->map(function ($r) use ($userId) {
@@ -140,6 +143,7 @@ class DashboardController extends Controller
                         'party' => $r->party,
                         'date' => $r->date,
                         'amount' => (float) $r->amount,
+                        'currency' => $r->currency ?: 'LKR',
                         'approvals' => ($r->approver1_id ? 1 : 0) + ($r->approver2_id ? 1 : 0),
                         'approved_by_me' => $r->approver1_id == $userId || $r->approver2_id == $userId,
                     ];
@@ -166,7 +170,7 @@ class DashboardController extends Controller
 
         $groups = [
             array_merge(['key' => 'po', 'label' => 'Purchase Orders', 'route' => 'dc/po', 'two_step' => true],
-                $twoStep('purchase_orders', 'supplier', 'total')),
+                $twoStep('purchase_orders', 'supplier', 'total', 'currency')),
             array_merge(['key' => 'shipment', 'label' => 'Costing & Shipments', 'route' => 'dc/costing', 'two_step' => true],
                 $twoStep('shipments', 'po_code', 'landed_total')),
             array_merge(['key' => 'grn', 'label' => 'GRNs', 'route' => 'dc/grn', 'two_step' => true],

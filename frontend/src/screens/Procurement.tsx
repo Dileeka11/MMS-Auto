@@ -22,13 +22,8 @@ import type { Go } from './types'
 
 const D = DB
 const fmtMoney = (n: number) => D.money(n || 0)
-const CURRENCY_SYMBOL: Record<string, string> = { USD: '$', LKR: 'Rs', EUR: '€', JPY: '¥', GBP: '£', CNY: 'CN¥', INR: '₹' }
 /** Format an amount in the PO's own currency (defaults to LKR when unknown). */
-const fmtCur = (n: number, cur?: string | null) => {
-  const c = (cur || 'LKR').toUpperCase()
-  if (c === 'LKR') return fmtMoney(n)
-  return `${CURRENCY_SYMBOL[c] || c} ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
+const fmtCur = (n: number, cur?: string | null) => D.moneyCur(n, cur)
 const fmtDate = (v: any) => D.fmtDate(v)
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -49,8 +44,29 @@ const blankPO = (): POForm => ({
 })
 
 const PAYMENT_TERMS = ['100% TT in advance', 'DP at sight', 'DA 30 Days', 'DA 60 Days', 'LC at sight']
-const INCO_TERMS = ['EXW', 'FCA', 'FOB', 'CIF', 'CFR', 'DAP', 'DDP']
+/** Incoterm used for POs issued to local (Sri Lankan) suppliers. */
+const LOCAL_INCO_TERM = 'Ex-Showroom'
+const INCO_TERMS = [LOCAL_INCO_TERM, 'EXW', 'FCA', 'FOB', 'CIF', 'CFR', 'DAP', 'DDP']
 const CURRENCIES = ['USD', 'LKR', 'EUR', 'JPY', 'GBP', 'CNY', 'INR']
+/** A supplier is local when its country is Sri Lanka, or — with no country
+ *  recorded — when it trades in LKR. */
+const isLocalSupplier = (s: Pick<Supplier, 'country' | 'currency'>) => {
+  const country = (s.country || '').trim()
+  if (country) return /^(sri\s*lanka|lk|lka)$/i.test(country)
+  return (s.currency || '').toUpperCase() === 'LKR'
+}
+/** Order value tiles: one per currency (USD and LKR always shown) — never
+ *  added together or converted. */
+const orderValueStats = (rows: PurchaseOrder[]) => {
+  const byCur = D.totalsByCurrency(rows)
+  const curs = ['USD', 'LKR', ...Object.keys(byCur).filter((c) => c !== 'USD' && c !== 'LKR').sort()]
+  return curs.map((c) => ({
+    icon: 'coins', c: 'green',
+    label: `Order Value (${c})`,
+    value: fmtCur(byCur[c] || 0, c),
+    sub: `${rows.filter((r) => (r.currency || 'LKR').toUpperCase() === c).length} orders in ${c}`,
+  }))
+}
 
 export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: string } | null }) {
   const notify = useNotify()
@@ -97,6 +113,10 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
       supplierContact: s.contact || f.supplierContact,
       paymentTerms: s.paymentTerms || f.paymentTerms,
       currency: s.currency || f.currency,
+      // Local suppliers sell Ex-Showroom; switching back to a foreign supplier
+      // restores the import default.
+      incoTerms: isLocalSupplier(s) ? LOCAL_INCO_TERM
+        : (f.incoTerms === LOCAL_INCO_TERM ? 'FOB' : f.incoTerms),
     }))
     setSupplierPick(false)
   }
@@ -151,7 +171,6 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
   }
 
   const pending = rows.filter((r) => r.status === 'Awaiting Approval').length
-  const orderValue = rows.reduce((a, r) => a + (r.total || 0), 0)
 
   const refresh = async () => {
     const fresh = await api.purchaseOrders.list()
@@ -185,7 +204,7 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
         { icon: 'cart', label: 'Open Orders', value: rows.filter((r) => r.status !== 'Completed').length, c: 'ac' },
         { icon: 'clock', label: 'Pending Approval', value: pending, c: 'warn', sub: 'awaiting authorisation' },
         { icon: 'truck', label: 'Partial GRN', value: rows.filter((r) => r.status === 'Partial GRN').length, c: 'ac' },
-        { icon: 'coins', label: 'Order Value', value: D.moneyK(orderValue), c: 'green' },
+        ...orderValueStats(rows),
       ]} />
 
       <Card pad={0}>
@@ -278,7 +297,7 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
             <div style={{ maxHeight: 320, overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-0)' }}>
-                  <tr>{['#', 'Part No', 'Description', 'HS Code', 'Qty', 'Unit FOB', 'Total FOB'].map((h, i) => <th key={i} style={{ padding: '8px 12px', textAlign: i > 3 ? 'right' : 'left', fontSize: 10.5, color: 'var(--tx-2)', textTransform: 'uppercase', borderBottom: '1px solid var(--line)' }}>{h}</th>)}</tr>
+                  <tr>{['#', 'Part No', 'Description', 'HS Code', 'Qty', `Unit Price (${form.currency})`, `Total (${form.currency})`].map((h, i) => <th key={i} style={{ padding: '8px 12px', textAlign: i > 3 ? 'right' : 'left', fontSize: 10.5, color: 'var(--tx-2)', textTransform: 'uppercase', borderBottom: '1px solid var(--line)' }}>{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {lines.map((l, i) => (
@@ -322,6 +341,7 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
               <KV k="Payment" v={view.paymentTerms} />
               <KV k="Inco" v={view.incoTerms} />
               <KV k="Currency" v={view.currency} />
+              <KV k="Order Value" v={fmtCur(view.total, view.currency)} />
               <KV k="PI Date" v={fmtDate(view.piDate)} />
               <KV k="Required Month" v={view.orderRequiredMonth} />
               <KV k="Contact" v={view.supplierContact} />
@@ -332,7 +352,7 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
             <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-m)', overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead><tr style={{ background: 'var(--bg-0)' }}>
-                  {['Part No', 'HS Code', 'Description', 'Ordered', 'Received', 'Balance', 'Cost', 'Total'].map((h, i) => <th key={i} style={{ padding: '9px 12px', textAlign: i > 2 ? 'right' : 'left', fontSize: 10.5, color: 'var(--tx-2)', textTransform: 'uppercase', borderBottom: '1px solid var(--line)' }}>{h}</th>)}
+                  {['Part No', 'HS Code', 'Description', 'Ordered', 'Received', 'Balance', `Cost (${view.currency || 'LKR'})`, `Total (${view.currency || 'LKR'})`].map((h, i) => <th key={i} style={{ padding: '9px 12px', textAlign: i > 2 ? 'right' : 'left', fontSize: 10.5, color: 'var(--tx-2)', textTransform: 'uppercase', borderBottom: '1px solid var(--line)' }}>{h}</th>)}
                 </tr></thead>
                 <tbody>{view.lines?.map((l, i) => (
                   <tr key={i}>
@@ -346,6 +366,12 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
                     <td style={{ ...tdSty, textAlign: 'right', fontWeight: 600 }} className="mono">{fmtCur(l.total, view.currency)}</td>
                   </tr>
                 ))}</tbody>
+                <tfoot>
+                  <tr style={{ background: 'var(--bg-0)' }}>
+                    <td colSpan={7} style={{ ...tdSty, textAlign: 'right', fontWeight: 700 }}>Order Value ({view.currency || 'LKR'})</td>
+                    <td style={{ ...tdSty, textAlign: 'right', fontWeight: 700, color: 'var(--ac-bright)' }} className="mono">{fmtCur(view.total, view.currency)}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>

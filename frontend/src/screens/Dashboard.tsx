@@ -4,7 +4,7 @@ import { Card, PageHead, Btn, Badge } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { AreaChart, Donut, Spark, ProgressRow } from '../components/charts'
 import { api, type AuthUser } from '../api'
-import { moneyK, moneyShort, fmtDate } from '../data'
+import { moneyK, moneyCur, moneyShort, fmtDate } from '../data'
 import type { Go } from './types'
 
 function KPI({ icon, label, value, delta, up, spark, sparkColor, tone = 'blue' }: { icon: string; label: string; value: string; delta?: string; up?: boolean; spark?: number[]; sparkColor?: string; tone?: 'blue' | 'green' | 'amber' | 'red' }) {
@@ -29,7 +29,7 @@ function KPI({ icon, label, value, delta, up, spark, sparkColor, tone = 'blue' }
   )
 }
 
-interface PendingItem { id: number; code: string; party?: string; date?: string; amount: number; approvals?: number; approvedByMe?: boolean }
+interface PendingItem { id: number; code: string; party?: string; date?: string; amount: number; currency?: string; approvals?: number; approvedByMe?: boolean }
 interface PendingGroup { key: string; label: string; route: string; twoStep: boolean; count: number; needsMe: number; items: PendingItem[] }
 
 const PENDING_ICON: Record<string, string> = { po: 'cart', shipment: 'box', grn: 'truck', return: 'refund', discount: 'tag', dispatch: 'swap' }
@@ -75,7 +75,7 @@ function PendingApprovals({ pending, go }: { pending: { total: number; groups: P
                       </div>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 8 }}>
-                      <div className="num" style={{ fontSize: 12 }}>{moneyK(it.amount || 0)}</div>
+                      <div className="num" style={{ fontSize: 12 }}>{it.currency ? moneyCur(it.amount || 0, it.currency) : moneyK(it.amount || 0)}</div>
                       {g.twoStep && (
                         <div className="mono" style={{ fontSize: 10, color: it.approvedByMe ? 'var(--ok)' : 'var(--tx-3)' }}>
                           {it.approvals ?? 0}/2{it.approvedByMe ? ' · you signed' : ''}

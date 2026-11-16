@@ -26,6 +26,22 @@ export const fmtDate = (v: string | Date | null | undefined): string => {
   const yy = String(d.getFullYear()).slice(-2)
   return `${dd}-${mm}-${yy}`
 }
+const CURRENCY_SYMBOL: Record<string, string> = { USD: '$', LKR: 'Rs', EUR: '€', JPY: '¥', GBP: '£', CNY: 'CN¥', INR: '₹' }
+/** Format an amount in its own document currency (e.g. a PO raised in USD).
+ *  Never converts — defaults to LKR only when the currency is unknown. */
+export const moneyCur = (n: number, cur?: string | null) => {
+  const c = (cur || 'LKR').toUpperCase()
+  if (c === 'LKR') return money(n)
+  return `${CURRENCY_SYMBOL[c] || c} ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+/** Sum document totals per currency instead of adding USD and LKR together. */
+export const totalsByCurrency = <T extends { total?: number; currency?: string | null }>(rows: T[]) =>
+  rows.reduce((acc, r) => {
+    const c = (r.currency || 'LKR').toUpperCase()
+    acc[c] = (acc[c] || 0) + (Number(r.total) || 0)
+    return acc
+  }, {} as Record<string, number>)
+
 /** Totals on cards / reports — always the full amount (no K / M abbreviation). */
 export const moneyK = (n: number) => money(n)
 /** Compact form for tight spaces such as chart axes only. */
@@ -213,7 +229,7 @@ export const company: Company = {
 }
 
 export const DB = {
-  money, moneyK, fmtDate, brands, categories, groups, branches, suppliers,
+  money, moneyK, moneyCur, totalsByCurrency, fmtDate, brands, categories, groups, branches, suppliers,
   items, customers, reps,
   purchaseOrders, grns, quotations, invoices, returns, receipts, expenses,
   monthlySales, categoryShare, dailyTrend, company,
