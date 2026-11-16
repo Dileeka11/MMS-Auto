@@ -65,6 +65,19 @@ class InvoiceController extends Controller
         [$creditDays, $dueDate] = Invoice::creditTerms($terms, $date, $data['credit_days'] ?? null, $data['due_date'] ?? null, $data['customer']);
 
         return DB::transaction(function () use ($data, $date, $terms, $creditDays, $dueDate) {
+            // A quotation converts once, and only while it is still Open.
+            $quote = null;
+            if (! empty($data['quotation'])) {
+                Quotation::expireStale();
+                $quote = Quotation::where('code', $data['quotation'])->lockForUpdate()->first();
+                if (! $quote) {
+                    throw ValidationException::withMessages(['quotation' => "Quotation {$data['quotation']} was not found."]);
+                }
+                if (! $quote->isOpen()) {
+                    throw ValidationException::withMessages(['quotation' => "Quotation {$quote->code} is {$quote->status} and cannot be converted."]);
+                }
+            }
+
             StockCheck::assertAvailable($data['lines']);
 
             $supply = 0;
@@ -125,8 +138,8 @@ class InvoiceController extends Controller
             }
 
             // mark source quotation converted
-            if (! empty($data['quotation'])) {
-                Quotation::where('code', $data['quotation'])->update(['status' => 'Converted']);
+            if ($quote) {
+                $quote->update(['status' => Quotation::CONVERTED]);
             }
 
             Posting::invoice($inv);
@@ -255,6 +268,12 @@ class InvoiceController extends Controller
                     $rep->decrement('invoices');
                     $rep->decrement('achieved', (float) $invoice->total);
                 }
+            }
+
+            // The source quotation can be invoiced again (it expires as usual if past its date).
+            if (! empty($invoice->quotation)) {
+                Quotation::where('code', $invoice->quotation)->where('status', Quotation::CONVERTED)->update(['status' => Quotation::OPEN]);
+                Quotation::expireStale();
             }
 
             Customer::adjustOutstanding($invoice->customer, -(float) $invoice->due);

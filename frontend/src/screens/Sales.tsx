@@ -8,36 +8,49 @@ import { printInvoice } from '../lib/invoicePrint'
 import { useNotify } from '../components/Notify'
 import { money, moneyK, fmtDate } from '../data'
 import type { EditorLine, Quotation, Invoice } from '../types'
-import type { Go } from './types'
+import type { Go, ScreenProps } from './types'
+import { userCan } from '../lib/permissions'
 
-export function QuoteScreen({ go }: { go: Go }) {
+export function QuoteScreen({ go, user }: ScreenProps) {
+  const notify = useNotify()
   const [rows, setRows] = useState<Quotation[]>([])
   const [customers, setCustomers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(false)
-  const [cust, setCust] = useState(''); const [lines, setLines] = useState<EditorLine[]>([])
+  // null = closed, 'new' = create, otherwise the Open quotation being edited
+  const [editing, setEditing] = useState<Quotation | 'new' | null>(null)
+  const [cust, setCust] = useState(''); const [validUntil, setValidUntil] = useState('')
+  const [lines, setLines] = useState<EditorLine[]>([])
   const [saving, setSaving] = useState(false)
+  const canEdit = userCan(user, 'Quotation', 'Edit')
+  const canDelete = userCan(user, 'Quotation', 'Delete')
 
   const refresh = () => { setLoading(true); api.quotations.list().then((d) => setRows(d as any)).finally(() => setLoading(false)) }
   useEffect(() => { refresh(); api.customers.list().then((d) => setCustomers(d as any)).catch(() => {}) }, [])
 
-  const create = async () => {
+  const openNew = () => { setCust(''); setValidUntil(addDays(todayIso(), 30)); setLines([]); setEditing('new') }
+  const openEdit = (q: Quotation) => {
+    setCust(q.customer); setValidUntil(q.validUntil || '')
+    setLines((q.lines || []).map((l) => ({ id: 'ql-' + l.id, code: l.code || '', name: l.name, qty: Number(l.qty), rate: Number(l.rate), cost: 0, fifo: 0, avg: 0, method: 'FIFO' as const })))
+    setEditing(q)
+  }
+  const save = async () => {
     setSaving(true)
     try {
-      const total = lines.reduce((a, l) => a + l.qty * l.rate, 0)
-      await api.quotations.create({
-        customer: cust, rep: 'R. Fernando', date: new Date().toISOString().slice(0, 10),
-        total, items: lines.length, status: 'Open', lines,
-      } as any)
-      setModal(false); setLines([]); setCust(''); refresh()
+      const body = { customer: cust, validUntil: validUntil || null, lines: lines.map((l) => ({ code: l.code, name: l.name, qty: l.qty, rate: l.rate })) }
+      if (editing === 'new') await api.quotations.create({ ...body, rep: 'R. Fernando', date: todayIso() } as any)
+      else if (editing) await api.quotations.update(editing.id, body as any)
+      setEditing(null); setLines([]); setCust(''); refresh()
+    } catch (e: any) {
+      notify.error('Quotation not saved', e?.response?.data?.message || e?.message || 'Please try again.')
     } finally { setSaving(false) }
   }
   const remove = async (id: any) => { if (!confirm('Delete this quotation?')) return; await api.quotations.remove(id); refresh() }
+  const isNew = editing === 'new'
 
   return (
     <div>
       <PageHead crumbs="Data Capture" title="Quotation" icon="doc" sub={`${rows.length} quotations · ${rows.filter((r) => r.status === 'Open').length} open`}
-        actions={<Btn variant="primary" icon="plus" onClick={() => setModal(true)}>New Quotation</Btn>} />
+        actions={<Btn variant="primary" icon="plus" onClick={openNew}>New Quotation</Btn>} />
       <StatRow items={[
         { icon: 'doc', label: 'Open Quotations', value: rows.filter((r) => r.status === 'Open').length, c: 'ac' },
         { icon: 'check', label: 'Converted', value: rows.filter((r) => r.status === 'Converted').length, c: 'green' },
@@ -46,26 +59,30 @@ export function QuoteScreen({ go }: { go: Go }) {
       ]} />
       <Card pad={0}>
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
-        <Table cols={[{ label: 'Quote No' }, { label: 'Customer' }, { label: 'Rep' }, { label: 'Date' }, { label: 'Items', align: 'right' }, { label: 'Total', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 140 }]}
+        <Table cols={[{ label: 'Quote No' }, { label: 'Customer' }, { label: 'Rep' }, { label: 'Date' }, { label: 'Valid Until' }, { label: 'Items', align: 'right' }, { label: 'Total', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 170 }]}
           rows={rows}
           render={(r) => <>
-            <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.id}</Td>
+            <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.code || r.id}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.customer}</Td>
             <Td>{r.rep}</Td><Td mono>{fmtDate(r.date)}</Td>
+            <Td mono>{r.validUntil ? fmtDate(r.validUntil) : '—'}</Td>
             <Td align="right" mono>{r.items}</Td>
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 600 }}>{money(r.total || 0)}</Td>
             <Td align="center"><Badge tone={statusTone(r.status)} dot>{r.status}</Badge></Td>
             <Td align="right"><div className="row gap-1" style={{ justifyContent: 'flex-end' }}>
               {r.status === 'Open' && <Btn variant="ghost" size="sm" iconR="chev" onClick={() => go('dc/invoice')}>Convert</Btn>}
-              <button className="mms-act" onClick={() => remove(r.id)}><Icon n="trash" s={15} /></button>
+              {r.status === 'Open' && canEdit && <button className="mms-act" title="Edit quotation" onClick={() => openEdit(r)}><Icon n="edit" s={15} /></button>}
+              {canDelete && <button className="mms-act" title="Delete quotation" onClick={() => remove(r.id)}><Icon n="trash" s={15} /></button>}
             </div></Td>
           </>} />}
       </Card>
-      <Modal open={modal} onClose={() => setModal(false)} width={760} title="New Quotation" sub="Prepare a price quote for a customer"
-        footer={<><Btn variant="plain" onClick={() => setModal(false)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={create} disabled={!cust || !lines.length || saving}>{saving ? 'Saving…' : 'Save Quotation'}</Btn></>}>
+      <Modal open={editing !== null} onClose={() => setEditing(null)} width={760}
+        title={isNew ? 'New Quotation' : `Edit ${editing?.code || editing?.id || ''}`}
+        sub={isNew ? 'Prepare a price quote for a customer' : 'Only Open quotations can be edited'}
+        footer={<><Btn variant="plain" onClick={() => setEditing(null)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save} disabled={!cust || !lines.length || saving}>{saving ? 'Saving…' : isNew ? 'Save Quotation' : 'Save Changes'}</Btn></>}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 18 }}>
           <Field label="Customer"><Select value={cust} onChange={(e) => setCust(e.target.value)}><option value="">Select customer…</option>{customers.map((c) => <option key={c.id}>{c.name}</option>)}</Select></Field>
-          <Field label="Valid Until"><DateInput /></Field>
+          <Field label="Valid Until"><DateInput value={validUntil} onChange={setValidUntil} /></Field>
         </div>
         <div className="eyebrow" style={{ marginBottom: 10 }}>Quote Lines</div>
         <LineEditor lines={lines} setLines={setLines} mode="sell" />
@@ -102,7 +119,7 @@ function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, prof
   const badDue = credit && head.dueDate < head.date
   return (
     <div>
-      <PageHead crumbs="Data Capture · Sales Invoice" title={src ? 'Invoice from ' + src.id : 'New Sales Invoice'} icon="receipt"
+      <PageHead crumbs="Data Capture · Sales Invoice" title={src ? 'Invoice from ' + (src.code || src.id) : 'New Sales Invoice'} icon="receipt"
         sub="Choose FIFO or Average costing per line — profit recalculates instantly"
         actions={<><Btn variant="plain" icon="x" onClick={back}>Discard</Btn>
           <Btn variant={vat ? 'primary' : 'solid'} icon={vat ? 'check' : 'coins'} onClick={() => setVat(!vat)} title="Add VAT and print as a Tax Invoice">{vat ? `VAT ${vatPct}% Applied` : 'Apply VAT'}</Btn>
@@ -186,12 +203,14 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   const [payAmt, setPayAmt] = useState(''); const [payMode, setPayMode] = useState('Cash'); const [payRef, setPayRef] = useState(''); const [paying, setPaying] = useState(false)
   const [chequeBank, setChequeBank] = useState(''); const [chequeNo, setChequeNo] = useState(''); const [chequeDate, setChequeDate] = useState('')
 
-  const refresh = () => { setLoading(true); api.invoices.list().then((d) => setRows(d as any)).finally(() => setLoading(false)) }
+  const refresh = () => {
+    setLoading(true); api.invoices.list().then((d) => setRows(d as any)).finally(() => setLoading(false))
+    api.quotations.list().then((d: any[]) => setOpenQuotes(d.filter((q) => q.status === 'Open'))).catch(() => {})
+  }
   useEffect(() => {
     refresh()
     api.customers.list().then((d) => setCustomers(d as any)).catch(() => {})
     companyApi.get().then((d: any) => { if (d?.vatPct != null) setVatPct(Number(d.vatPct)) }).catch(() => {})
-    api.quotations.list().then((d: any[]) => setOpenQuotes(d.filter((q) => q.status === 'Open'))).catch(() => {})
   }, [])
 
   const openPay = (r: Invoice) => { setPayFor(r); setPayAmt(String(r.due || 0)); setPayMode('Cash'); setPayRef(''); setChequeBank(''); setChequeNo(''); setChequeDate('') }
@@ -230,6 +249,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
     try {
       await api.invoices.create({
         customer: cust, rep: 'R. Fernando', date: head.date,
+        ...(src?.code ? { quotation: src.code } : {}),
         terms: head.terms,
         ...(isCredit(head.terms) ? { creditDays: head.creditDays, dueDate: head.dueDate } : {}),
         items: lines.length, lines,
@@ -294,7 +314,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
             <button key={q.id} onClick={() => fromQuote(q)} className="row between mms-row" style={{ padding: '12px 14px', background: 'var(--bg-0)', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', textAlign: 'left', color: 'var(--tx-0)' }}>
               <div className="row gap-3">
                 <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--ac-dim)', display: 'grid', placeItems: 'center', color: 'var(--ac-bright)' }}><Icon n="doc" s={17} /></div>
-                <div><span className="mono" style={{ fontWeight: 600, color: 'var(--ac-bright)' }}>{q.id}</span><div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{q.customer} · {q.items} items · {fmtDate(q.date)}</div></div>
+                <div><span className="mono" style={{ fontWeight: 600, color: 'var(--ac-bright)' }}>{q.code || q.id}</span><div className="t-2" style={{ fontSize: 12, marginTop: 2 }}>{q.customer} · {q.items} items · {fmtDate(q.date)}</div></div>
               </div>
               <div className="row gap-3"><span className="num" style={{ fontWeight: 600 }}>{money(q.total)}</span><Icon n="chev" s={16} c="var(--tx-3)" /></div>
             </button>

@@ -137,7 +137,11 @@ export interface TrackingRow {
     invoiceNo?: string; shipmentType?: string; shipmentVolume?: string }[];
 }
 export interface Quotation {
-  id: string; customer: string; rep: string; date: string; total: number; items: number; status: string; cost: string
+  id: string; code?: string; customer: string; rep: string; date: string; total: number; items: number
+  status: string // Open | Converted | Expired
+  cost: string
+  validUntil?: string | null // Open quotes past this date become Expired
+  lines?: Array<{ id: number; code?: string | null; name: string; qty: number; rate: number }>
 }
 export interface Invoice {
   id: string; code?: string; customer: string; rep: string; date: string; total: number; paid: number; due: number; items: number; cost: string; status: string
