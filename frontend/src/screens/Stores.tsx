@@ -149,8 +149,15 @@ export function AdjustScreen({ go: _go }: { go: Go }) {
 export function BinCardScreen({ go: _go }: { go: Go }) {
   const [items, setItems] = useState<Item[]>([])
   const [sel, setSel] = useState<Item | null>(null)
+  const [q, setQ] = useState('')
 
   useEffect(() => { api.items.list().then((d: any[]) => { setItems(d); if (d.length) setSel(d[0]) }).catch(() => {}) }, [])
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    if (!s) return items
+    return items.filter((i) => [i.code, i.name, i.rack].some((v) => String(v || '').toLowerCase().includes(s)))
+  }, [items, q])
 
   const ledger = useMemo(() => {
     if (!sel) return []
@@ -165,9 +172,15 @@ export function BinCardScreen({ go: _go }: { go: Go }) {
         actions={<Btn variant="solid" icon="print">Print BIN Card</Btn>} />
       <div className="bin-grid" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, alignItems: 'start' }}>
         <Card pad={0}>
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }} className="eyebrow">Select Item</div>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
+            <div className="row between" style={{ marginBottom: 8 }}><span className="eyebrow">Select Item</span><span className="t-3 mono" style={{ fontSize: 11 }}>{filtered.length} / {items.length}</span></div>
+            <div className="row gap-2" style={{ background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', padding: '7px 10px' }}>
+              <Icon n="search" s={14} c="var(--tx-2)" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search code, name or rack…" style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--tx-0)', fontSize: 13, width: '100%' }} />
+            </div>
+          </div>
           <div style={{ maxHeight: 520, overflowY: 'auto' }}>
-            {items.slice(0, 30).map((i) => (
+            {!filtered.length && <div className="t-3" style={{ padding: 16, fontSize: 12.5, textAlign: 'center' }}>No items match.</div>}
+            {filtered.map((i) => (
               <button key={i.id} onClick={() => setSel(i)} className="mms-row" style={{ display: 'block', width: '100%', padding: '11px 16px', background: sel.id === i.id ? 'var(--ac-dim)' : 'transparent', border: 'none', borderBottom: '1px solid var(--line-soft)', borderLeft: '3px solid ' + (sel.id === i.id ? 'var(--ac)' : 'transparent'), textAlign: 'left', color: 'var(--tx-0)' }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{i.name}</div><div className="mono t-3" style={{ fontSize: 11 }}>{i.code} · {i.rack}</div>
               </button>
