@@ -190,9 +190,17 @@ export function Select({ children, ...p }: React.SelectHTMLAttributes<HTMLSelect
 
 /* ---------- Modal ---------- */
 export function Modal({ open, onClose, title, sub, children, width = 560, footer }: { open?: boolean; onClose?: () => void; title?: ReactNode; sub?: ReactNode; children?: ReactNode; width?: number; footer?: ReactNode }) {
+  // Close on backdrop click ONLY when the press both started and ended on the
+  // backdrop. A plain onClick also fires when the user drag-selects text inside
+  // an input and releases the mouse outside the dialog (the click target becomes
+  // the overlay), which silently closed the modal and wiped the unsaved form.
+  const downOnBackdrop = useRef(false)
   if (!open) return null
   return createPortal(
-    <div onClick={onClose} className="mms-modal-overlay" style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'oklch(0 0 0 / 0.6)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', padding: 20, paddingLeft: 'calc(var(--sb-w) + 20px)', animation: 'fade .2s ease both' }}>
+    <div
+      onMouseDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget }}
+      onClick={(e) => { if (downOnBackdrop.current && e.target === e.currentTarget) onClose?.(); downOnBackdrop.current = false }}
+      className="mms-modal-overlay" style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'oklch(0 0 0 / 0.6)', backdropFilter: 'blur(3px)', display: 'grid', placeItems: 'center', padding: 20, paddingLeft: 'calc(var(--sb-w) + 20px)', animation: 'fade .2s ease both' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(' + width + 'px,100%)', maxHeight: '90vh', overflow: 'auto', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 'var(--r-l)', boxShadow: 'var(--sh-3)', animation: 'slideIn .25s var(--ease) both' }}>
         <div className="row between" style={{ padding: '18px 22px', borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, background: 'var(--bg-1)', zIndex: 1 }}>
           <div>

@@ -2,6 +2,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { ComponentType } from 'react'
 import { Sidebar, Topbar } from './components/Shell'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import DB from './data'
 import type { Go, ScreenProps } from './screens/types'
 import Login from './screens/Login'
@@ -151,7 +152,7 @@ export default function App() {
         <main key={effectiveRoute} className="fade-in" style={{ padding: '24px clamp(16px,3vw,32px) 60px', flex: 1 }}>
           {denied
             ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--bad)' }}>You do not have permission to view this screen.</div>
-            : <Suspense fallback={<ScreenLoader />}><Screen go={go} setBrand={setBrand} setLogoUrl={setLogoUrl} user={user} /></Suspense>}
+            : <ErrorBoundary><Suspense fallback={<ScreenLoader />}><Screen go={go} setBrand={setBrand} setLogoUrl={setLogoUrl} user={user} /></Suspense></ErrorBoundary>}
         </main>
       </div>
     </div>
