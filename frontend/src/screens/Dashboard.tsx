@@ -122,7 +122,7 @@ export default function DashScreen({ go, user }: { go: Go; user?: AuthUser | nul
 
   return (
     <div>
-      <PageHead crumbs="Overview" title="Dashboard" sub={`${today} · Main Store`}
+      <PageHead crumbs="Overview" title="Dashboard" sub={user?.branch ? `${today} · ${user.branch}` : today}
         actions={<><Btn variant="solid" size="md" icon="download">Export</Btn><Btn variant="primary" size="md" icon="plus" onClick={() => go('dc/invoice')}>New Invoice</Btn></>} />
 
       {user?.role === 'admin' && data.pending && <PendingApprovals pending={data.pending} go={go} />}

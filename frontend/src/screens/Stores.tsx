@@ -4,11 +4,24 @@ import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, inp
 import { Icon } from '../components/Icon'
 import { LineEditor } from '../components/doc'
 import { api } from '../api'
-import { branches as branchSeed, fmtDate } from '../data'
+import { fmtDate } from '../data'
+import { useBranches } from '../hooks'
 import type { EditorLine, Item } from '../types'
 import type { Go } from './types'
 
+/**
+ * Stock for one Branch Master column. Stock is only tracked per item (qty) —
+ * per-branch figures exist only when stockByBranch is keyed by branch name.
+ * With a single branch, all stock is in it; otherwise unknown (null → "—").
+ */
+function branchQty(item: Item, branch: string, branchCount: number): number | null {
+  const sbb = item.stockByBranch as unknown
+  if (sbb && typeof sbb === 'object' && !Array.isArray(sbb)) return Number((sbb as Record<string, number>)[branch]) || 0
+  return branchCount === 1 ? item.qty : null
+}
+
 export function LiveStockScreen({ go }: { go: Go }) {
+  const branches = useBranches()
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState(''); const [stat, setStat] = useState('')
@@ -44,13 +57,13 @@ export function LiveStockScreen({ go }: { go: Go }) {
           <div style={{ width: 130 }}><Select value={stat} onChange={(e) => setStat(e.target.value)}><option value="">All Status</option><option value="in">In Stock</option><option value="low">Low</option><option value="out">Out</option></Select></div>
         </div>
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
-        <Table cols={[{ label: 'Code' }, { label: 'Item' }, { label: 'Rack' }, ...branchSeed.map((b) => ({ label: b, align: 'right' as const })), { label: 'Total', align: 'right' }, { label: 'Reorder', align: 'right' }, { label: 'Status', align: 'center' }]}
+        <Table cols={[{ label: 'Code' }, { label: 'Item' }, { label: 'Rack' }, ...branches.map((b) => ({ label: b, align: 'right' as const })), { label: 'Total', align: 'right' }, { label: 'Reorder', align: 'right' }, { label: 'Status', align: 'center' }]}
           rows={f}
           render={(i) => <>
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{i.code}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{i.name}</Td>
             <Td mono align="left">{i.rack}</Td>
-            {(i.stockByBranch || [0, 0, 0]).map((s: number, bi: number) => <Td key={bi} align="right" mono c={s === 0 ? 'var(--tx-3)' : 'var(--tx-1)'}>{s}</Td>)}
+            {branches.map((b) => { const s = branchQty(i, b, branches.length); return <Td key={b} align="right" mono c={!s ? 'var(--tx-3)' : 'var(--tx-1)'}>{s ?? '—'}</Td> })}
             <Td align="right" mono c="var(--tx-0)" style={{ fontWeight: 700 }}>{i.qty}</Td>
             <Td align="right" mono c="var(--tx-3)">{i.reorder}</Td>
             <Td align="center"><Badge tone={i.status === 'out' ? 'red' : i.status === 'low' ? 'amber' : 'green'} dot>{i.status === 'out' ? 'Out' : i.status === 'low' ? 'Low' : 'In Stock'}</Badge></Td>
@@ -63,7 +76,11 @@ export function LiveStockScreen({ go }: { go: Go }) {
 export function TransferScreen({ go: _go }: { go: Go }) {
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(false); const [lines, setLines] = useState<EditorLine[]>([]); const [from, setFrom] = useState('Main Store'); const [to, setTo] = useState('City Branch')
+  const [modal, setModal] = useState(false); const [lines, setLines] = useState<EditorLine[]>([]); const [from, setFrom] = useState(''); const [to, setTo] = useState('')
+  const branches = useBranches()
+  // Default to the first two branches once Branch Master has loaded.
+  useEffect(() => { setFrom((f) => f || branches[0] || ''); setTo((t) => t || branches[1] || '') }, [branches])
+  const canTransfer = branches.length >= 2 && !!from && !!to && from !== to
 
   const refresh = () => { setLoading(true); api.stockTransfers.list().then((d) => setRows(d as any)).finally(() => setLoading(false)) }
   useEffect(() => { refresh() }, [])
@@ -89,13 +106,15 @@ export function TransferScreen({ go: _go }: { go: Go }) {
           </>} />}
       </Card>
       <Modal open={modal} onClose={() => setModal(false)} width={720} title="New Stock Transfer"
-        footer={<><Btn variant="plain" onClick={() => setModal(false)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={create} disabled={!lines.length || from === to}>Create Transfer</Btn></>}>
+        footer={<><Btn variant="plain" onClick={() => setModal(false)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={create} disabled={!lines.length || !canTransfer}>Create Transfer</Btn></>}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 40px 1fr', gap: 12, alignItems: 'end', marginBottom: 18 }}>
-          <Field label="From Branch"><Select value={from} onChange={(e) => setFrom(e.target.value)}>{branchSeed.map((b) => <option key={b}>{b}</option>)}</Select></Field>
+          <Field label="From Branch"><Select value={from} onChange={(e) => setFrom(e.target.value)}>{branches.map((b) => <option key={b}>{b}</option>)}</Select></Field>
           <div className="center" style={{ height: 38, color: 'var(--ac-bright)' }}><Icon n="swap" s={20} /></div>
-          <Field label="To Branch"><Select value={to} onChange={(e) => setTo(e.target.value)}>{branchSeed.map((b) => <option key={b}>{b}</option>)}</Select></Field>
+          <Field label="To Branch"><Select value={to} onChange={(e) => setTo(e.target.value)}>{branches.map((b) => <option key={b}>{b}</option>)}</Select></Field>
         </div>
-        {from === to && <div style={{ fontSize: 12, color: 'var(--warn)', marginBottom: 12 }}>Source and destination must differ.</div>}
+        {branches.length < 2
+          ? <div style={{ fontSize: 12, color: 'var(--warn)', marginBottom: 12 }}>A transfer needs at least two branches — add them in Master Files → Branch Master.</div>
+          : from === to && <div style={{ fontSize: 12, color: 'var(--warn)', marginBottom: 12 }}>Source and destination must differ.</div>}
         <div className="eyebrow" style={{ marginBottom: 10 }}>Items to Transfer</div>
         <LineEditor lines={lines} setLines={setLines} mode="buy" />
       </Modal>
