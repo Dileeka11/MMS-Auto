@@ -4,7 +4,8 @@ import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, inp
 import { Icon } from '../components/Icon'
 import { Gauge } from '../components/charts'
 import { api, company as companyApi, permissionsApi, type PermissionMatrix } from '../api'
-import { branches as branchSeed, moneyK } from '../data'
+import { moneyK } from '../data'
+import { useBranches } from '../hooks'
 import { useNotify } from '../components/Notify'
 import type { Go } from './types'
 
@@ -17,6 +18,7 @@ const blankUserForm = (): Partial<UserRow & { password: string }> => ({ role: 'u
 
 export function UsersScreen({ go: _go, user: me }: { go: Go; user?: { id: number; role?: string } | null }) {
   const notify = useNotify()
+  const branches = useBranches()
   const [rows, setRows] = useState<UserRow[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -95,7 +97,7 @@ export function UsersScreen({ go: _go, user: me }: { go: Go; user?: { id: number
           <Field label="Full Name" full><Input value={form.name || ''} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} /></Field>
           <Field label="Email"><Input type="email" value={form.email || ''} onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))} /></Field>
           <Field label="Role"><Select value={form.role || 'user'} onChange={(e) => setForm((s) => ({ ...s, role: e.target.value }))}>{ROLE_OPTIONS.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}</Select></Field>
-          <Field label="Branch"><Select value={form.branch || ''} onChange={(e) => setForm((s) => ({ ...s, branch: e.target.value }))}><option value="">—</option>{branchSeed.map((b) => <option key={b}>{b}</option>)}</Select></Field>
+          <Field label="Branch"><Select value={form.branch || ''} onChange={(e) => setForm((s) => ({ ...s, branch: e.target.value }))}><option value="">—</option>{branches.map((b) => <option key={b}>{b}</option>)}{form.branch && !branches.includes(form.branch) && <option>{form.branch}</option>}</Select></Field>
           <Field label="Status"><Select value={form.status || 'Active'} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))}><option>Active</option><option>Inactive</option></Select></Field>
           <Field label={editing ? 'New Password (leave blank to keep)' : 'Password'}><Input type="password" value={form.password || ''} onChange={(e) => setForm((s) => ({ ...s, password: e.target.value }))} /></Field>
         </div>
@@ -361,6 +363,7 @@ export function CompanyScreen({ go: _go, setBrand, setLogoUrl }: { go: Go; setBr
 }
 
 export function RepsScreen({ go: _go }: { go: Go }) {
+  const branches = useBranches()
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false); const [form, setForm] = useState<any>({}); const [cred, setCred] = useState<{ name: string; login: string; pw: string } | null>(null)
@@ -431,7 +434,7 @@ export function RepsScreen({ go: _go }: { go: Go }) {
           <Field label="Sales Zone"><Input value={form.zone || ''} onChange={(e) => setForm((s: any) => ({ ...s, zone: e.target.value }))} placeholder="Colombo West" /></Field>
           <Field label="Monthly Target (Rs)"><Input type="number" value={form.target || ''} onChange={(e) => setForm((s: any) => ({ ...s, target: e.target.value }))} placeholder="500000" /></Field>
           <Field label="Mobile No"><Input value={form.phone || ''} onChange={(e) => setForm((s: any) => ({ ...s, phone: e.target.value }))} placeholder="07X XXX XXXX" /></Field>
-          <Field label="Branch"><Select value={form.branch || ''} onChange={(e) => setForm((s: any) => ({ ...s, branch: e.target.value }))}>{branchSeed.map((b) => <option key={b}>{b}</option>)}</Select></Field>
+          <Field label="Branch"><Select value={form.branch || ''} onChange={(e) => setForm((s: any) => ({ ...s, branch: e.target.value }))}><option value="">{branches.length ? '—' : 'No branches — add in Master Files'}</option>{branches.map((b) => <option key={b}>{b}</option>)}</Select></Field>
         </div>
       </Modal>
 

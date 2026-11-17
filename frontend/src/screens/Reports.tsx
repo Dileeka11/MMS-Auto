@@ -4,7 +4,8 @@ import { Card, PageHead, Btn, Badge, Field, Input, DateInput, Select, Table, Td 
 import { Icon } from '../components/Icon'
 import { Donut, ProgressRow } from '../components/charts'
 import { api } from '../api'
-import { branches as branchSeed, categories as catSeed, money, moneyK } from '../data'
+import { categories as catSeed, money, moneyK } from '../data'
+import { useBranches } from '../hooks'
 import type { Go } from './types'
 
 function SalesReport({ invoices }: { invoices: any[] }) {
@@ -78,6 +79,7 @@ function StockValReport({ items }: { items: any[] }) {
 }
 
 export default function ReportsScreen({ go: _go }: { go: Go }) {
+  const branches = useBranches()
   const [active, setActive] = useState('sales')
   const [invoices, setInvoices] = useState<any[]>([])
   const [reps, setReps] = useState<any[]>([])
@@ -119,7 +121,7 @@ export default function ReportsScreen({ go: _go }: { go: Go }) {
               <div className="row gap-2">
                 <Field label="From" style={{ width: 150 }}><DateInput /></Field>
                 <Field label="To" style={{ width: 150 }}><DateInput /></Field>
-                <Field label="Branch" style={{ width: 160 }}><Select defaultValue="All">{['All', ...branchSeed].map((b) => <option key={b}>{b}</option>)}</Select></Field>
+                <Field label="Branch" style={{ width: 160 }}><Select defaultValue="All">{['All', ...branches].map((b) => <option key={b}>{b}</option>)}</Select></Field>
               </div>
               <Btn variant="primary" icon="filter" style={{ alignSelf: 'flex-end' }}>Run Report</Btn>
             </div>

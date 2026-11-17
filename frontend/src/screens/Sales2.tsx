@@ -7,7 +7,8 @@ import { api, clearListCache } from '../api'
 import { useNotify } from '../components/Notify'
 import { userCan } from '../lib/permissions'
 import { printReceipts } from '../lib/receiptPrint'
-import { money, moneyK, fmtDate, branches as branchSeed } from '../data'
+import { money, moneyK, fmtDate } from '../data'
+import { useBranches } from '../hooks'
 import type { SalesReturn, Customer, CashBookAccount } from '../types'
 import type { Go, ScreenProps } from './types'
 
@@ -363,6 +364,7 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
   const [modal, setModal] = useState(false); const [form, setForm] = useState<any>({})
   const [types, setTypes] = useState<any[]>([])
   const [cashAccounts, setCashAccounts] = useState<CashBookAccount[]>([])
+  const branches = useBranches()
 
   const refresh = () => { setLoading(true); api.expenses.list().then((d) => setRows(d as any)).finally(() => setLoading(false)) }
   useEffect(() => {
@@ -373,7 +375,7 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
 
   const save = async () => {
     if (!form.type) { alert('Select an expense type'); return }
-    await api.expenses.create({ type: form.type, date: form.date || new Date().toISOString().slice(0, 10), amount: +form.amount || 0, branch: form.branch || 'Main Store', note: form.note || '', paymentAccountId: form.paidFrom ? Number(form.paidFrom) : null } as any)
+    await api.expenses.create({ type: form.type, date: form.date || new Date().toISOString().slice(0, 10), amount: +form.amount || 0, branch: form.branch || null, note: form.note || '', paymentAccountId: form.paidFrom ? Number(form.paidFrom) : null } as any)
     setModal(false); setForm({}); refresh()
   }
   const remove = async (id: any) => { if (!confirm('Delete?')) return; await api.expenses.remove(id); refresh() }
@@ -385,7 +387,7 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
       <StatRow items={[
         { icon: 'coins', label: 'Total Expenses', value: moneyK(rows.reduce((a, r) => a + (r.amount || 0), 0)), c: 'red' },
         { icon: 'list', label: 'Entries', value: rows.length, c: 'ac' },
-        { icon: 'store', label: 'Branches', value: 3, c: 'ac' },
+        { icon: 'store', label: 'Branches', value: branches.length, c: 'ac' },
         { icon: 'chart', label: 'Avg / Entry', value: rows.length ? moneyK(Math.round(rows.reduce((a, r) => a + (r.amount || 0), 0) / rows.length)) : 'Rs 0', c: 'warn' },
       ]} />
       <Card pad={0}>
@@ -395,7 +397,7 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
           render={(r) => <>
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.id}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.type}</Td>
-            <Td>{r.branch}</Td><Td mono>{fmtDate(r.date)}</Td><Td c="var(--tx-2)">{r.note || '—'}</Td>
+            <Td>{r.branch || '—'}</Td><Td mono>{fmtDate(r.date)}</Td><Td c="var(--tx-2)">{r.note || '—'}</Td>
             <Td align="right" mono c="var(--bad)" style={{ fontWeight: 600 }}>{money(r.amount || 0)}</Td>
             <Td align="right"><button className="mms-act danger" onClick={() => remove(r.id)}><Icon n="trash" s={15} /></button></Td>
           </>} />}
@@ -403,8 +405,8 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
       <Modal open={modal} onClose={() => setModal(false)} width={520} title="Add Expense"
         footer={<><Btn variant="plain" onClick={() => setModal(false)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save}>Save</Btn></>}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <Field label="Expense Type"><Select value={form.type || ''} onChange={(e) => setForm((s: any) => ({ ...s, type: e.target.value }))}><option value="">{types.length ? 'Select…' : 'No expense types — add in Master Files'}</option>{types.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}</Select></Field>
-          <Field label="Branch"><Select value={form.branch || ''} onChange={(e) => setForm((s: any) => ({ ...s, branch: e.target.value }))}>{branchSeed.map((b) => <option key={b}>{b}</option>)}</Select></Field>
+          <Field label="Expense Type"><Select value={form.type || ''} onChange={(e) => setForm((s: any) => ({ ...s, type: e.target.value }))}><option value="">{types.length ? 'Select…' : 'No expense types — add in Master Files'}</option>{types.map((t) => <option key={t.id} value={t.name}>{t.code ? `${t.code} · ${t.name}` : t.name}</option>)}</Select></Field>
+          <Field label="Branch"><Select value={form.branch || ''} onChange={(e) => setForm((s: any) => ({ ...s, branch: e.target.value }))}><option value="">{branches.length ? 'Select…' : 'No branches — add in Master Files'}</option>{branches.map((b) => <option key={b}>{b}</option>)}</Select></Field>
           <Field label="Amount (Rs)"><Input type="number" value={form.amount || ''} onChange={(e) => setForm((s: any) => ({ ...s, amount: e.target.value }))} /></Field>
           <Field label="Date"><DateInput value={form.date || ''} onChange={(v) => setForm((s: any) => ({ ...s, date: v }))} /></Field>
           <Field label="Paid From" full><Select value={form.paidFrom || ''} onChange={(e) => setForm((s: any) => ({ ...s, paidFrom: e.target.value }))}><option value="">Cash (default)</option>{cashAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</Select></Field>

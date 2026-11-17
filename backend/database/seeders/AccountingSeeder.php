@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\AccountCategory;
 use App\Models\AccountMapping;
 use App\Services\Accounting\CostCodes;
+use App\Services\Accounting\ExpenseTypes;
 use App\Services\Accounting\Posting;
 use Illuminate\Database\Seeder;
 
@@ -32,6 +33,9 @@ class AccountingSeeder extends Seeder
 
         // 2. Groups + accounts — the NMS Auto cost-code chart.
         CostCodes::install();
+
+        // Master Files → Expense Type, one per postable "E" cost code.
+        ExpenseTypes::install();
 
         // 3. Auto-posting roles → their default accounts (Accounting → Posting Setup).
         $accountIdByCode = Account::pluck('id', 'code');

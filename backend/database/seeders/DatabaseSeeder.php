@@ -193,9 +193,7 @@ class DatabaseSeeder extends Seeder
             Master::create(['type' => 'branch', 'code' => 'BR' . (10 + $bi), 'name' => $name, 'status' => 'Active', 'data' => ['city' => $city, 'phone' => '011' . (2340000 + $bi * 111)]]);
             $bi++;
         }
-        foreach ([['Fuel', '5101'], ['Salary', '5102'], ['Rent', '5103'], ['Utilities', '5104'], ['Transport', '5105'], ['Maintenance', '5106'], ['Misc', '5199']] as $i => $e) {
-            Master::create(['type' => 'expenseType', 'code' => 'E' . (10 + $i), 'name' => $e[0], 'status' => 'Active', 'data' => ['account' => $e[1]]]);
-        }
+        // Expense types come from the "E" cost codes — AccountingSeeder → ExpenseTypes::install().
         foreach ([['Cash / COD', 0], ['Net 7', 7], ['Net 15', 15], ['Net 30', 30], ['Net 45', 45], ['Net 60', 60]] as $i => $c) {
             Master::create(['type' => 'credit', 'code' => 'CP' . (10 + $i), 'name' => $c[0], 'status' => 'Active', 'data' => ['days' => $c[1]]]);
         }
@@ -289,7 +287,7 @@ class DatabaseSeeder extends Seeder
         }
 
         for ($i = 0; $i < 6; $i++) {
-            Expense::create(['code' => 'EXP-' . (2100 + $i), 'type' => ['Fuel', 'Salary', 'Rent', 'Utilities', 'Transport', 'Misc'][$i % 6],
+            Expense::create(['code' => 'EXP-' . (2100 + $i), 'type' => ['Vehicle Fuel, Oil etc. (Admin)', 'Salaries', 'Housing Rent', 'Electricity', 'Courier Charges', 'Other Admin Exp'][$i % 6],
                 'date' => $dayOff($i * 2), 'amount' => mt_rand(5000, 120000),
                 'branch' => ['Main Store', 'City Branch', 'Highway Depot'][$i % 3], 'note' => '']);
         }

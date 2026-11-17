@@ -29,7 +29,8 @@ class ExpenseController extends Controller
         ]);
         $data['code'] = Expense::nextCode();
         $data['date'] = $data['date'] ?? now()->toDateString();
-        $data['branch'] = $data['branch'] ?? 'Main Store';
+        // Branches come from Master Files → Branch Master; none chosen = no branch.
+        $data['branch'] = trim((string) ($data['branch'] ?? '')) ?: null;
 
         return DB::transaction(function () use ($data) {
             $expense = Expense::create($data);

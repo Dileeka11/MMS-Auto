@@ -24,6 +24,19 @@ export function useResource<T = any>(load: () => Promise<T[]>) {
   return { rows, setRows, loading, error, refresh }
 }
 
+/** Active branches from Master Files → Branch Master (names only). */
+export function useBranches() {
+  const [names, setNames] = useState<string[]>([])
+  useEffect(() => {
+    let alive = true
+    api.master('branch').list()
+      .then((rows: any[]) => { if (alive) setNames(rows.filter((r) => r.status !== 'Inactive').map((r) => r.name).filter(Boolean)) })
+      .catch(() => { if (alive) setNames([]) })
+    return () => { alive = false }
+  }, [])
+  return names
+}
+
 /** Fetch a master-file list and return just the names â€” handy for <select> dropdowns. */
 export function useMasterNames(type: string) {
   const [names, setNames] = useState<string[]>([])
