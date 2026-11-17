@@ -34,7 +34,10 @@ WHERE m.`type` = 'expenseType' AND m.`status` <> 'Inactive'
 
 -- 2. Types entered by hand with a cost code but no GL Account: link them --
 UPDATE `masters` m
-SET m.`data` = JSON_SET(IFNULL(m.`data`, '{}'), '$.account', UPPER(TRIM(m.`code`))), m.`updated_at` = NOW()
+SET m.`data` = IF(JSON_TYPE(m.`data`) = 'OBJECT',
+                   JSON_SET(m.`data`, '$.account', UPPER(TRIM(m.`code`))),
+                   JSON_OBJECT('account', UPPER(TRIM(m.`code`)))),   -- NULL or [] (empty data) → new object
+    m.`updated_at` = NOW()
 WHERE m.`type` = 'expenseType'
   AND IFNULL(JSON_UNQUOTE(JSON_EXTRACT(m.`data`, '$.account')), '') = ''
   AND UPPER(TRIM(m.`code`)) IN (SELECT a.`code` FROM `accounts` a WHERE a.`is_active` = 1);
