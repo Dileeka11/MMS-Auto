@@ -3,10 +3,13 @@ import { useEffect, useState } from 'react'
 import { Card, PageHead, Btn, Badge, Field, Input, DateInput, Select, Modal, Table, Td, statusTone, inputStyle } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { StatRow } from '../components/doc'
-import { api } from '../api'
+import { api, clearListCache } from '../api'
+import { useNotify } from '../components/Notify'
+import { userCan } from '../lib/permissions'
+import { printReceipts } from '../lib/receiptPrint'
 import { money, moneyK, fmtDate, branches as branchSeed } from '../data'
 import type { SalesReturn, Customer, CashBookAccount } from '../types'
-import type { Go } from './types'
+import type { Go, ScreenProps } from './types'
 
 export function ReturnScreen({ go: _go }: { go: Go }) {
   const [rows, setRows] = useState<SalesReturn[]>([])
@@ -161,35 +164,91 @@ export function ReturnScreen({ go: _go }: { go: Go }) {
   )
 }
 
-export function ReceiptScreen({ go: _go }: { go: Go }) {
+const OPEN_BALANCE = 'OPEN'
+const today = () => new Date().toISOString().slice(0, 10)
+
+export function ReceiptScreen({ user }: ScreenProps) {
+  const notify = useNotify()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [invoices, setInvoices] = useState<any[]>([])
   const [receipts, setReceipts] = useState<any[]>([])
   const [cust, setCust] = useState<Customer | null>(null)
-  const [alloc, setAlloc] = useState<Record<string, number>>({}); const [mode, setMode] = useState('Cash'); const [posted, setPosted] = useState<number | null>(null)
+  /** invoice id (or OPEN_BALANCE) → amount being settled */
+  const [alloc, setAlloc] = useState<Record<string, number>>({})
+  const [mode, setMode] = useState('Cash'); const [date, setDate] = useState(today())
+  const [reference, setReference] = useState('')
+  const [chequeNo, setChequeNo] = useState(''); const [chequeBank, setChequeBank] = useState(''); const [chequeDate, setChequeDate] = useState('')
   const [cashAccounts, setCashAccounts] = useState<CashBookAccount[]>([]); const [depositTo, setDepositTo] = useState('')
+  const [saving, setSaving] = useState(false)
+  /** receipts created by the last post (for the success panel + print) */
+  const [posted, setPosted] = useState<any[] | null>(null)
+  const canDelete = userCan(user, 'Payment Receipt', 'Delete')
 
-  useEffect(() => {
-    api.accounting.cashbook.accounts().then((a) => setCashAccounts((a as CashBookAccount[]).filter((x) => x.isPostable))).catch(() => {})
-    api.customers.list().then((d) => setCustomers(d as any)).catch(() => {})
+  const loadAll = () => {
+    clearListCache()
+    api.customers.list().then((d) => {
+      setCustomers(d as any)
+      setCust((c) => (c ? (d as any[]).find((x) => x.id === c.id) || c : c))
+    }).catch(() => {})
     api.invoices.list().then((d) => setInvoices(d as any)).catch(() => {})
     api.receipts.list().then((d) => setReceipts(d as any)).catch(() => {})
+  }
+  useEffect(() => {
+    api.accounting.cashbook.accounts().then((a) => setCashAccounts((a as CashBookAccount[]).filter((x) => x.isPostable))).catch(() => {})
+    loadAll()
   }, [])
 
-  const custInvoices = cust ? invoices.filter((i) => i.customer === cust.name && (i.due || 0) > 0) : []
-  const synth = cust && custInvoices.length === 0 ? [{ id: 'INV-OPEN-1', due: cust.outstanding, date: '', total: cust.outstanding }] : custInvoices
-  const totalAlloc = Object.values(alloc).reduce((a, b) => a + (+b || 0), 0)
-  const pick = (c: Customer) => { setCust(c); setAlloc({}); setPosted(null) }
+  // open invoices, oldest first; any balance not covered by an invoice is an opening balance
+  const custInvoices = cust
+    ? invoices.filter((i) => i.customer === cust.name && (i.due || 0) > 0).sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id)
+    : []
+  const invDue = custInvoices.reduce((a, i) => a + (i.due || 0), 0)
+  const openBal = cust ? Math.round(((cust.outstanding || 0) - invDue) * 100) / 100 : 0
+  const rows = [
+    ...custInvoices.map((i) => ({ key: String(i.id), no: i.code || i.id, date: i.date, due: i.due })),
+    ...(openBal > 0 ? [{ key: OPEN_BALANCE, no: 'Opening / On Account', date: '', due: openBal }] : []),
+  ]
+  const totalAlloc = Math.round(Object.values(alloc).reduce((a, b) => a + (+b || 0), 0) * 100) / 100
+  const cheque = mode === 'Cheque'
+
+  const resetForm = () => { setAlloc({}); setReference(''); setChequeNo(''); setChequeBank(''); setChequeDate(''); setDate(today()) }
+  const pick = (c: Customer) => { setCust(c); resetForm(); setPosted(null) }
+  const setRow = (key: string, due: number, v: number) => setAlloc((s) => ({ ...s, [key]: Math.max(0, Math.min(due, v || 0)) }))
+  const allFull = () => setAlloc(Object.fromEntries(rows.map((r) => [r.key, r.due])))
+
   const post = async () => {
-    if (!cust) return
-    await api.receipts.create({ customer: cust.name, mode, amount: totalAlloc, date: new Date().toISOString().slice(0, 10), allocations: alloc, accountId: depositTo ? Number(depositTo) : null } as any)
-    setPosted(totalAlloc)
-    api.receipts.list().then((d) => setReceipts(d as any)).catch(() => {})
+    if (!cust || totalAlloc <= 0 || saving) return
+    if (cheque && !chequeNo.trim()) { notify.error('Cheque number required', 'Enter the cheque number for a cheque payment.'); return }
+    setSaving(true)
+    try {
+      const created = await api.receipts.create({
+        customer: cust.name, mode, amount: totalAlloc, date,
+        reference: reference || null,
+        chequeNo: cheque ? chequeNo : null, chequeBankName: cheque ? chequeBank || null : null, chequeDate: cheque ? chequeDate || null : null,
+        accountId: depositTo ? Number(depositTo) : null,
+        allocations: Object.entries(alloc).filter(([k, v]) => k !== OPEN_BALANCE && v > 0).map(([k, v]) => ({ invoiceId: Number(k), amount: v })),
+      } as any)
+      setPosted(created as any)
+      resetForm()
+      loadAll()
+    } catch (e: any) {
+      notify.error('Receipt not posted', e?.response?.data?.message || e?.message || 'Please try again.')
+    } finally { setSaving(false) }
   }
+
+  const remove = async (r: any) => {
+    const ok = await notify.confirm({ title: `Delete receipt ${r.code}?`, msg: `${money(r.amount)} will be added back to ${r.customer}'s outstanding${r.against && r.against !== 'On Account' ? ` and invoice ${r.against} reopens` : ''}.`, danger: true, okText: 'Delete' })
+    if (!ok) return
+    try { await api.receipts.remove(r.id); loadAll() } catch (e: any) { notify.error('Receipt not deleted', e?.response?.data?.message || e?.message || 'Please try again.') }
+  }
+
+  const history = cust ? receipts.filter((r) => r.customer === cust.name) : receipts
+  const postedTotal = (posted || []).reduce((a, r) => a + (+r.amount || 0), 0)
+
   return (
     <div>
       <PageHead crumbs="Data Capture" title="Payment Receipt" icon="wallet" sub="Customer outstanding settlement"
-        actions={<Btn variant="solid" icon="print" disabled={!posted}>Print Receipt</Btn>} />
+        actions={<Btn variant="solid" icon="print" disabled={!posted} onClick={() => posted && printReceipts(posted)}>Print Receipt</Btn>} />
       <StatRow items={[
         { icon: 'wallet', label: 'Total Receivable', value: moneyK(customers.reduce((a, c) => a + (c.outstanding || 0), 0)), c: 'warn' },
         { icon: 'users', label: 'Customers w/ Balance', value: customers.filter((c) => (c.outstanding || 0) > 0).length, c: 'ac' },
@@ -218,8 +277,9 @@ export function ReceiptScreen({ go: _go }: { go: Go }) {
             <div className="col center" style={{ padding: '60px 20px', textAlign: 'center' }}>
               <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--ok-dim)', display: 'grid', placeItems: 'center', color: 'var(--ok)', marginBottom: 18 }}><Icon n="check" s={32} /></div>
               <h3 style={{ fontSize: 20 }}>Receipt Posted</h3>
-              <div className="t-2" style={{ marginTop: 6 }}>{money(posted)} received from {cust.name} via {mode}</div>
-              <div className="row gap-2" style={{ marginTop: 20 }}><Btn variant="solid" icon="print">Print</Btn><Btn variant="primary" onClick={() => pick(cust)}>New Receipt</Btn></div>
+              <div className="t-2" style={{ marginTop: 6 }}>{money(postedTotal)} received from {cust.name} via {posted[0]?.mode}</div>
+              <div className="t-3 mono" style={{ marginTop: 6, fontSize: 12 }}>{posted.map((r) => `${r.code} → ${r.against}`).join(' · ')}</div>
+              <div className="row gap-2" style={{ marginTop: 20 }}><Btn variant="solid" icon="print" onClick={() => printReceipts(posted)}>Print</Btn><Btn variant="primary" onClick={() => pick(cust)}>New Receipt</Btn></div>
             </div>
           ) : (
             <div>
@@ -229,35 +289,70 @@ export function ReceiptScreen({ go: _go }: { go: Go }) {
               </div>
               <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-m)', overflow: 'hidden', marginBottom: 16 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead><tr style={{ background: 'var(--bg-0)' }}>{['Invoice', 'Date', 'Outstanding', 'Allocate'].map((h, i) => <th key={i} style={{ padding: '9px 12px', textAlign: i > 1 ? 'right' : 'left', fontSize: 10.5, color: 'var(--tx-2)', textTransform: 'uppercase', borderBottom: '1px solid var(--line)' }}>{h}</th>)}</tr></thead>
-                  <tbody>{synth.map((inv: any) => (
-                    <tr key={inv.id}>
-                      <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--line-soft)' }} className="mono">{inv.id}</td>
-                      <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--line-soft)' }} className="mono t-2">{fmtDate(inv.date)}</td>
-                      <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--line-soft)', textAlign: 'right' }} className="mono">{money(inv.due)}</td>
-                      <td style={{ padding: '6px 12px', borderBottom: '1px solid var(--line-soft)', textAlign: 'right' }}>
-                        <input type="number" value={alloc[inv.id] || ''} max={inv.due} placeholder="0" onChange={(e) => setAlloc((s) => ({ ...s, [inv.id]: Math.min(inv.due, +e.target.value) }))} style={{ ...inputStyle, width: 110, padding: '5px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono' }} />
-                        <button onClick={() => setAlloc((s) => ({ ...s, [inv.id]: inv.due }))} className="t-3" style={{ background: 'none', border: 'none', fontSize: 10.5, cursor: 'pointer', display: 'block', marginLeft: 'auto', marginTop: 2 }}>full</button>
-                      </td>
-                    </tr>
-                  ))}</tbody>
+                  <thead><tr style={{ background: 'var(--bg-0)' }}>{['Invoice No', 'Date', 'Outstanding', 'Allocate'].map((h, i) => <th key={i} style={{ padding: '9px 12px', textAlign: i > 1 ? 'right' : 'left', fontSize: 10.5, color: 'var(--tx-2)', textTransform: 'uppercase', borderBottom: '1px solid var(--line)' }}>{i === 3 ? <span className="row gap-2" style={{ justifyContent: 'flex-end' }}>{h}<button onClick={allFull} style={{ background: 'none', border: 'none', color: 'var(--ac)', fontSize: 10.5, cursor: 'pointer', textTransform: 'uppercase' }}>all full</button></span> : h}</th>)}</tr></thead>
+                  <tbody>
+                    {rows.length === 0 && <tr><td colSpan={4} style={{ padding: '14px 12px' }} className="t-3">No open invoices.</td></tr>}
+                    {rows.map((r) => (
+                      <tr key={r.key}>
+                        <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--line-soft)' }} className="mono">{r.no}</td>
+                        <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--line-soft)' }} className="mono t-2">{r.date ? fmtDate(r.date) : '—'}</td>
+                        <td style={{ padding: '9px 12px', borderBottom: '1px solid var(--line-soft)', textAlign: 'right' }} className="mono">{money(r.due)}</td>
+                        <td style={{ padding: '6px 12px', borderBottom: '1px solid var(--line-soft)', textAlign: 'right' }}>
+                          <input type="number" min={0} max={r.due} value={alloc[r.key] || ''} placeholder="0" onChange={(e) => setRow(r.key, r.due, +e.target.value)} style={{ ...inputStyle, width: 120, padding: '5px 8px', textAlign: 'right', fontFamily: 'JetBrains Mono' }} />
+                          <button onClick={() => setRow(r.key, r.due, alloc[r.key] === r.due ? 0 : r.due)} className="t-3" style={{ background: 'none', border: 'none', fontSize: 10.5, cursor: 'pointer', display: 'block', marginLeft: 'auto', marginTop: 2, color: alloc[r.key] === r.due ? 'var(--ok)' : undefined }}>{alloc[r.key] === r.due ? '✓ full' : 'full'}</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
                 </table>
               </div>
-              <div className="row between wrap gap-3">
-                <div className="row gap-3">
-                  <Field label="Payment Mode" style={{ width: 160 }}><Select value={mode} onChange={(e) => setMode(e.target.value)}>{['Cash', 'Cheque', 'Bank Transfer', 'Card'].map((m) => <option key={m}>{m}</option>)}</Select></Field>
-                  {mode !== 'Cash' && <Field label="Reference" style={{ width: 160 }}><Input placeholder="Ref / Cheque no" /></Field>}
+              {openBal < 0 && (
+                <div style={{ marginBottom: 14, padding: '9px 12px', borderRadius: 'var(--r-m)', background: 'var(--warn-dim)', color: 'var(--warn)', fontSize: 12.5 }}>
+                  Open invoices total {money(invDue)}, but the customer owes {money(cust.outstanding)}. {money(-openBal)} was received earlier "On Account" without settling an invoice — check before collecting the full amount.
+                </div>
+              )}
+              <div className="row between wrap gap-3" style={{ alignItems: 'flex-end' }}>
+                <div className="row gap-3 wrap">
+                  <Field label="Receipt Date" style={{ width: 150 }}><DateInput value={date} onChange={setDate} /></Field>
+                  <Field label="Payment Mode" style={{ width: 150 }}><Select value={mode} onChange={(e) => setMode(e.target.value)}>{['Cash', 'Cheque', 'Bank Transfer', 'Card'].map((m) => <option key={m}>{m}</option>)}</Select></Field>
                   <Field label="Deposit To" style={{ width: 200 }}><Select value={depositTo} onChange={(e) => setDepositTo(e.target.value)}><option value="">{mode === 'Cash' ? 'Cash (default)' : 'Bank (default)'}</option>{cashAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</Select></Field>
+                  {cheque && <>
+                    <Field label="Cheque No" style={{ width: 140 }}><Input value={chequeNo} onChange={(e) => setChequeNo(e.target.value)} placeholder="Cheque no" /></Field>
+                    <Field label="Cheque Bank" style={{ width: 170 }}><Input value={chequeBank} onChange={(e) => setChequeBank(e.target.value)} placeholder="Bank name" /></Field>
+                    <Field label="Cheque Date" style={{ width: 150 }}><DateInput value={chequeDate} onChange={setChequeDate} /></Field>
+                  </>}
+                  {mode !== 'Cash' && <Field label="Reference" style={{ width: 170 }}><Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ref / slip no" /></Field>}
                 </div>
                 <div className="col" style={{ alignItems: 'flex-end', gap: 10 }}>
                   <div className="row gap-4"><span className="t-2">Receiving</span><span className="num" style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Saira', color: 'var(--ok)' }}>{money(totalAlloc)}</span></div>
-                  <Btn variant="primary" size="lg" icon="check" disabled={totalAlloc <= 0} onClick={post}>Post Receipt</Btn>
+                  <Btn variant="primary" size="lg" icon="check" disabled={totalAlloc <= 0 || saving} onClick={post}>{saving ? 'Posting…' : 'Post Receipt'}</Btn>
                 </div>
               </div>
             </div>
           )}
         </Card>
       </div>
+      <Card pad={0} style={{ marginTop: 16 }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }} className="eyebrow">Receipts{cust ? ` · ${cust.name}` : ''}</div>
+        <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+          <Table rows={history} empty="No receipts yet"
+            cols={[{ label: 'Receipt No' }, { label: 'Date' }, { label: 'Customer' }, { label: 'Against' }, { label: 'Mode' }, { label: 'Amount', align: 'right' }, { label: '', w: 80 }]}
+            render={(r: any) => <>
+              <Td mono>{r.code}</Td>
+              <Td mono>{fmtDate(r.date)}</Td>
+              <Td>{r.customer}</Td>
+              <Td mono>{r.against || 'On Account'}</Td>
+              <Td>{r.mode}{r.chequeNo ? ` #${r.chequeNo}` : ''}</Td>
+              <Td align="right" mono>{money(r.amount)}</Td>
+              <Td align="right">
+                <span className="row gap-1" style={{ justifyContent: 'flex-end' }}>
+                  <button className="mms-act" title="Print receipt" onClick={() => printReceipts([r])}><Icon n="print" s={15} /></button>
+                  {canDelete && <button className="mms-act" title="Delete receipt" onClick={() => remove(r)}><Icon n="trash" s={15} /></button>}
+                </span>
+              </Td>
+            </>} />
+        </div>
+      </Card>
     </div>
   )
 }
