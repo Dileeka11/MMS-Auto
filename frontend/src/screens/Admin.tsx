@@ -8,6 +8,7 @@ import { moneyK } from '../data'
 import { useBranches } from '../hooks'
 import { useNotify } from '../components/Notify'
 import type { Go } from './types'
+import { REP_APP_VERSION, REP_APK_SIZE, REP_APK_URL, REP_WEB_URL } from '../lib/repApp'
 
 const ROLE_OPTIONS = ['admin', 'manager', 'storekeeper', 'accountant', 'salesrep', 'cashier', 'user'] as const
 const roleLabel = (r?: string) => ({ admin: 'Administrator', manager: 'Manager', storekeeper: 'Store Keeper', accountant: 'Accountant', salesrep: 'Sales Rep', cashier: 'Cashier', user: 'User' } as Record<string, string>)[r || ''] || (r || 'User')
@@ -365,11 +366,71 @@ export function CompanyScreen({ go: _go, setBrand, setLogoUrl }: { go: Go; setBr
   )
 }
 
+// Rep mobile app (Flutter, /mobile). The APK and a web build of the same app
+// ship in frontend/public so they deploy with the admin panel.
+
+function RepAppPreview({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [key, setKey] = useState(0)
+  const steps: [string, string][] = [
+    ['phone', 'Rep signs in with the login created on this page'],
+    ['box', 'Checks live stock — available = on hand − reserved'],
+    ['cart', 'Places a sales order (GPS tagged, optional discount %)'],
+    ['truck', 'Head office dispatches it from the Dispatch screen'],
+    ['receipt', 'Invoiced — achieved, invoices & visits update here'],
+  ]
+  return (
+    <Modal open={open} onClose={onClose} width={900} title="NMS Sales Rep — Mobile App" sub="Live preview of the Android app, running against this server"
+      footer={<><a href={REP_WEB_URL} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}><Btn variant="plain" icon="eye">Open full screen</Btn></a><a href={REP_APK_URL} download style={{ textDecoration: 'none' }}><Btn variant="primary" icon="download">Download APK</Btn></a></>}>
+      <div className="rep-preview" style={{ display: 'flex', flexWrap: 'wrap', gap: 28, alignItems: 'flex-start' }}>
+        <div style={{ display: 'grid', justifyItems: 'center', gap: 10, flex: 'none', margin: '0 auto' }}>
+          <div style={{ width: 'min(340px, calc(64vh * 0.486))', aspectRatio: '9 / 18.5', borderRadius: 42, padding: 10, background: 'linear-gradient(145deg, #2a2f37, #0b0d10)', boxShadow: '0 30px 60px -20px oklch(0 0 0 / 0.7), inset 0 0 0 1.5px #3a404a', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: 18, left: '50%', transform: 'translateX(-50%)', width: 80, height: 20, borderRadius: 12, background: '#000', zIndex: 2 }} />
+            <iframe key={key} src={REP_WEB_URL} title="Rep app preview" style={{ width: '100%', height: '100%', border: 0, borderRadius: 33, background: '#0D1117', display: 'block' }} />
+          </div>
+          <Btn variant="plain" size="sm" icon="swap" onClick={() => setKey((k) => k + 1)}>Reload preview</Btn>
+        </div>
+        <div className="col gap-4" style={{ flex: '1 1 300px', minWidth: 0 }}>
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>Install on Android</div>
+            <div style={{ padding: 16, background: 'var(--bg-0)', border: '1px solid var(--line)', borderRadius: 'var(--r-m)' }}>
+              <div className="row gap-3" style={{ alignItems: 'center' }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, var(--ac), oklch(0.55 0.2 280))', display: 'grid', placeItems: 'center', color: '#fff', flex: 'none' }}><Icon n="wrench" s={20} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700 }}>NMS Sales Rep</div>
+                  <div className="t-2" style={{ fontSize: 12 }}>Version {REP_APP_VERSION} · {REP_APK_SIZE} · Android 7+</div>
+                </div>
+              </div>
+              <ol className="t-1" style={{ fontSize: 12.5, lineHeight: 1.7, margin: '12px 0 0', paddingLeft: 18 }}>
+                <li>Open this page on the rep's phone and tap <b>Download APK</b>.</li>
+                <li>Allow <i>Install unknown apps</i> for the browser when Android asks.</li>
+                <li>Sign in with the rep's <b>App Login</b> email &amp; password.</li>
+              </ol>
+            </div>
+          </div>
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>How orders flow</div>
+            <div className="col gap-2">
+              {steps.map(([icon, text], i) => (
+                <div key={i} className="row gap-3" style={{ alignItems: 'center', padding: '9px 12px', background: 'var(--bg-0)', border: '1px solid var(--line-soft)', borderRadius: 'var(--r-m)' }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--ac-dim)', color: 'var(--ac-bright)', display: 'grid', placeItems: 'center', flex: 'none' }}><Icon n={icon} s={15} /></div>
+                  <div style={{ fontSize: 12.5 }}>{text}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="t-2" style={{ fontSize: 11.5, lineHeight: 1.5 }}>This preview is the real app — sign in with a rep login to try it. Orders placed here are real and show up in Dispatch.</div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 export function RepsScreen({ go: _go }: { go: Go }) {
   const branches = useBranches()
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false); const [form, setForm] = useState<any>({}); const [cred, setCred] = useState<{ name: string; login: string; pw: string } | null>(null)
+  const [preview, setPreview] = useState(false)
 
   const refresh = () => { setLoading(true); api.reps.list().then((d) => setRows(d as any)).finally(() => setLoading(false)) }
   useEffect(() => { refresh() }, [])
@@ -391,13 +452,17 @@ export function RepsScreen({ go: _go }: { go: Go }) {
   }
   return (
     <div>
-      <PageHead crumbs="Administration" title="Sales Reps & Mobile App" icon="phone" sub="Field reps, app logins & on-the-road quotations"
-        actions={<><Btn variant="solid" icon="phone">Preview Mobile App</Btn><Btn variant="primary" icon="plus" onClick={() => setModal(true)}>Add Sales Rep</Btn></>} />
+      <PageHead crumbs="Administration" title="Sales Reps & Mobile App" icon="phone" sub="Field reps, app logins & on-the-road sales orders"
+        actions={<><Btn variant="solid" icon="phone" onClick={() => setPreview(true)}>Preview Mobile App</Btn><Btn variant="primary" icon="plus" onClick={() => setModal(true)}>Add Sales Rep</Btn></>} />
 
       <div className="reps-hero" style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
         <Card style={{ background: 'linear-gradient(135deg, var(--bg-1), var(--ac-dim))', border: '1px solid var(--ac-line)' }}>
           <div className="row gap-2" style={{ marginBottom: 10 }}><Badge tone="blue" dot>Field Sales Platform</Badge></div>
-          <h3 style={{ fontSize: 22, maxWidth: 440, lineHeight: 1.2 }}>Reps create quotations &amp; invoices on the road — synced live to head office.</h3>
+          <h3 style={{ fontSize: 22, maxWidth: 460, lineHeight: 1.2 }}>Reps place sales orders on the road — dispatched &amp; invoiced live at head office.</h3>
+          <div className="row gap-3" style={{ marginTop: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            <a href={REP_APK_URL} download style={{ textDecoration: 'none' }}><Btn variant="primary" icon="download">Download Android APK</Btn></a>
+            <span className="t-2" style={{ fontSize: 12 }}>v{REP_APP_VERSION} · {REP_APK_SIZE}</span>
+          </div>
         </Card>
         <Card className="col" style={{ justifyContent: 'center' }}>
           <div className="eyebrow" style={{ marginBottom: 12 }}>App Adoption</div>
@@ -440,6 +505,8 @@ export function RepsScreen({ go: _go }: { go: Go }) {
           <Field label="Branch"><Select value={form.branch || ''} onChange={(e) => setForm((s: any) => ({ ...s, branch: e.target.value }))}><option value="">{branches.length ? '—' : 'No branches — add in Master Files'}</option>{branches.map((b) => <option key={b}>{b}</option>)}</Select></Field>
         </div>
       </Modal>
+
+      <RepAppPreview open={preview} onClose={() => setPreview(false)} />
 
       <Modal open={!!cred} onClose={() => setCred(null)} width={420} title="App Login Credentials" sub={cred?.name}
         footer={<Btn variant="primary" icon="check" onClick={() => setCred(null)}>Done</Btn>}>

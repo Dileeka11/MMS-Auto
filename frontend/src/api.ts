@@ -1,5 +1,6 @@
 /* Axios client for the Laravel API. Base URL is proxied to http://localhost:8000 in dev (see vite.config.ts). */
 import axios from 'axios'
+import { beginRequest, endRequest } from './lib/clickGuard'
 
 export const http = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -73,8 +74,11 @@ http.interceptors.request.use((cfg) => {
   if (t) cfg.headers.Authorization = `Bearer ${t}`
   cfg.headers['X-Request-Id'] = genReqId()
   if (!cfg.silent) {
-    bump((cfg.method || 'get').toLowerCase() === 'get', 1)
+    const isRead = (cfg.method || 'get').toLowerCase() === 'get'
+    bump(isRead, 1)
     ;(cfg as any)._tracked = true
+    // Spin + lock the button that triggered this request (see lib/clickGuard).
+    ;(cfg as any)._origin = beginRequest(!isRead)
   }
   return cfg
 })
@@ -90,7 +94,13 @@ const listInflight = new Map<string, Promise<any[]>>()
 export const clearListCache = (name?: string) => { if (name) listCache.delete(name); else listCache.clear() }
 
 const untrack = (cfg: any) => {
-  if (cfg?._tracked) { cfg._tracked = false; bump((cfg.method || 'get').toLowerCase() === 'get', -1) }
+  if (cfg?._tracked) {
+    cfg._tracked = false
+    const isRead = (cfg.method || 'get').toLowerCase() === 'get'
+    bump(isRead, -1)
+    endRequest(!isRead, cfg._origin || null)
+    cfg._origin = null
+  }
 }
 
 let unauthorizedHandled = false

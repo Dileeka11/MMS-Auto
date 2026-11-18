@@ -28,6 +28,16 @@
     Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" "expr=%{HTTPS} == 'on'"
 </IfModule>
 
+# Rep mobile app download (public/downloads/nms-sales-rep.apk): correct MIME so
+# Android offers to install it, always downloaded, and revalidated on each build.
+AddType application/vnd.android.package-archive .apk
+<IfModule mod_headers.c>
+    <FilesMatch "\.apk$">
+        Header set Content-Disposition "attachment"
+        Header set Cache-Control "no-cache, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
 # Never serve dotfiles or source maps.
 <FilesMatch "(^\.|\.map$)">
     Require all denied

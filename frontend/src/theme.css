@@ -195,6 +195,15 @@ input,select,textarea{ font-family:inherit; }
 .mms-topbar-progress{ position:fixed; top:0; left:0; right:0; height:3px; z-index:500; overflow:hidden; pointer-events:none; opacity:0; transition: opacity .25s; }
 .mms-topbar-progress.on{ opacity:1; }
 .mms-topbar-progress::before{ content:''; position:absolute; inset:0; background: var(--ac); box-shadow: 0 0 8px var(--ac); transform-origin: left; animation: mms-indet 1.1s ease-in-out infinite; }
+/* Button that started an API request (lib/clickGuard): dim content, overlay a spinner, lock it. */
+[data-mms-busy]{ position:relative; pointer-events:none; cursor:progress; }
+[data-mms-busy]:not(:has(.mms-spin)){ -webkit-text-fill-color:transparent; }
+[data-mms-busy]:not(:has(.mms-spin)) > *{ opacity:0; }
+[data-mms-busy]:not(:has(.mms-spin))::after{ content:''; position:absolute; top:50%; left:50%;
+  width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
+  border:2px solid currentColor; border-top-color:transparent; animation: mms-spin .6s linear infinite; }
+/* While a save/delete is in flight every button ignores clicks (see clickGuard). */
+html[data-saving] button:not([data-mms-busy]){ cursor:progress; }
 @media (prefers-reduced-motion: reduce){ .mms-skel, .mms-topbar-progress::before, .mms-spin{ animation-duration: 2.5s; } }
 @media (prefers-reduced-motion: reduce){ *{ animation-duration:.001ms !important; } }
 

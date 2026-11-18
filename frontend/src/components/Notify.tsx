@@ -238,7 +238,7 @@ function ToastStack({ toasts, onClose }: { toasts: Toast[]; onClose: (id: number
     display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none', maxWidth: 380,
   }
   return (
-    <div style={wrap}>
+    <div style={wrap} data-guard="off">
       {toasts.map((t) => {
         const c = KIND_COLOR[t.kind]
         return (
@@ -270,7 +270,7 @@ function ToastStack({ toasts, onClose }: { toasts: Toast[]; onClose: (id: number
 /* ---------- confirm dialog ---------- */
 function ConfirmDialog({ opts, onClose }: { opts: ConfirmOpts; onClose: (ok: boolean) => void }) {
   return (
-    <div onClick={() => onClose(false)} style={{
+    <div data-guard="keep" onClick={() => onClose(false)} style={{
       position: 'fixed', inset: 0, zIndex: 350, background: 'oklch(0 0 0 / 0.55)', backdropFilter: 'blur(3px)',
       display: 'grid', placeItems: 'center', padding: 20, animation: 'fade .15s ease both',
     }}>

@@ -96,7 +96,7 @@ function taxHtml(r: Invoice, co: any, cu: any) {
   const discount = Math.round((gross - supply) * 100) / 100
   const rows = lines.map((l, i) => `<tr><td>${i + 1}</td><td>${esc([l.code, l.name].filter(Boolean).join(' - '))}</td><td class="r">${num(l.rate)}</td><td class="r">${l.qty}</td><td class="r">${num(l.qty * l.rate)}</td></tr>`).join('')
   return `<style>${TAX_CSS}</style>
-    <div class="brand">${co.logoUrl ? `<img src="${esc(co.logoUrl)}" alt="">` : ''}<h1>${esc((co.name || '').toUpperCase())}</h1></div>
+    <div class="brand"><img src="${esc(co.logoUrl || location.origin + '/logo-mark.png')}" alt=""><h1>${esc((co.name || '').toUpperCase())}</h1></div>
     <div class="box">
       <div class="title">TAX INVOICE</div>
       <div class="sec"><div class="kv"><span>Invoice Date</span><span>${fmtDate(r.date)}</span><span>Payment Terms</span><span>${esc(termsText(r))}</span>${isCredit(r.terms) ? `<span>Credit Period</span><span>${r.creditDays ?? ''} days</span><span>Payment Due</span><span>${fmtDate(r.dueDate)}</span>` : ''}</div><div class="kv"><span>Tax Invoice No</span><span>${esc(r.taxInvoiceNo || r.code || r.id)}</span><span>Invoice No</span><span>${esc(r.code || r.id)}</span></div></div>

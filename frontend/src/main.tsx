@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client'
 import './theme.css'
 import App from './App'
 import { NotifyProvider } from './components/Notify'
+import { installClickGuard } from './lib/clickGuard'
+
+// Spinner + lock on any button while the API request it started is running.
+installClickGuard()
 
 // Apply the saved theme + accent before first paint (avoids a flash of the wrong theme).
 // Theme defaults to dark; falls back to the OS preference only when nothing was saved.

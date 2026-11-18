@@ -121,7 +121,7 @@ export default function App() {
   const [route, setRoute] = useState<string>(() => localStorage.getItem('mms-route') || 'dash')
   const [open, setOpen] = useState(false)
   const [brand, setBrand] = useState(DB.company.name)
-  const [logoUrl, setLogoUrl] = useState('')
+  const [, setLogoUrl] = useState('')
   const [user, setUser] = useState<AuthUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const go: Go = (r) => { setRoute(r); localStorage.setItem('mms-route', r); window.scrollTo(0, 0) }
@@ -158,7 +158,7 @@ export default function App() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       <TopProgress />
-      <Sidebar route={effectiveRoute} go={go} open={open} setOpen={setOpen} company={brand} logoUrl={logoUrl} user={user} />
+      <Sidebar route={effectiveRoute} go={go} open={open} setOpen={setOpen} company={brand} user={user} />
       <div className="mms-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar setOpen={setOpen} route={effectiveRoute} go={go} user={user} />
         <main key={effectiveRoute} className="fade-in" style={{ padding: '24px clamp(16px,3vw,32px) 60px', flex: 1 }}>

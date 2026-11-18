@@ -6,6 +6,7 @@ import { Btn } from './ui'
 import { NotificationBell, clearStoredNotices, useNotify } from './Notify'
 import DB from '../data'
 import { auth, type AuthUser } from '../api'
+import { REP_APK_URL, REP_APK_SIZE, REP_APP_VERSION } from '../lib/repApp'
 import { canAccessRoute } from '../lib/permissions'
 
 export interface NavLeaf { id: string; label: string; icon: string; star?: boolean }
@@ -98,7 +99,7 @@ function NavItem({ item, active, sub, onClick }: { item: NavLeaf; active: boolea
   )
 }
 
-export function Sidebar({ route, go, open, setOpen, company, logoUrl, user }: { route: string; go: (r: string) => void; open: boolean; setOpen: (b: boolean) => void; company: string; logoUrl?: string; user?: AuthUser | null }) {
+export function Sidebar({ route, go, open, setOpen, company, user }: { route: string; go: (r: string) => void; open: boolean; setOpen: (b: boolean) => void; company: string; user?: AuthUser | null }) {
   // Filter NAV by permission: drop hidden leaves and collapse empty sections.
   const visibleNav: NavNode[] = NAV
     .map((n) => {
@@ -123,9 +124,7 @@ export function Sidebar({ route, go, open, setOpen, company, logoUrl, user }: { 
       <div onClick={() => setOpen(false)} className="sb-scrim" style={{ display: open ? 'block' : 'none' }} />
       <aside className={'mms-sb' + (open ? ' open' : '')} style={{ width: 'var(--sb-w)' }}>
         <div className="row gap-3" style={{ padding: '16px 18px', borderBottom: '1px solid var(--line)', minHeight: 'var(--topbar-h)' }}>
-          <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--ac)', display: 'grid', placeItems: 'center', color: '#fff', flexShrink: 0, boxShadow: '0 2px 12px -2px var(--ac-line)', overflow: 'hidden' }}>
-              {logoUrl ? <img src={logoUrl} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Icon n="wrench" s={19} />}
-            </div>
+          <img src="/logo-mark.png" alt="NMS Auto Supply" width={36} height={36} style={{ flexShrink: 0, display: 'block' }} />
           <div style={{ lineHeight: 1.15 }}>
             <div style={{ fontFamily: 'Saira', fontWeight: 800, fontSize: 17, letterSpacing: '-0.01em' }} id="brand-name">{company}</div>
             <div className="eyebrow" style={{ fontSize: 9 }}>{DB.company.tagline}</div>
@@ -203,6 +202,11 @@ export function Topbar({ setOpen, go, user }: { setOpen: (fn: (o: boolean) => bo
         </div>
       </div>
       <div className="row gap-3">
+        {user.role === 'admin' && (
+          <a href={REP_APK_URL} download className="hide-sm" title={`Download the NMS Sales Rep Android app (v${REP_APP_VERSION} · ${REP_APK_SIZE})`} style={{ textDecoration: 'none' }}>
+            <Btn variant="ghost" size="sm" icon="download">Rep App APK</Btn>
+          </a>
+        )}
         <Btn variant="ghost" size="sm" icon="plus" onClick={() => go('dc/invoice')}>New Invoice</Btn>
         <ThemeToggle />
         <NotificationBell />

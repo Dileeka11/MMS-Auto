@@ -4,6 +4,7 @@ import '../theme.dart';
 import 'dashboard.dart';
 import 'stock.dart';
 import 'orders.dart';
+import 'customers.dart';
 import 'new_order.dart';
 import 'login.dart';
 
@@ -23,16 +24,31 @@ class _HomeScreenState extends State<HomeScreen> {
     DashboardScreen(key: _dashKey),
     const StockScreen(),
     OrdersScreen(key: _ordersKey),
+    const CustomersScreen(),
   ];
 
-  static const _titles = ['Dashboard', 'Live Stock', 'My Orders'];
+  static const _titles = ['', 'Live Stock', 'My Orders', 'Customers'];
+  static const _subs = [
+    '',
+    'Available = on hand − reserved',
+    'Pending → dispatched → invoiced',
+    'Credit limits & outstanding',
+  ];
+
+  String get _greeting {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
 
   Future<void> _logout() async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Log out?'),
-        content: const Text('You will need to sign in again to continue.'),
+        content: const Text('You will need to sign in again to place orders.',
+            style: TextStyle(color: AppColors.muted)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -63,95 +79,208 @@ class _HomeScreenState extends State<HomeScreen> {
     if (created == true) {
       _dashKey.currentState?.reload();
       _ordersKey.currentState?.reload();
-      if (mounted) setState(() => _tab = 2);
+      if (!mounted) return;
+      setState(() => _tab = 2);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Row(children: [
+          Icon(Icons.check_circle_rounded, color: AppColors.ok, size: 18),
+          SizedBox(width: 10),
+          Text('Order sent to head office for dispatch'),
+        ]),
+      ));
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _header() {
     final rep = Api.rep ?? {};
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_titles[_tab],
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: PopupMenuButton<String>(
-              onSelected: (v) {
-                if (v == 'logout') _logout();
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  enabled: false,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('${rep['name'] ?? 'Rep'}',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.ink)),
-                      Text('${rep['email'] ?? ''}',
-                          style: const TextStyle(
-                              fontSize: 12, color: AppColors.muted)),
-                    ],
-                  ),
-                ),
-                const PopupMenuDivider(),
-                const PopupMenuItem(
-                  value: 'logout',
-                  child: Row(children: [
-                    Icon(Icons.logout, size: 18, color: AppColors.danger),
-                    SizedBox(width: 10),
-                    Text('Log out',
-                        style: TextStyle(color: AppColors.danger)),
-                  ]),
-                ),
-              ],
-              child: Container(
-                width: 38,
-                height: 38,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: AppColors.brandGradient,
-                  boxShadow: AppShadows.lifted,
-                ),
-                child: Text('${rep['avatar'] ?? 'R'}',
+    final name = '${rep['name'] ?? 'Rep'}';
+    final first = name.split(' ').where((w) => w.length > 1).firstOrNull ?? name;
+    final isHome = _tab == 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 16, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(isHome ? _greeting : _subs[_tab],
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14)),
+                        fontSize: 13, color: AppColors.muted)),
+                const SizedBox(height: 2),
+                Text(isHome ? first : _titles[_tab],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                        color: AppColors.ink)),
+              ],
+            ),
+          ),
+          PopupMenuButton<String>(
+            offset: const Offset(0, 52),
+            onSelected: (v) {
+              if (v == 'logout') _logout();
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                enabled: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, color: AppColors.ink)),
+                    Text('${rep['email'] ?? ''}',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.muted)),
+                    if ('${rep['zone'] ?? ''}'.isNotEmpty ||
+                        '${rep['branch'] ?? ''}'.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                          [rep['zone'], rep['branch']]
+                              .where((v) => v != null && '$v'.isNotEmpty)
+                              .join(' · '),
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.ink2)),
+                    ],
+                  ],
+                ),
               ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'logout',
+                child: Row(children: [
+                  Icon(Icons.logout_rounded, size: 18, color: AppColors.danger),
+                  SizedBox(width: 10),
+                  Text('Log out', style: TextStyle(color: AppColors.danger)),
+                ]),
+              ),
+            ],
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.line, width: 1.5),
+              ),
+              child: Avatar('${rep['avatar'] ?? 'R'}', size: 40),
             ),
           ),
         ],
       ),
-      body: IndexedStack(index: _tab, children: _pages),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors.brand,
-        foregroundColor: Colors.white,
-        onPressed: _newOrder,
-        icon: const Icon(Icons.add_shopping_cart),
-        label: const Text('New Order'),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBody: true,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            _header(),
+            Expanded(child: IndexedStack(index: _tab, children: _pages)),
+          ],
+        ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.dashboard_outlined),
-              selectedIcon: Icon(Icons.dashboard),
-              label: 'Dashboard'),
-          NavigationDestination(
-              icon: Icon(Icons.inventory_2_outlined),
-              selectedIcon: Icon(Icons.inventory_2),
-              label: 'Stock'),
-          NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined),
-              selectedIcon: Icon(Icons.receipt_long),
-              label: 'Orders'),
-        ],
+      bottomNavigationBar: _BottomBar(
+        index: _tab,
+        onTap: (i) => setState(() => _tab = i),
+        onNewOrder: _newOrder,
+      ),
+    );
+  }
+}
+
+class _BottomBar extends StatelessWidget {
+  final int index;
+  final ValueChanged<int> onTap;
+  final VoidCallback onNewOrder;
+  const _BottomBar(
+      {required this.index, required this.onTap, required this.onNewOrder});
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).padding.bottom;
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, bottom > 0 ? bottom : 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppColors.bg.withValues(alpha: 0), AppColors.bg],
+          stops: const [0, 0.35],
+        ),
+      ),
+      child: Container(
+        height: 68,
+        decoration: BoxDecoration(
+          color: AppColors.raised,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.line),
+          boxShadow: AppShadows.soft,
+        ),
+        child: Row(
+          children: [
+            _item(0, Icons.space_dashboard_outlined, Icons.space_dashboard_rounded, 'Home'),
+            _item(1, Icons.inventory_2_outlined, Icons.inventory_2_rounded, 'Stock'),
+            Expanded(
+              child: Center(
+                child: GestureDetector(
+                  onTap: onNewOrder,
+                  child: Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      gradient: AppColors.brandGradient,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: AppShadows.glow,
+                    ),
+                    child: const Icon(Icons.add_rounded,
+                        color: Colors.white, size: 30),
+                  ),
+                ),
+              ),
+            ),
+            _item(2, Icons.receipt_long_outlined, Icons.receipt_long_rounded, 'Orders'),
+            _item(3, Icons.storefront_outlined, Icons.storefront_rounded, 'Clients'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _item(int i, IconData icon, IconData active, String label) {
+    final sel = index == i;
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => onTap(i),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: sel ? AppColors.brandDim : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(sel ? active : icon,
+                  size: 22,
+                  color: sel ? AppColors.brandBright : AppColors.muted),
+            ),
+            const SizedBox(height: 3),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                    color: sel ? AppColors.ink : AppColors.muted)),
+          ],
+        ),
       ),
     );
   }

@@ -1,19 +1,28 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Central API client for the NMS rep app.
 ///
-/// The base URL points at the live server by default. To test against a local
-/// Laravel dev server use `http://10.0.2.2:8000/api` on the Android emulator.
+/// Defaults to the live server. Override at build time for local testing:
+///   flutter run --dart-define=API_URL=http://10.0.2.2:8000/api
+/// The web build (admin "Preview Mobile App") is served from the same origin
+/// as the API, so it uses the relative `/api`.
 class Api {
-  // Emulator → local Laravel dev server (10.0.2.2 = host machine's localhost).
-  static const String baseUrl = 'http://10.0.2.2:8000/api';
-  // Live server (production): 'https://nms-auto.sourcecode.lk/api'
-  // (must be HTTPS — host 301-redirects http→https which drops the POST body).
+  static const String _defined = String.fromEnvironment('API_URL');
+  // Must be HTTPS — the host 301-redirects http→https which drops POST bodies.
+  static const String _live = 'https://nms-auto.sourcecode.lk/api';
+  static String get baseUrl =>
+      _defined.isNotEmpty ? _defined : (kIsWeb ? '/api' : _live);
 
   static String? _token;
   static Map<String, dynamic>? rep;
+
+  /// Called when the server rejects the token (401) — the app routes to login.
+  static void Function()? onUnauthorized;
+
+  static const _timeout = Duration(seconds: 25);
 
   static Future<void> loadToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -49,7 +58,7 @@ class Api {
       Uri.parse('$baseUrl/rep/login'),
       headers: {'Accept': 'application/json', 'Content-Type': 'application/json'},
       body: jsonEncode({'email': email, 'password': password}),
-    );
+    ).timeout(_timeout);
     final data = _decode(res);
     if (res.statusCode == 200) {
       _token = data['token'] as String;
@@ -62,7 +71,9 @@ class Api {
 
   static Future<void> logout() async {
     try {
-      await http.post(Uri.parse('$baseUrl/rep/logout'), headers: _headers);
+      await http
+          .post(Uri.parse('$baseUrl/rep/logout'), headers: _headers)
+          .timeout(const Duration(seconds: 6));
     } catch (_) {}
     _token = null;
     rep = null;
@@ -70,7 +81,9 @@ class Api {
   }
 
   static Future<dynamic> get(String path) async {
-    final res = await http.get(Uri.parse('$baseUrl/rep/$path'), headers: _headers);
+    final res = await http
+        .get(Uri.parse('$baseUrl/rep/$path'), headers: _headers)
+        .timeout(_timeout);
     return _handle(res);
   }
 
@@ -79,7 +92,7 @@ class Api {
       Uri.parse('$baseUrl/rep/$path'),
       headers: _headers,
       body: jsonEncode(body),
-    );
+    ).timeout(_timeout);
     return _handle(res);
   }
 
@@ -90,6 +103,7 @@ class Api {
       _token = null;
       rep = null;
       _save();
+      onUnauthorized?.call();
       throw ApiException('Session expired. Please log in again.');
     }
     throw ApiException(_firstError(data) ?? 'Request failed (${res.statusCode})');

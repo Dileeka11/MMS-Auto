@@ -57,6 +57,13 @@ class RepController extends Controller
 
         $target = (float) $rep->target ?: 1;
 
+        // App orders still waiting at head office (not yet invoiced).
+        $openOrders = SalesOrder::whereIn('status', ['pending', 'dispatched'])
+            ->where(function ($q) use ($rep) {
+                $q->where('rep', $rep->name)->orWhere('rep', $rep->code);
+            })
+            ->count();
+
         return [
             'rep' => $rep->only(['id', 'code', 'name', 'zone', 'avatar', 'target', 'achieved']),
             'stats' => [
@@ -65,6 +72,7 @@ class RepController extends Controller
                 'progress' => round(min(100, ($salesThisMonth / $target) * 100), 1),
                 'sales_today' => round($salesToday, 2),
                 'orders_count' => $all->count(),
+                'open_orders' => $openOrders,
                 'outstanding' => round($outstanding, 2),
             ],
             'monthly_trend' => $trend,
@@ -184,6 +192,9 @@ class RepController extends Controller
                     'method' => $l['method'] ?? 'FIFO',
                 ]);
             }
+
+            // Each order placed from the field counts as a customer visit.
+            $rep->increment('visits');
 
             return response()->json($order->load('lines'), 201);
         });

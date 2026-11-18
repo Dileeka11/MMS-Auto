@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../api.dart';
@@ -28,18 +29,21 @@ class DashboardScreenState extends State<DashboardScreen> {
     });
     try {
       final res = await Api.get('dashboard');
+      if (!mounted) return;
       setState(() {
         _data = Map<String, dynamic>.from(res as Map);
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
-        _error = 'Could not load dashboard.';
+        _error = 'Could not load your dashboard.';
         _loading = false;
       });
     }
@@ -47,72 +51,77 @@ class DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
-      return _ErrorView(message: _error!, onRetry: reload);
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null && _data == null) {
+      return EmptyState(
+          icon: Icons.cloud_off_rounded,
+          title: 'Offline',
+          message: _error,
+          onRetry: reload);
     }
     final stats = Map<String, dynamic>.from(_data!['stats'] as Map);
     final trend = (_data!['monthly_trend'] as List).cast<Map>();
     final daily = (_data!['daily_sales'] as List).cast<Map>();
     final recent = (_data!['recent_orders'] as List).cast<Map>();
+    final weekTotal = daily.fold<num>(0, (s, d) => s + asNum(d['value']));
 
     return RefreshIndicator(
       onRefresh: reload,
+      color: AppColors.brand,
+      backgroundColor: AppColors.raised,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
         children: [
           _TargetCard(
-            target: (stats['target'] as num).toDouble(),
-            achieved: (stats['achieved'] as num).toDouble(),
-            progress: (stats['progress'] as num).toDouble(),
+            target: asNum(stats['target']).toDouble(),
+            achieved: asNum(stats['achieved']).toDouble(),
+            progress: asNum(stats['progress']).toDouble(),
           ),
-          const SizedBox(height: 14),
-          Row(children: [
-            Expanded(
-                child: _StatTile(
-                    label: 'Sales Today',
-                    value: moneyK(stats['sales_today'] as num),
-                    icon: Icons.today,
-                    color: AppColors.brand)),
-            const SizedBox(width: 12),
-            Expanded(
-                child: _StatTile(
-                    label: 'Orders',
-                    value: '${stats['orders_count']}',
-                    icon: Icons.receipt_long,
-                    color: AppColors.ok)),
-          ]),
           const SizedBox(height: 12),
-          Row(children: [
-            Expanded(
-                child: _StatTile(
-                    label: 'Outstanding',
-                    value: moneyK(stats['outstanding'] as num),
-                    icon: Icons.account_balance_wallet_outlined,
-                    color: AppColors.warn)),
-            const SizedBox(width: 12),
-            Expanded(
-                child: _StatTile(
-                    label: 'Achieved',
-                    value: moneyK(stats['achieved'] as num),
-                    icon: Icons.trending_up,
-                    color: AppColors.brand)),
-          ]),
-          const SizedBox(height: 18),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 1.55,
+            children: [
+              _StatTile(
+                  label: 'Sales today',
+                  value: moneyK(asNum(stats['sales_today'])),
+                  icon: Icons.bolt_rounded,
+                  color: AppColors.brandBright),
+              _StatTile(
+                  label: 'Open orders',
+                  value: '${asNum(stats['open_orders']).toInt()}',
+                  icon: Icons.local_shipping_outlined,
+                  color: AppColors.warn),
+              _StatTile(
+                  label: 'Invoices',
+                  value: '${asNum(stats['orders_count']).toInt()}',
+                  icon: Icons.receipt_long_rounded,
+                  color: AppColors.ok),
+              _StatTile(
+                  label: 'Outstanding',
+                  value: moneyK(asNum(stats['outstanding'])),
+                  icon: Icons.account_balance_wallet_outlined,
+                  color: AppColors.danger),
+            ],
+          ),
+          const SizedBox(height: 12),
           _ChartCard(
-            title: '6-Month Sales Trend',
+            title: 'Sales trend',
+            caption: 'Last 6 months',
             child: _LineChart(trend),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           _ChartCard(
-            title: 'Last 7 Days',
+            title: 'This week',
+            caption: moneyK(weekTotal),
             child: _BarChart(daily),
           ),
-          const SizedBox(height: 14),
-          _RecentOrders(recent),
-          const SizedBox(height: 80),
+          const SizedBox(height: 12),
+          _RecentInvoices(recent),
         ],
       ),
     );
@@ -126,75 +135,106 @@ class _TargetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onTrack = progress >= 100;
+    final met = progress >= 100;
+    final now = DateTime.now();
+    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final daysLeft = daysInMonth - now.day;
+    final remaining = math.max(0, target - achieved);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: AppColors.brandGradient,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: AppShadows.lifted,
+        gradient: AppColors.heroGradient,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.brand.withValues(alpha: 0.35)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Text('Monthly Target',
-                  style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500)),
-              const Spacer(),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(onTrack ? Icons.check_circle : Icons.trending_up,
-                      size: 13, color: Colors.white),
-                  const SizedBox(width: 4),
-                  Text(onTrack ? 'Target met' : 'In progress',
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Pill(met ? 'Target met' : 'Monthly target',
+                    met ? AppColors.ok : AppColors.brandBright),
+                const SizedBox(height: 14),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(money(achieved),
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600)),
-                ]),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(money(achieved),
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5)),
-          Text('of ${money(target)} target',
-              style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.85), fontSize: 13)),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: (progress / 100).clamp(0, 1),
-              minHeight: 10,
-              backgroundColor: Colors.white.withValues(alpha: 0.25),
-              valueColor: const AlwaysStoppedAnimation(Colors.white),
+                          color: AppColors.ink,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.6)),
+                ),
+                const SizedBox(height: 2),
+                Text('of ${money(target)}',
+                    style: const TextStyle(
+                        color: AppColors.muted, fontSize: 13)),
+                const SizedBox(height: 14),
+                Text(
+                    met
+                        ? 'Great work — keep going!'
+                        : '${moneyK(remaining)} to go · $daysLeft days left',
+                    style: const TextStyle(
+                        color: AppColors.ink2,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600)),
+              ],
             ),
           ),
-          const SizedBox(height: 6),
-          Text('${progress.toStringAsFixed(1)}% achieved',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600)),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 104,
+            height: 104,
+            child: CustomPaint(
+              painter: _RingPainter((progress / 100).clamp(0, 1).toDouble()),
+              child: Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('${progress.toStringAsFixed(0)}%',
+                      style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.ink)),
+                  const Text('achieved',
+                      style: TextStyle(fontSize: 10.5, color: AppColors.muted)),
+                ]),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
+}
+
+class _RingPainter extends CustomPainter {
+  final double value;
+  _RingPainter(this.value);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 10.0;
+    final rect = Offset.zero & size;
+    final r = rect.deflate(stroke / 2);
+    final track = Paint()
+      ..color = AppColors.well
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke;
+    canvas.drawArc(r, 0, math.pi * 2, false, track);
+    if (value <= 0) return;
+    final arc = Paint()
+      ..shader = const SweepGradient(
+        colors: [AppColors.brandBright, AppColors.brand, AppColors.brandAlt],
+        transform: GradientRotation(-math.pi / 2),
+      ).createShader(rect)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = stroke;
+    canvas.drawArc(r, -math.pi / 2, math.pi * 2 * value, false, arc);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter old) => old.value != value;
 }
 
 class _StatTile extends StatelessWidget {
@@ -210,28 +250,38 @@ class _StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12)),
-            child: Icon(icon, color: color, size: 20),
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, color: color, size: 17),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(label,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.muted)),
+            ),
+          ]),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value,
+                style: const TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                    color: AppColors.ink)),
           ),
-          const SizedBox(height: 12),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
-                  color: AppColors.ink)),
-          const SizedBox(height: 2),
-          Text(label,
-              style: const TextStyle(fontSize: 12, color: AppColors.muted)),
         ],
       ),
     );
@@ -240,24 +290,31 @@ class _StatTile extends StatelessWidget {
 
 class _ChartCard extends StatelessWidget {
   final String title;
+  final String caption;
   final Widget child;
-  const _ChartCard({required this.title, required this.child});
+  const _ChartCard(
+      {required this.title, required this.caption, required this.child});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: cardDecoration(radius: 18),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      decoration: cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.ink)),
+          Row(children: [
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink)),
+            const Spacer(),
+            Text(caption,
+                style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+          ]),
           const SizedBox(height: 18),
-          SizedBox(height: 170, child: child),
+          SizedBox(height: 150, child: child),
         ],
       ),
     );
@@ -270,33 +327,45 @@ class _LineChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final spots = <FlSpot>[];
-    for (var i = 0; i < data.length; i++) {
-      spots.add(FlSpot(i.toDouble(), (data[i]['value'] as num).toDouble()));
-    }
-    final maxY = spots.isEmpty
-        ? 1.0
-        : spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
+    final spots = <FlSpot>[
+      for (var i = 0; i < data.length; i++)
+        FlSpot(i.toDouble(), asNum(data[i]['value']).toDouble()),
+    ];
+    final maxY = spots.isEmpty ? 0.0 : spots.map((s) => s.y).reduce(math.max);
     return LineChart(
       LineChartData(
         minY: 0,
         maxY: maxY == 0 ? 1 : maxY * 1.25,
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (_) => AppColors.well,
+            getTooltipItems: (spots) => spots
+                .map((s) => LineTooltipItem(moneyK(s.y),
+                    const TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12)))
+                .toList(),
+          ),
+        ),
         gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
             getDrawingHorizontalLine: (_) =>
-                const FlLine(color: AppColors.line, strokeWidth: 1)),
+                const FlLine(color: AppColors.lineSoft, strokeWidth: 1)),
         titlesData: FlTitlesData(
           leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
+              interval: 1,
               getTitlesWidget: (v, _) {
                 final i = v.toInt();
-                if (i < 0 || i >= data.length) return const SizedBox();
+                if (i < 0 || i >= data.length || v != i.toDouble()) {
+                  return const SizedBox();
+                }
                 return Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text('${data[i]['label']}',
@@ -312,17 +381,18 @@ class _LineChart extends StatelessWidget {
           LineChartBarData(
             spots: spots,
             isCurved: true,
-            curveSmoothness: 0.28,
+            curveSmoothness: 0.3,
+            preventCurveOverShooting: true,
             gradient: const LinearGradient(
-                colors: [AppColors.brand, AppColors.brandAlt]),
-            barWidth: 3.5,
+                colors: [AppColors.brandBright, AppColors.brandAlt]),
+            barWidth: 3,
             dotData: FlDotData(
               show: true,
               getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
                 radius: 3.5,
-                color: Colors.white,
+                color: AppColors.bg,
                 strokeWidth: 2,
-                strokeColor: AppColors.brand,
+                strokeColor: AppColors.brandBright,
               ),
             ),
             belowBarData: BarAreaData(
@@ -331,7 +401,7 @@ class _LineChart extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  AppColors.brand.withValues(alpha: 0.22),
+                  AppColors.brand.withValues(alpha: 0.30),
                   AppColors.brand.withValues(alpha: 0.0),
                 ],
               ),
@@ -349,50 +419,64 @@ class _BarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxY = data.isEmpty
-        ? 1.0
-        : data
-            .map((d) => (d['value'] as num).toDouble())
-            .reduce((a, b) => a > b ? a : b);
+    final values = data.map((d) => asNum(d['value']).toDouble()).toList();
+    final maxY = values.isEmpty ? 0.0 : values.reduce(math.max);
+    final top = maxY == 0 ? 1.0 : maxY * 1.2;
     return BarChart(
       BarChartData(
-        maxY: maxY == 0 ? 1 : maxY * 1.25,
+        maxY: top,
         gridData: const FlGridData(show: false),
         borderData: FlBorderData(show: false),
+        barTouchData: BarTouchData(
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipColor: (_) => AppColors.well,
+            getTooltipItem: (g, _, rod, _) => BarTooltipItem(
+                moneyK(rod.toY),
+                const TextStyle(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12)),
+          ),
+        ),
         titlesData: FlTitlesData(
           leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
               getTitlesWidget: (v, _) {
                 final i = v.toInt();
                 if (i < 0 || i >= data.length) return const SizedBox();
+                final today = i == data.length - 1;
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text('${data[i]['label']}',
-                      style: const TextStyle(
-                          fontSize: 10, color: AppColors.muted)),
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: today ? FontWeight.w700 : FontWeight.w500,
+                          color: today ? AppColors.ink : AppColors.muted)),
                 );
               },
             ),
           ),
         ),
         barGroups: [
-          for (var i = 0; i < data.length; i++)
+          for (var i = 0; i < values.length; i++)
             BarChartGroupData(x: i, barRods: [
               BarChartRodData(
-                toY: (data[i]['value'] as num).toDouble(),
-                gradient: const LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [AppColors.brandDark, AppColors.brandAlt],
-                ),
-                width: 16,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(6)),
+                toY: values[i],
+                width: 18,
+                borderRadius: BorderRadius.circular(6),
+                gradient: i == values.length - 1
+                    ? const LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [AppColors.brand, AppColors.brandBright])
+                    : null,
+                color: i == values.length - 1 ? null : AppColors.well,
+                backDrawRodData: BackgroundBarChartRodData(
+                    show: true, toY: top, color: AppColors.lineSoft),
               ),
             ]),
         ],
@@ -401,89 +485,91 @@ class _BarChart extends StatelessWidget {
   }
 }
 
-class _RecentOrders extends StatelessWidget {
+class _RecentInvoices extends StatelessWidget {
   final List<Map> orders;
-  const _RecentOrders(this.orders);
+  const _RecentInvoices(this.orders);
+
+  Color _color(String s) {
+    switch (s) {
+      case 'Paid':
+        return AppColors.ok;
+      case 'Partial':
+        return AppColors.warn;
+      default:
+        return AppColors.danger;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: cardDecoration(radius: 18),
+      decoration: cardDecoration(),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text('Recent Orders',
-                style: TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.ink)),
-          ),
+          const Eyebrow('Recent invoices'),
+          const SizedBox(height: 6),
           if (orders.isEmpty)
             const Padding(
-              padding: EdgeInsets.all(24),
+              padding: EdgeInsets.symmetric(vertical: 22),
               child: Center(
-                  child: Text('No orders yet',
-                      style: TextStyle(color: AppColors.muted))),
+                  child: Text('No invoices yet — orders appear here once invoiced.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.muted, fontSize: 13))),
             )
           else
-            ...orders.map((o) => ListTile(
-                  dense: true,
-                  title: Text('${o['customer']}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 14)),
-                  subtitle: Text('${o['code']} · ${fmtDate(o['date'])}',
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.muted)),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+            for (final o in orders)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: const BoxDecoration(
+                    border: Border(
+                        bottom: BorderSide(color: AppColors.lineSoft))),
+                child: Row(children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                        color: AppColors.raised,
+                        borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.description_outlined,
+                        size: 18, color: AppColors.ink2),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${o['customer']}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: AppColors.ink)),
+                        const SizedBox(height: 2),
+                        Text('${o['code']} · ${fmtDate(o['date'])}',
+                            style: const TextStyle(
+                                fontSize: 12, color: AppColors.muted)),
+                      ],
+                    ),
+                  ),
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(moneyK(o['total'] as num),
+                      Text(moneyK(asNum(o['total'])),
                           style: const TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 14)),
-                      Text('${o['status']}',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: o['status'] == 'Paid'
-                                  ? AppColors.ok
-                                  : AppColors.warn)),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: AppColors.ink)),
+                      const SizedBox(height: 4),
+                      Pill('${o['status']}', _color('${o['status']}'),
+                          dot: false),
                     ],
                   ),
-                )),
+                ]),
+              ),
         ],
-      ),
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-  const _ErrorView({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.cloud_off, size: 48, color: AppColors.muted),
-            const SizedBox(height: 12),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.muted)),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: onRetry,
-              style: FilledButton.styleFrom(backgroundColor: AppColors.brand),
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
       ),
     );
   }
