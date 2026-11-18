@@ -19,25 +19,32 @@ export function QuoteScreen({ go, user }: ScreenProps) {
   // null = closed, 'new' = create, otherwise the Open quotation being edited
   const [editing, setEditing] = useState<Quotation | 'new' | null>(null)
   const [cust, setCust] = useState(''); const [validUntil, setValidUntil] = useState('')
+  const [rep, setRep] = useState(''); const [reps, setReps] = useState<any[]>([])
   const [lines, setLines] = useState<EditorLine[]>([])
   const [saving, setSaving] = useState(false)
   const canEdit = userCan(user, 'Quotation', 'Edit')
   const canDelete = userCan(user, 'Quotation', 'Delete')
 
   const refresh = () => { setLoading(true); api.quotations.list().then((d) => setRows(d as any)).finally(() => setLoading(false)) }
-  useEffect(() => { refresh(); api.customers.list().then((d) => setCustomers(d as any)).catch(() => {}) }, [])
+  useEffect(() => {
+    refresh()
+    api.customers.list().then((d) => setCustomers(d as any)).catch(() => {})
+    api.reps.list().then((d) => setReps(d as any)).catch(() => {})
+  }, [])
+  // Picking a customer defaults the rep to the customer's assigned rep.
+  const pickCust = (name: string) => { setCust(name); const c = customers.find((x) => x.name === name); if (c?.rep) setRep(c.rep) }
 
-  const openNew = () => { setCust(''); setValidUntil(addDays(todayIso(), 30)); setLines([]); setEditing('new') }
+  const openNew = () => { setRep(''); setCust(''); setValidUntil(addDays(todayIso(), 30)); setLines([]); setEditing('new') }
   const openEdit = (q: Quotation) => {
-    setCust(q.customer); setValidUntil(q.validUntil || '')
+    setCust(q.customer); setValidUntil(q.validUntil || ''); setRep(q.rep || '')
     setLines((q.lines || []).map((l) => ({ id: 'ql-' + l.id, code: l.code || '', name: l.name, qty: Number(l.qty), rate: Number(l.rate), cost: 0, fifo: 0, avg: 0, method: 'FIFO' as const })))
     setEditing(q)
   }
   const save = async () => {
     setSaving(true)
     try {
-      const body = { customer: cust, validUntil: validUntil || null, lines: lines.map((l) => ({ code: l.code, name: l.name, qty: l.qty, rate: l.rate })) }
-      if (editing === 'new') await api.quotations.create({ ...body, rep: 'R. Fernando', date: todayIso() } as any)
+      const body = { customer: cust, rep: rep || null, validUntil: validUntil || null, lines: lines.map((l) => ({ code: l.code, name: l.name, qty: l.qty, rate: l.rate })) }
+      if (editing === 'new') await api.quotations.create({ ...body, date: todayIso() } as any)
       else if (editing) await api.quotations.update(editing.id, body as any)
       setEditing(null); setLines([]); setCust(''); refresh()
     } catch (e: any) {
@@ -80,8 +87,9 @@ export function QuoteScreen({ go, user }: ScreenProps) {
         title={isNew ? 'New Quotation' : `Edit ${editing?.code || editing?.id || ''}`}
         sub={isNew ? 'Prepare a price quote for a customer' : 'Only Open quotations can be edited'}
         footer={<><Btn variant="plain" onClick={() => setEditing(null)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save} disabled={!cust || !lines.length || saving}>{saving ? 'Saving…' : isNew ? 'Save Quotation' : 'Save Changes'}</Btn></>}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 18 }}>
-          <Field label="Customer"><Select value={cust} onChange={(e) => setCust(e.target.value)}><option value="">Select customer…</option>{customers.map((c) => <option key={c.id}>{c.name}</option>)}</Select></Field>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 18 }}>
+          <Field label="Customer"><Select value={cust} onChange={(e) => pickCust(e.target.value)}><option value="">Select customer…</option>{customers.map((c) => <option key={c.id}>{c.name}</option>)}</Select></Field>
+          <Field label="Sales Rep"><RepSelect value={rep} onChange={setRep} reps={reps} /></Field>
           <Field label="Valid Until"><DateInput value={validUntil} onChange={setValidUntil} /></Field>
         </div>
         <div className="eyebrow" style={{ marginBottom: 10 }}>Quote Lines</div>
@@ -98,15 +106,31 @@ const daysBetween = (from: string, to: string) => Math.round((Date.parse(to + 'T
 const PAY_TERMS = ['Cash', 'Credit Sale', 'Card', 'Bank Transfer']
 const isCredit = (t?: string) => /credit/i.test(t || '')
 
-type InvHead = { date: string; terms: string; creditDays: number; dueDate: string }
+type InvHead = { date: string; terms: string; creditDays: number; dueDate: string; rep: string }
 
-function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, profit, post, back, customers, saving, vat, setVat, vatPct, vatAmt, discPct, setDiscPct, discAmt, head, setHead }: { src: any | null; cust: string; setCust: (v: string) => void; lines: EditorLine[]; setLines: (fn: (l: EditorLine[]) => EditorLine[]) => void; total: number; cogs: number; profit: number; post: () => void; back: () => void; customers: any[]; saving: boolean; vat: boolean; setVat: (v: boolean) => void; vatPct: number; vatAmt: number; discPct: number; setDiscPct: (v: number) => void; discAmt: number; head: InvHead; setHead: (h: InvHead) => void }) {
+/** Sales rep picker. Keeps a value that is no longer in Rep Master (old
+ *  documents) selectable instead of silently blanking it. */
+function RepSelect({ value, onChange, reps }: { value: string; onChange: (v: string) => void; reps: any[] }) {
+  const names: string[] = reps.map((r) => r.name)
+  return (
+    <Select value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">No rep</option>
+      {value && !names.includes(value) && <option value={value}>{value}</option>}
+      {names.map((n) => <option key={n}>{n}</option>)}
+    </Select>
+  )
+}
+
+function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, profit, post, back, customers, reps, saving, vat, setVat, vatPct, vatAmt, discPct, setDiscPct, discAmt, head, setHead }: { src: any | null; cust: string; setCust: (v: string) => void; lines: EditorLine[]; setLines: (fn: (l: EditorLine[]) => EditorLine[]) => void; total: number; cogs: number; profit: number; post: () => void; back: () => void; customers: any[]; reps: any[]; saving: boolean; vat: boolean; setVat: (v: boolean) => void; vatPct: number; vatAmt: number; discPct: number; setDiscPct: (v: number) => void; discAmt: number; head: InvHead; setHead: (h: InvHead) => void }) {
   const credit = isCredit(head.terms)
   // Customer master credit period (days) is the default for a credit sale.
   const custDays = (name: string) => { const c = customers.find((x) => x.name === name); return c?.credit != null ? Number(c.credit) : 30 }
   const pickCust = (name: string) => {
     setCust(name)
-    if (credit) { const d = custDays(name); setHead({ ...head, creditDays: d, dueDate: addDays(head.date, d) }) }
+    // The customer's assigned rep becomes the invoice rep (can be changed).
+    const next = { ...head, rep: customers.find((x) => x.name === name)?.rep || head.rep }
+    if (credit) { const d = custDays(name); next.creditDays = d; next.dueDate = addDays(head.date, d) }
+    setHead(next)
   }
   const pickTerms = (t: string) => {
     if (isCredit(t) && !credit) { const d = custDays(cust); setHead({ ...head, terms: t, creditDays: d, dueDate: addDays(head.date, d) }) }
@@ -126,8 +150,9 @@ function InvoiceBuilder({ src, cust, setCust, lines, setLines, total, cogs, prof
           <Btn variant="primary" icon="check" onClick={post} disabled={!cust || !lines.length || saving || !head.date || badDue}>{saving ? 'Posting…' : 'Post Invoice'}</Btn></>} />
       <div className="inv-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
         <Card>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 18 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 18 }}>
             <Field label="Customer"><Select value={cust} onChange={(e) => pickCust(e.target.value)}><option value="">Select…</option>{customers.map((c) => <option key={c.id}>{c.name}</option>)}</Select></Field>
+            <Field label="Sales Rep"><RepSelect value={head.rep} onChange={(v) => setHead({ ...head, rep: v })} reps={reps} /></Field>
             <Field label="Invoice Date"><DateInput value={head.date} onChange={pickDate} /></Field>
             <Field label="Payment"><Select value={head.terms} onChange={(e) => pickTerms(e.target.value)}>{PAY_TERMS.map((p) => <option key={p}>{p}</option>)}</Select></Field>
           </div>
@@ -197,7 +222,8 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   const [saving, setSaving] = useState(false)
   const [vat, setVat] = useState(false); const [vatPct, setVatPct] = useState(18)
   const [discPct, setDiscPct] = useState(0)
-  const newHead = (): InvHead => ({ date: todayIso(), terms: 'Cash', creditDays: 30, dueDate: addDays(todayIso(), 30) })
+  const [reps, setReps] = useState<any[]>([])
+  const newHead = (rep = ''): InvHead => ({ date: todayIso(), terms: 'Cash', creditDays: 30, dueDate: addDays(todayIso(), 30), rep })
   const [head, setHead] = useState<InvHead>(newHead)
   const [payFor, setPayFor] = useState<Invoice | null>(null)
   const [payAmt, setPayAmt] = useState(''); const [payMode, setPayMode] = useState('Cash'); const [payRef, setPayRef] = useState(''); const [paying, setPaying] = useState(false)
@@ -210,6 +236,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   useEffect(() => {
     refresh()
     api.customers.list().then((d) => setCustomers(d as any)).catch(() => {})
+    api.reps.list().then((d) => setReps(d as any)).catch(() => {})
     companyApi.get().then((d: any) => { if (d?.vatPct != null) setVatPct(Number(d.vatPct)) }).catch(() => {})
   }, [])
 
@@ -235,7 +262,9 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
   const fromQuote = (q: any) => {
     setSrc(q); setCust(q.customer)
     const picks: EditorLine[] = (q.lines || []).map((l: any) => ({ id: l.id || l.itemId, code: l.code, name: l.name, qty: l.qty, rate: l.rate, fifo: l.fifo || l.rate, avg: l.avg || l.rate, method: 'FIFO', cost: l.avg || l.rate }))
-    setLines(picks); setVat(false); setDiscPct(0); setHead(newHead()); setStep(2)
+    // The quotation's rep carries over; otherwise the customer's assigned rep.
+    const qRep = q.rep || customers.find((c) => c.name === q.customer)?.rep || ''
+    setLines(picks); setVat(false); setDiscPct(0); setHead(newHead(qRep)); setStep(2)
   }
   const blank = () => { setSrc(null); setCust(''); setLines([]); setVat(false); setDiscPct(0); setHead(newHead()); setStep(2) }
   const total = lines.reduce((a, l) => a + l.qty * l.rate, 0)
@@ -248,7 +277,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
     setSaving(true)
     try {
       await api.invoices.create({
-        customer: cust, rep: 'R. Fernando', date: head.date,
+        customer: cust, rep: head.rep || null, date: head.date,
         ...(src?.code ? { quotation: src.code } : {}),
         terms: head.terms,
         ...(isCredit(head.terms) ? { creditDays: head.creditDays, dueDate: head.dueDate } : {}),
@@ -262,7 +291,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
     } finally { setSaving(false) }
   }
 
-  if (step === 2) return <InvoiceBuilder {...{ src, cust, setCust, lines, setLines, total, cogs, profit, post, back: () => setStep(0), customers, saving, vat, setVat, vatPct, vatAmt, discPct, setDiscPct, discAmt, head, setHead }} />
+  if (step === 2) return <InvoiceBuilder {...{ src, cust, setCust, lines, setLines, total, cogs, profit, post, back: () => setStep(0), customers, reps, saving, vat, setVat, vatPct, vatAmt, discPct, setDiscPct, discAmt, head, setHead }} />
   const shown = rows
   return (
     <div>

@@ -7,6 +7,7 @@ import { api } from '../api'
 import { categories as catSeed, money, moneyK } from '../data'
 import { useBranches } from '../hooks'
 import type { Go } from './types'
+import { downloadXls, downloadXlsSections, stamp } from '../lib/exportXls'
 
 function SalesReport({ invoices }: { invoices: any[] }) {
   const total = invoices.reduce((a, r) => a + (r.total || 0), 0)
@@ -93,6 +94,41 @@ export default function ReportsScreen({ go: _go }: { go: Go }) {
     api.items.list().then((d) => setItems(d as any)).catch(() => {})
   }, [])
 
+  /** Export the report that is currently open. */
+  const exportActive = () => {
+    const f = (name: string) => `${name}_${stamp()}.xls`
+    if (active === 'sales') {
+      const total = invoices.reduce((a, r) => a + (r.total || 0), 0)
+      downloadXlsSections(f('Sales_Summary'), [
+        { title: 'Sales Summary', headers: ['Metric', 'Value'], rows: [
+          ['Total Sales', total], ['Invoices', invoices.length],
+          ['Avg Invoice', invoices.length ? Math.round(total / invoices.length) : 0],
+          ['Receivables', invoices.reduce((a, r) => a + (r.due || 0), 0)],
+        ] },
+        { title: 'Invoices', headers: ['Invoice No', 'Date', 'Customer', 'Rep', 'Terms', 'Total', 'Paid', 'Due', 'Status'],
+          rows: invoices.map((r) => [r.code || r.id, r.date || '', r.customer, r.rep || '', r.terms || '', r.total || 0, r.paid || 0, r.due || 0, r.status || '']) },
+      ])
+    } else if (active === 'salesRep') {
+      downloadXls(f('Sales_by_Rep'), ['Rep', 'Zone', 'Target', 'Achieved', 'Achievement %'],
+        reps.map((r) => [r.name, r.zone || '', r.target || 0, r.achieved || 0, r.target ? Math.round(((r.achieved || 0) / r.target) * 100) : 0]))
+    } else if (active === 'salesCustomer') {
+      const byCust: Record<string, { n: number; total: number; due: number }> = {}
+      invoices.forEach((r) => { const c = (byCust[r.customer] ||= { n: 0, total: 0, due: 0 }); c.n++; c.total += r.total || 0; c.due += r.due || 0 })
+      downloadXls(f('Sales_by_Dealer'), ['Customer', 'Invoices', 'Sales', 'Outstanding'],
+        Object.entries(byCust).sort((a, b) => b[1].total - a[1].total).map(([name, c]) => [name, c.n, c.total, c.due]))
+    } else if (active === 'receivable') {
+      downloadXls(f('Receivables'), ['Customer', 'City', 'Rep', 'Credit Days', 'Credit Limit', 'Outstanding'],
+        customers.filter((c) => (c.outstanding || 0) > 0).sort((a, b) => (b.outstanding || 0) - (a.outstanding || 0))
+          .map((c) => [c.name, c.city || '', c.rep || '', c.credit ?? '', c.limit || 0, c.outstanding || 0]))
+    } else if (active === 'stockVal') {
+      downloadXlsSections(f('Stock_Valuation'), [
+        { title: 'By category', headers: ['Category', 'Value'], rows: catSeed.map((c) => [c, items.filter((i) => i.category === c).reduce((a, i) => a + (i.avgCost || 0) * (i.qty || 0), 0)]) },
+        { title: 'By item', headers: ['Code', 'Item', 'Category', 'Qty', 'Avg Cost', 'Value'],
+          rows: items.filter((i) => (i.qty || 0) > 0).map((i) => [i.code, i.name, i.category || '', i.qty || 0, i.avgCost || 0, (i.avgCost || 0) * (i.qty || 0)]) },
+      ])
+    }
+  }
+
   const cats: { g: string; items: [string, string, string][] }[] = [
     { g: 'Sales', items: [['sales', 'Sales Summary', 'chart'], ['salesRep', 'Sales by Rep', 'target'], ['salesCustomer', 'Sales by Dealer', 'users']] },
     { g: 'Inventory', items: [['stockVal', 'Stock Valuation', 'box']] },
@@ -101,7 +137,7 @@ export default function ReportsScreen({ go: _go }: { go: Go }) {
   return (
     <div>
       <PageHead crumbs="Analytics" title="Reports" icon="chart" sub="Performance, sales, stock & finance reports"
-        actions={<><Btn variant="solid" icon="excel">Export</Btn><Btn variant="solid" icon="print">Print</Btn></>} />
+        actions={<><Btn variant="solid" icon="excel" onClick={exportActive}>Export</Btn><Btn variant="solid" icon="print" onClick={() => window.print()}>Print</Btn></>} />
       <div className="rep-grid" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16, alignItems: 'start' }}>
         <Card pad={0}>
           {cats.map((c) => (

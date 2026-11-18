@@ -8,6 +8,7 @@ import { fmtDate } from '../data'
 import { useBranches } from '../hooks'
 import type { EditorLine, Item } from '../types'
 import type { Go } from './types'
+import { downloadXls, stamp } from '../lib/exportXls'
 
 /**
  * Stock for one Branch Master column. Stock is only tracked per item (qty) —
@@ -29,10 +30,14 @@ export function LiveStockScreen({ go }: { go: Go }) {
   useEffect(() => { api.items.list().then((d) => setItems(d as any)).finally(() => setLoading(false)) }, [])
 
   const f = items.filter((i) => (!q || (i.name + i.code).toLowerCase().includes(q.toLowerCase())) && (!stat || i.status === stat))
+  const statusLabel = (s: string) => s === 'out' ? 'Out' : s === 'low' ? 'Low' : 'In Stock'
+  const exportStock = () => downloadXls(`Live_Stock_${stamp()}.xls`,
+    ['Code', 'Item', 'Rack', ...branches, 'Total', 'Reorder', 'Status'],
+    f.map((i) => [i.code, i.name, i.rack || '', ...branches.map((b) => branchQty(i, b, branches.length) ?? ''), i.qty, i.reorder, statusLabel(i.status)]))
   return (
     <div>
       <PageHead crumbs="Stores" title="Live Stock" icon="box" sub="Real-time stock position across all branches"
-        actions={<><Btn variant="solid" icon="excel">Export</Btn><Btn variant="primary" icon="swap" onClick={() => go('st/transfer')}>Transfer</Btn></>} />
+        actions={<><Btn variant="solid" icon="excel" onClick={exportStock} disabled={loading || !f.length}>Export</Btn><Btn variant="primary" icon="swap" onClick={() => go('st/transfer')}>Transfer</Btn></>} />
       <div className="stat-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 18 }}>
         {([
           { icon: 'box', label: 'Total SKUs', value: items.length, c: 'ac' },
@@ -246,7 +251,9 @@ export function PriceScreen({ go: _go }: { go: Go }) {
   return (
     <div>
       <PageHead crumbs="Stores" title="Price Control" icon="tag" sub="Manage selling prices and margins"
-        actions={<Btn variant="solid" icon="excel">Export Price List</Btn>} />
+        actions={<Btn variant="solid" icon="excel" disabled={loading || !rows.length} onClick={() => downloadXls(`Price_List_${stamp()}.xls`,
+          ['Code', 'Item', 'Avg Cost', 'FIFO Cost', 'Selling Price', 'Margin %'],
+          rows.map((i) => [i.code, i.name, i.avgCost || 0, i.fifoCost || 0, i.price || 0, i.price ? Math.round(((i.price - (i.avgCost || 0)) / i.price) * 100) : 0]))}>Export Price List</Btn>} />
       <Card pad={0}>
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
         <Table cols={[{ label: 'Code' }, { label: 'Item' }, { label: 'Avg Cost', align: 'right' }, { label: 'FIFO Cost', align: 'right' }, { label: 'Selling Price', align: 'right' }, { label: 'Margin', align: 'right' }, { label: '', align: 'right', w: 100 }]}

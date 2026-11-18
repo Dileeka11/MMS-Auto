@@ -48,6 +48,9 @@ export interface Customer {
   rep: string
   status: 'ok' | 'risk'
   taxNo?: string   // TIN / VAT no — shown on tax invoices
+  brNo?: string | null       // Business Registration no
+  brDoc?: string | null      // attachment path: BR copy
+  shopPhoto?: string | null  // attachment path: shop photo
   address?: string
 }
 
@@ -71,6 +74,7 @@ export interface PurchaseOrder {
   date: string; lines: POLine[]; total: number; status: string;
   piNumber?: string; piDate?: string; orderRequiredMonth?: string; paymentTerms?: string; incoTerms?: string;
   currency?: string; notes?: string; shipments?: Shipment[];
+  quotationDoc?: string | null; // attachment path: supplier quotation (PDF / image)
   approver1Id?: number | null; approver1At?: string | null; approver1?: { id: number; name: string } | null;
   approver2Id?: number | null; approver2At?: string | null; approver2?: { id: number; name: string } | null;
   rejectedById?: number | null; rejectedAt?: string | null; rejectReason?: string | null;
@@ -175,6 +179,7 @@ export interface Receipt {
 }
 export interface Expense {
   id: string; type: string; date: string; amount: number; branch: string; note: string
+  attachment?: string | null // attachment path: bill / receipt
 }
 
 export interface MonthlyPoint { m: string; sales: number; purchase: number; profit: number }

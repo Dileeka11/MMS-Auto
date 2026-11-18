@@ -6,6 +6,7 @@ import { AreaChart, Donut, Spark, ProgressRow } from '../components/charts'
 import { api, type AuthUser } from '../api'
 import { moneyK, moneyCur, moneyShort, fmtDate } from '../data'
 import type { Go } from './types'
+import { downloadXlsSections, stamp } from '../lib/exportXls'
 
 function KPI({ icon, label, value, delta, up, spark, sparkColor, tone = 'blue' }: { icon: string; label: string; value: string; delta?: string; up?: boolean; spark?: number[]; sparkColor?: string; tone?: 'blue' | 'green' | 'amber' | 'red' }) {
   const tc = { blue: 'var(--ac-bright)', green: 'var(--ok)', amber: 'var(--warn)', red: 'var(--bad)' }[tone]
@@ -123,7 +124,19 @@ export default function DashScreen({ go, user }: { go: Go; user?: AuthUser | nul
   return (
     <div>
       <PageHead crumbs="Overview" title="Dashboard" sub={user?.branch ? `${today} · ${user.branch}` : today}
-        actions={<><Btn variant="solid" size="md" icon="download">Export</Btn><Btn variant="primary" size="md" icon="plus" onClick={() => go('dc/invoice')}>New Invoice</Btn></>} />
+        actions={<><Btn variant="solid" size="md" icon="download" onClick={() => downloadXlsSections(`Dashboard_${stamp()}.xls`, [
+          { title: 'Key figures', headers: ['Metric', 'Value'], rows: [
+            ['Sales · this month', kpis.salesMonth || 0], ['Gross profit · this month', kpis.grossProfit || 0],
+            ['Receivables', kpis.receivables || 0], ['Stock value', kpis.stockValue || 0],
+            ['Total SKUs', kpis.totalSkus || 0], ['Out of stock', kpis.outOfStock || 0], ['Low stock', kpis.lowStock || 0],
+            ['Pending returns', data.pendingReturns || 0],
+          ] },
+          { title: 'Sales · 12 months', headers: ['Month', 'Sales'], rows: trend.map((t) => [t.label, t.value]) },
+          { title: 'Stock by category', headers: ['Category', 'Value'], rows: catData.map((c) => [c.label, c.value]) },
+          { title: 'Sales reps', headers: ['Rep', 'Target', 'Achieved', '%'], rows: reps.map((r: any) => [r.name, r.target || 0, r.achieved || 0, Math.round(((r.achieved || 0) / (r.target || 1)) * 100)]) },
+          { title: 'Low / out of stock', headers: ['Code', 'Item', 'Qty', 'Unit', 'Status'], rows: lowStock.map((i: any) => [i.code, i.name, i.qty, i.unit || '', i.status === 'out' ? 'Out' : 'Low']) },
+          { title: 'Top value items', headers: ['Item', 'Brand', 'Category', 'Value'], rows: topItems.map((i: any) => [i.name, i.brand || '', i.category || '', (i.price || 0) * (i.qty || 0)]) },
+        ])}>Export</Btn><Btn variant="primary" size="md" icon="plus" onClick={() => go('dc/invoice')}>New Invoice</Btn></>} />
 
       {user?.role === 'admin' && data.pending && <PendingApprovals pending={data.pending} go={go} />}
 

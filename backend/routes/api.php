@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AccountGroupController;
 use App\Http\Controllers\Api\AccountingStatsController;
 use App\Http\Controllers\Api\AccountMappingController;
+use App\Http\Controllers\Api\AttachmentController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CashBookController;
 use App\Http\Controllers\Api\CompanyProfileController;
@@ -91,6 +92,10 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
 
     Route::get('dashboard', [DashboardController::class, 'index']);
+
+    // Supporting documents (BR copy, shop photo, PO quotation, expense bill)
+    Route::post('attachments', [AttachmentController::class, 'store']);
+    Route::get('attachments', [AttachmentController::class, 'show']);
 
     // Master files
     Route::get('items/next-code', function () {

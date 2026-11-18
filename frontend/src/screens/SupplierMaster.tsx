@@ -6,9 +6,9 @@ import { api } from '../api'
 import type { Supplier } from '../types'
 import type { Go } from './types'
 import { downloadXls } from './ItemMaster'
+import { PaymentTermsInput } from '../components/PaymentTerms'
 
 const CURRENCIES = ['USD', 'LKR', 'EUR', 'JPY', 'GBP', 'CNY', 'INR']
-const PAYMENT_TERMS = ['100% TT in advance', 'DP at sight', 'DA 30 Days', 'DA 60 Days', 'LC at sight']
 
 type FormState = Partial<Supplier> & Record<string, any>
 
@@ -125,9 +125,7 @@ export function SupplierMasterScreen({ go: _go }: { go: Go }) {
             </Select>
           </Field>
           <Field label="Payment Terms">
-            <Select value={form.paymentTerms || 'DA 30 Days'} onChange={(e) => set('paymentTerms', e.target.value)}>
-              {PAYMENT_TERMS.map((t) => <option key={t}>{t}</option>)}
-            </Select>
+            <PaymentTermsInput value={form.paymentTerms ?? 'DA 30 Days'} onChange={(v) => set('paymentTerms', v)} maxLength={32} />
           </Field>
           <Field label="Status">
             <Select value={form.status || 'Active'} onChange={(e) => set('status', e.target.value)}>

@@ -142,6 +142,53 @@ export const company = {
   },
 }
 
+/* ---------- attachments (BR copy, shop photo, PO quotation, expense bill) ----------
+   Files are private on the server: upload returns a `path` to save on the
+   record, and viewing fetches the file with the bearer token. Photos are
+   shrunk in the browser first so phone pictures stay well under PHP's
+   upload limit. */
+export type AttachmentFolder = 'customers' | 'purchase-orders' | 'expenses'
+
+async function shrinkImage(file: File, maxSide = 1800, quality = 0.82): Promise<File> {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 400_000) return file
+  try {
+    const bmp = await createImageBitmap(file)
+    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale)
+    canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height)
+    bmp.close()
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', quality))
+    if (!blob || blob.size >= file.size) return file
+    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' })
+  } catch { return file }
+}
+
+export const attachments = {
+  upload: async (file: File, folder: AttachmentFolder) => {
+    const fd = new FormData()
+    fd.append('file', await shrinkImage(file))
+    fd.append('folder', folder)
+    const r = await http.post('/attachments', fd, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120_000 })
+    return r.data as { path: string; name: string }
+  },
+  /** Open a stored attachment in a new tab. The tab is opened synchronously
+   *  (before the download) so popup blockers allow it. */
+  open: async (path: string) => {
+    const w = window.open('', '_blank')
+    try {
+      const r = await http.get('/attachments', { params: { path }, responseType: 'blob', timeout: 120_000 })
+      const url = URL.createObjectURL(r.data as Blob)
+      if (w) w.location.href = url
+      else window.location.href = url
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (e) {
+      w?.close()
+      throw e
+    }
+  },
+}
+
 export const api = {
   items: {
     ...resource('items'),

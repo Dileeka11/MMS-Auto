@@ -4,18 +4,14 @@ import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td } fr
 import { Icon } from '../components/Icon'
 import { api } from '../api'
 import { useNotify } from '../components/Notify'
+import { AttachmentField, AttachmentLink } from '../components/Attachment'
 import { brands as brandSeed, categories as catSeed, groups as grpSeed, money } from '../data'
 import { parseItemMasterExcel, downloadItemMasterTemplate, parsePriceUpdateExcel, downloadPriceUpdateTemplate } from '../excel'
 import type { Item, Customer } from '../types'
 import type { Go } from './types'
+import { downloadXls } from '../lib/exportXls'
 
-export function downloadXls(filename: string, headers: string[], rows: (string | number)[][]) {
-  let html = '<table><thead><tr>' + headers.map((h) => `<th>${h}</th>`).join('') + '</tr></thead><tbody>'
-  rows.forEach((r) => { html += '<tr>' + r.map((c) => `<td>${c}</td>`).join('') + '</tr>' })
-  html += '</tbody></table>'
-  const blob = new Blob(['﻿<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body>' + html + '</body></html>'], { type: 'application/vnd.ms-excel' })
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click()
-}
+export { downloadXls } from '../lib/exportXls'
 
 export function ItemMasterScreen({ go }: { go: Go }) {
   const notify = useNotify()
@@ -261,22 +257,32 @@ export function ItemMasterScreen({ go }: { go: Go }) {
 }
 
 export function CustomerMasterScreen({ go: _go }: { go: Go }) {
+  const notify = useNotify()
   const [rows, setRows] = useState<Customer[]>([])
   const [reps, setReps] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState(''); const [modal, setModal] = useState<null | 'add' | 'edit'>(null); const [form, setForm] = useState<any>({})
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(0)
+  const onBusy = (b: boolean) => setUploading((n) => Math.max(0, n + (b ? 1 : -1)))
 
   const refresh = () => { setLoading(true); api.customers.list().then((d) => setRows(d as any)).finally(() => setLoading(false)) }
   useEffect(() => { refresh(); api.reps.list().then((d) => setReps(d as any)).catch(() => {}) }, [])
 
   const open = (r?: Customer) => { setForm(r || { credit: 30, status: 'ok' }); setModal(r ? 'edit' : 'add') }
+  // New customers must be registered with a BR copy and a shop photo.
+  const missingDocs = modal === 'add' && (!form.brDoc || !form.shopPhoto)
   const save = async () => {
+    if (!form.name?.trim()) { notify.error('Customer name is required'); return }
+    if (missingDocs) { notify.error('Documents required', 'Attach the BR copy and a photo of the shop.'); return }
     setSaving(true)
     try {
       if (modal === 'add') await api.customers.create({ ...form, outstanding: 0 })
       else await api.customers.update(form.id, form)
       setModal(null); refresh()
+    } catch (e: any) {
+      const d = e?.response?.data
+      notify.error('Customer not saved', (d?.errors && (Object.values(d.errors)[0] as string[])?.[0]) || d?.message || 'Please try again.')
     } finally { setSaving(false) }
   }
   const remove = async (id: any) => {
@@ -289,7 +295,7 @@ export function CustomerMasterScreen({ go: _go }: { go: Go }) {
   return (
     <div>
       <PageHead crumbs="Master Files" title="Customer Master" icon="users" sub={`${rows.length} customers · ${money(totalOut)} total outstanding`}
-        actions={<><Btn variant="solid" icon="excel" onClick={() => downloadXls('Customers.xls', ['ID', 'Name', 'Contact', 'City', 'Credit Days', 'Limit', 'Rep'], f.map((c) => [c.id, c.name, c.contact, c.city, c.credit, c.limit, c.rep]))}>Export</Btn><Btn variant="primary" icon="plus" onClick={() => open()}>Add Customer</Btn></>} />
+        actions={<><Btn variant="solid" icon="excel" onClick={() => downloadXls('Customers.xls', ['ID', 'Name', 'Contact', 'City', 'BR No', 'Tax No', 'Credit Days', 'Limit', 'Outstanding', 'Rep'], f.map((c) => [c.id, c.name, c.contact || '', c.city || '', c.brNo || '', c.taxNo || '', c.credit, c.limit, c.outstanding || 0, c.rep || '']))}>Export</Btn><Btn variant="primary" icon="plus" onClick={() => open()}>Add Customer</Btn></>} />
       <Card pad={0}>
         <div className="row gap-2" style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)' }}>
           <div className="row gap-2" style={{ background: 'var(--bg-3)', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', padding: '7px 12px', width: 320, maxWidth: '60vw' }}>
@@ -297,7 +303,7 @@ export function CustomerMasterScreen({ go: _go }: { go: Go }) {
           </div>
         </div>
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> : (
-        <Table cols={[{ label: 'ID', w: 80 }, { label: 'Customer' }, { label: 'City' }, { label: 'Contact' }, { label: 'Rep' }, { label: 'Credit', align: 'center' }, { label: 'Limit', align: 'right' }, { label: 'Outstanding', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 90 }]}
+        <Table cols={[{ label: 'ID', w: 80 }, { label: 'Customer' }, { label: 'City' }, { label: 'Contact' }, { label: 'Rep' }, { label: 'Credit', align: 'center' }, { label: 'Limit', align: 'right' }, { label: 'Outstanding', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 150 }]}
           rows={f}
           render={(c) => <>
             <Td mono c="var(--tx-2)">{c.id}</Td>
@@ -316,13 +322,15 @@ export function CustomerMasterScreen({ go: _go }: { go: Go }) {
               )}
             </Td>
             <Td align="right"><div className="row gap-1" style={{ justifyContent: 'flex-end' }}>
+              <AttachmentLink path={c.brDoc} title="View BR copy" />
+              <AttachmentLink path={c.shopPhoto} title="View shop photo" />
               <button className="mms-act" onClick={() => open(c)}><Icon n="edit" s={15} /></button>
               <button className="mms-act" onClick={() => remove(c.id)}><Icon n="trash" s={15} /></button>
             </div></Td>
           </>} />)}
       </Card>
       <Modal open={!!modal} onClose={() => setModal(null)} width={600} title={(modal === 'add' ? 'Add ' : 'Edit ') + 'Customer'}
-        footer={<><Btn variant="plain" onClick={() => setModal(null)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Btn></>}>
+        footer={<><Btn variant="plain" onClick={() => setModal(null)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save} disabled={saving || uploading > 0 || missingDocs} title={missingDocs ? 'Attach the BR copy and shop photo' : undefined}>{saving ? 'Saving…' : 'Save'}</Btn></>}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <Field label="Customer Name" full><Input value={form.name || ''} onChange={(e) => setForm((s: any) => ({ ...s, name: e.target.value }))} /></Field>
           <Field label="Contact No"><Input value={form.contact || ''} onChange={(e) => setForm((s: any) => ({ ...s, contact: e.target.value }))} /></Field>
@@ -332,6 +340,13 @@ export function CustomerMasterScreen({ go: _go }: { go: Go }) {
           <Field label="Tax No (TIN / VAT)"><Input value={form.taxNo || ''} onChange={(e) => setForm((s: any) => ({ ...s, taxNo: e.target.value }))} /></Field>
           <Field label="Address" full><Input value={form.address || ''} onChange={(e) => setForm((s: any) => ({ ...s, address: e.target.value }))} /></Field>
           <Field label="Credit Limit (Rs)" full><Input type="number" value={form.limit || ''} onChange={(e) => setForm((s: any) => ({ ...s, limit: e.target.value }))} /></Field>
+          <div className="eyebrow" style={{ gridColumn: '1/-1', marginTop: 4 }}>Registration Documents</div>
+          <Field label="BR No"><Input value={form.brNo || ''} onChange={(e) => setForm((s: any) => ({ ...s, brNo: e.target.value }))} placeholder="Business Registration no" /></Field>
+          <div />
+          <AttachmentField label="BR Copy" folder="customers" required={modal === 'add'} hint="Photo or PDF of the BR"
+            value={form.brDoc} onChange={(p) => setForm((s: any) => ({ ...s, brDoc: p }))} onBusy={onBusy} />
+          <AttachmentField label="Shop Photo" folder="customers" required={modal === 'add'} hint="Photo of the shop front"
+            value={form.shopPhoto} onChange={(p) => setForm((s: any) => ({ ...s, shopPhoto: p }))} onBusy={onBusy} />
         </div>
       </Modal>
     </div>

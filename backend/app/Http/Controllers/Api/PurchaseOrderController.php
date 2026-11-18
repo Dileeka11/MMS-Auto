@@ -43,6 +43,7 @@ class PurchaseOrderController extends Controller
             'inco_terms' => 'nullable|string',
             'currency' => 'nullable|string',
             'notes' => 'nullable|string',
+            'quotation_doc' => ['nullable', 'string', AttachmentController::rule('purchase-orders')],
             'lines' => 'required|array|min:1',
             'lines.*.code' => 'required|string',
             'lines.*.hs_code' => 'nullable|string',
@@ -77,6 +78,7 @@ class PurchaseOrderController extends Controller
                 'inco_terms' => $data['inco_terms'] ?? null,
                 'currency' => $data['currency'] ?? 'LKR',
                 'notes' => $data['notes'] ?? null,
+                'quotation_doc' => $data['quotation_doc'] ?? null,
                 'total' => $total,
                 'status' => 'Awaiting Approval',
             ]);
@@ -101,9 +103,12 @@ class PurchaseOrderController extends Controller
 
     public function update(Request $request, PurchaseOrder $purchaseOrder)
     {
+        $request->validate([
+            'quotation_doc' => ['nullable', 'string', AttachmentController::rule('purchase-orders')],
+        ]);
         $purchaseOrder->update($request->only([
             'supplier', 'date', 'status', 'pi_number', 'pi_date', 'order_required_month',
-            'payment_terms', 'inco_terms', 'currency', 'supplier_contact', 'notes',
+            'payment_terms', 'inco_terms', 'currency', 'supplier_contact', 'notes', 'quotation_doc',
         ]));
 
         return $purchaseOrder->load('lines');

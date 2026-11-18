@@ -13,6 +13,8 @@ import { Icon } from '../components/Icon'
 import { StatRow } from '../components/doc'
 import { ApprovalCounter, ApprovalPanel, canApprove as canApproveR, canReject as canRejectR, runApprovalAction } from '../components/Approval'
 import { useNotify } from '../components/Notify'
+import { AttachmentField, openAttachment } from '../components/Attachment'
+import { PaymentTermsInput } from '../components/PaymentTerms'
 import DB from '../data'
 import { api } from '../api'
 import { parsePoExcel, parseCostingExcel, fileToBase64, downloadPoTemplate, downloadCostingTemplate, type ParsedLine, type ParsedCostingLine } from '../excel'
@@ -35,15 +37,15 @@ interface POForm {
   supplier: string; supplierContact: string; date: string;
   piNumber: string; piDate: string; orderRequiredMonth: string;
   paymentTerms: string; incoTerms: string; currency: string; notes: string;
+  quotationDoc: string | null;
 }
 const blankPO = (): POForm => ({
   supplier: '', supplierContact: '', date: today(),
   piNumber: '', piDate: '', orderRequiredMonth: '',
   paymentTerms: 'DA 30 Days', incoTerms: 'FOB',
-  currency: 'USD', notes: '',
+  currency: 'USD', notes: '', quotationDoc: null,
 })
 
-const PAYMENT_TERMS = ['100% TT in advance', 'DP at sight', 'DA 30 Days', 'DA 60 Days', 'LC at sight']
 /** Incoterm used for POs issued to local (Sri Lankan) suppliers. */
 const LOCAL_INCO_TERM = 'Ex-Showroom'
 const INCO_TERMS = [LOCAL_INCO_TERM, 'EXW', 'FCA', 'FOB', 'CIF', 'CFR', 'DAP', 'DDP']
@@ -85,6 +87,7 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
   const [fileName, setFileName] = useState('')
   const [parsing, setParsing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [uploadingDoc, setUploadingDoc] = useState(false)
   const [err, setErr] = useState('')
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [supplierPick, setSupplierPick] = useState(false)
@@ -250,7 +253,7 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
         footer={<>
           <Btn variant="plain" onClick={closeModal}>Cancel</Btn>
           <Btn variant="primary" icon="check" onClick={submit}
-            disabled={!form.supplier || !lines.length || submitting}>
+            disabled={!form.supplier || !lines.length || submitting || uploadingDoc || !form.paymentTerms.trim()}>
             {submitting ? 'Saving…' : 'Save Purchase Order'}
           </Btn>
         </>}>
@@ -276,9 +279,7 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
             </Select>
           </Field>
           <Field label="Payment Terms">
-            <Select value={form.paymentTerms} onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}>
-              {PAYMENT_TERMS.map((t) => <option key={t}>{t}</option>)}
-            </Select>
+            <PaymentTermsInput value={form.paymentTerms} onChange={(v) => setForm((f) => ({ ...f, paymentTerms: v }))} />
           </Field>
           <Field label="Inco Terms">
             <Select value={form.incoTerms} onChange={(e) => setForm({ ...form, incoTerms: e.target.value })}>
@@ -286,6 +287,8 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
             </Select>
           </Field>
           <Field label="Notes"><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Optional" /></Field>
+          <AttachmentField label="Supplier Quotation" folder="purchase-orders" hint="Quotation / PI as PDF or photo"
+            value={form.quotationDoc} onChange={(p) => setForm((f) => ({ ...f, quotationDoc: p }))} onBusy={setUploadingDoc} />
         </div>
 
         <div className="eyebrow" style={{ marginBottom: 10 }}>Items · Excel Upload</div>
@@ -354,6 +357,11 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
               <KV k="Contact" v={view.supplierContact} />
               <KV k="Notes" v={view.notes} />
             </div>
+            {view.quotationDoc && (
+              <div style={{ marginBottom: 16 }}>
+                <Btn variant="solid" size="sm" icon="doc" onClick={() => openAttachment(view.quotationDoc!, (m) => notify.error('Could not open quotation', m))}>View Supplier Quotation</Btn>
+              </div>
+            )}
 
             <ApprovalPanel po={view} />
             <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-m)', overflow: 'hidden' }}>

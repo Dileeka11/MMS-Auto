@@ -5,6 +5,7 @@ import { Icon } from '../components/Icon'
 import { StatRow } from '../components/doc'
 import { api, clearListCache } from '../api'
 import { useNotify } from '../components/Notify'
+import { AttachmentField, AttachmentLink } from '../components/Attachment'
 import { userCan } from '../lib/permissions'
 import { printReceipts } from '../lib/receiptPrint'
 import { money, moneyK, fmtDate } from '../data'
@@ -12,7 +13,7 @@ import { useBranches } from '../hooks'
 import type { SalesReturn, Customer, CashBookAccount } from '../types'
 import type { Go, ScreenProps } from './types'
 
-export function ReturnScreen({ go: _go }: { go: Go }) {
+export function ReturnScreen({ go: _go, user }: ScreenProps) {
   const [rows, setRows] = useState<SalesReturn[]>([])
   const [invoices, setInvoices] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -46,7 +47,7 @@ export function ReturnScreen({ go: _go }: { go: Go }) {
   const raise = async () => {
     try {
       await api.returns.create({
-        invoice: form.invoice, rep: inv?.rep, reason: form.reason, raisedBy: 'R. Fernando',
+        invoice: form.invoice, rep: inv?.rep, reason: form.reason, raisedBy: user?.name || null,
         lines: Object.entries(qtys).filter(([, q]) => parseInt(q) > 0).map(([id, q]) => ({ invoiceLineId: Number(id), qty: parseInt(q) })),
       } as any)
       closeModal(); refresh()
@@ -362,6 +363,7 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false); const [form, setForm] = useState<any>({})
+  const [uploading, setUploading] = useState(false); const [saving, setSaving] = useState(false)
   const [types, setTypes] = useState<any[]>([])
   const [cashAccounts, setCashAccounts] = useState<CashBookAccount[]>([])
   const branches = useBranches()
@@ -375,8 +377,14 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
 
   const save = async () => {
     if (!form.type) { alert('Select an expense type'); return }
-    await api.expenses.create({ type: form.type, date: form.date || new Date().toISOString().slice(0, 10), amount: +form.amount || 0, branch: form.branch || null, note: form.note || '', paymentAccountId: form.paidFrom ? Number(form.paidFrom) : null } as any)
-    setModal(false); setForm({}); refresh()
+    setSaving(true)
+    try {
+      await api.expenses.create({ type: form.type, date: form.date || new Date().toISOString().slice(0, 10), amount: +form.amount || 0, branch: form.branch || null, note: form.note || '', attachment: form.attachment || null, paymentAccountId: form.paidFrom ? Number(form.paidFrom) : null } as any)
+      setModal(false); setForm({}); refresh()
+    } catch (e: any) {
+      const d = e?.response?.data
+      alert((d?.errors && (Object.values(d.errors)[0] as string[])?.[0]) || d?.message || 'Expense not saved')
+    } finally { setSaving(false) }
   }
   const remove = async (id: any) => { if (!confirm('Delete?')) return; await api.expenses.remove(id); refresh() }
 
@@ -392,18 +400,21 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
       ]} />
       <Card pad={0}>
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
-        <Table cols={[{ label: 'Ref' }, { label: 'Type' }, { label: 'Branch' }, { label: 'Date' }, { label: 'Note' }, { label: 'Amount', align: 'right' }, { label: '', align: 'right', w: 60 }]}
+        <Table cols={[{ label: 'Ref' }, { label: 'Type' }, { label: 'Branch' }, { label: 'Date' }, { label: 'Note' }, { label: 'Amount', align: 'right' }, { label: '', align: 'right', w: 90 }]}
           rows={rows}
           render={(r) => <>
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.id}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.type}</Td>
             <Td>{r.branch || '—'}</Td><Td mono>{fmtDate(r.date)}</Td><Td c="var(--tx-2)">{r.note || '—'}</Td>
             <Td align="right" mono c="var(--bad)" style={{ fontWeight: 600 }}>{money(r.amount || 0)}</Td>
-            <Td align="right"><button className="mms-act danger" onClick={() => remove(r.id)}><Icon n="trash" s={15} /></button></Td>
+            <Td align="right"><div className="row gap-1" style={{ justifyContent: 'flex-end' }}>
+              <AttachmentLink path={r.attachment} title="View bill / receipt" />
+              <button className="mms-act danger" onClick={() => remove(r.id)}><Icon n="trash" s={15} /></button>
+            </div></Td>
           </>} />}
       </Card>
       <Modal open={modal} onClose={() => setModal(false)} width={520} title="Add Expense"
-        footer={<><Btn variant="plain" onClick={() => setModal(false)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save}>Save</Btn></>}>
+        footer={<><Btn variant="plain" onClick={() => setModal(false)}>Cancel</Btn><Btn variant="primary" icon="check" onClick={save} disabled={saving || uploading}>{saving ? 'Saving…' : 'Save'}</Btn></>}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <Field label="Expense Type"><Select value={form.type || ''} onChange={(e) => setForm((s: any) => ({ ...s, type: e.target.value }))}><option value="">{types.length ? 'Select…' : 'No expense types — add in Master Files'}</option>{types.map((t) => <option key={t.id} value={t.name}>{t.code ? `${t.code} · ${t.name}` : t.name}</option>)}</Select></Field>
           <Field label="Branch"><Select value={form.branch || ''} onChange={(e) => setForm((s: any) => ({ ...s, branch: e.target.value }))}><option value="">{branches.length ? 'Select…' : 'No branches — add in Master Files'}</option>{branches.map((b) => <option key={b}>{b}</option>)}</Select></Field>
@@ -411,6 +422,8 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
           <Field label="Date"><DateInput value={form.date || ''} onChange={(v) => setForm((s: any) => ({ ...s, date: v }))} /></Field>
           <Field label="Paid From" full><Select value={form.paidFrom || ''} onChange={(e) => setForm((s: any) => ({ ...s, paidFrom: e.target.value }))}><option value="">Cash (default)</option>{cashAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</Select></Field>
           <Field label="Note" full><Input value={form.note || ''} onChange={(e) => setForm((s: any) => ({ ...s, note: e.target.value }))} placeholder="Optional" /></Field>
+          <AttachmentField label="Bill / Receipt" folder="expenses" full hint="Photo or PDF of the bill"
+            value={form.attachment} onChange={(p) => setForm((s: any) => ({ ...s, attachment: p }))} onBusy={setUploading} />
         </div>
       </Modal>
     </div>

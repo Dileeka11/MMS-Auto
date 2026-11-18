@@ -23,6 +23,7 @@ class ExpenseController extends Controller
             'amount' => 'required|numeric|gt:0',
             'branch' => 'nullable|string',
             'note' => 'nullable|string',
+            'attachment' => ['nullable', 'string', AttachmentController::rule('expenses')],
             'date' => 'nullable|date',
             // paid from which Cash Book account (null = Cash)
             'payment_account_id' => ['nullable', 'integer', Rule::exists('accounts', 'id')->where('is_cashbook', 1)->where('is_active', 1)],
