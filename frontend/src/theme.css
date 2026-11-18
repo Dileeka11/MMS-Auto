@@ -171,6 +171,21 @@ input,select,textarea{ font-family:inherit; }
 @keyframes mms-spin{ to{ transform:rotate(360deg); } }
 .mms-spin{ animation: mms-spin .6s linear infinite; }
 
+/* ---- login inputs ---- */
+.mms-login-input{ background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-s);
+  padding: 11px 14px; color: var(--tx-0); font-size: 14px; font-family: 'IBM Plex Sans'; width: 100%; outline: none;
+  transition: border-color .15s, box-shadow .15s; }
+.mms-login-input:focus{ border-color: var(--ac); box-shadow: 0 0 0 3px var(--ac-dim); }
+.mms-login-input:disabled{ opacity: .7; }
+/* Browser autofill paints inputs light blue with black text — keep them on-theme. */
+.mms-login-input:-webkit-autofill,
+.mms-login-input:-webkit-autofill:hover,
+.mms-login-input:-webkit-autofill:focus{
+  -webkit-text-fill-color: var(--tx-0); caret-color: var(--tx-0);
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-2) inset; box-shadow: 0 0 0 1000px var(--bg-2) inset;
+  transition: background-color 9999s ease-out 0s; }
+.mms-login-input:-webkit-autofill:focus{ -webkit-box-shadow: 0 0 0 1000px var(--bg-2) inset, 0 0 0 3px var(--ac-dim); border-color: var(--ac); }
+
 /* ---- preloaders ---- */
 @keyframes mms-shimmer{ from{ background-position: 200% 0; } to{ background-position: -200% 0; } }
 .mms-skel{ display:inline-block; vertical-align:middle; max-width:100%;

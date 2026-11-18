@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Icon } from '../components/Icon'
 import { Btn } from '../components/ui'
 import { apiErrorText, auth, type AuthUser } from '../api'
@@ -11,6 +11,7 @@ export default function Login({ onAuth }: { onAuth: (user: AuthUser) => void }) 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
+  const [capsOn, setCapsOn] = useState(false)
   const [busy, setBusy] = useState(false)
   // e.g. "Your session expired" after an automatic sign-out
   const [err, setErr] = useState<string | null>(() => {
@@ -22,9 +23,10 @@ export default function Login({ onAuth }: { onAuth: (user: AuthUser) => void }) 
 
   async function submit(e: FormEvent) {
     e.preventDefault()
+    if (busy) return
     setBusy(true); setErr(null)
     try {
-      const { token, user } = await auth.login(email.trim(), password)
+      const { token, user } = await auth.login(email.trim().toLowerCase(), password)
       auth.setToken(token)
       localStorage.setItem('mms-route', 'dash')
       onAuth(user)
@@ -36,23 +38,20 @@ export default function Login({ onAuth }: { onAuth: (user: AuthUser) => void }) 
     }
   }
 
-  const input: React.CSSProperties = {
-    background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-s)',
-    padding: '11px 14px', color: 'var(--tx-0)', fontSize: 14, fontFamily: 'IBM Plex Sans', width: '100%', outline: 'none',
-  }
+  const trackCaps = (e: KeyboardEvent<HTMLInputElement>) => setCapsOn(e.getModifierState?.('CapsLock') ?? false)
 
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--bg-1)' }}>
-      <form onSubmit={submit} style={{
-        width: '100%', maxWidth: 380, background: 'var(--bg-2)', border: '1px solid var(--line)',
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--bg-0)' }}>
+      <form onSubmit={submit} noValidate={false} aria-busy={busy} className="fade-in" style={{
+        width: '100%', maxWidth: 380, background: 'var(--bg-1)', border: '1px solid var(--line)',
         borderRadius: 'var(--r-l, 16px)', padding: 28, display: 'flex', flexDirection: 'column', gap: 16,
         boxShadow: '0 30px 60px -30px rgba(0,0,0,0.6)',
       }}>
         <div className="row gap-3" style={{ alignItems: 'center', marginBottom: 4 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--ac)', display: 'grid', placeItems: 'center', color: '#fff', boxShadow: '0 2px 12px -2px var(--ac-line)', overflow: 'hidden' }}>
-            {logoUrl ? <img src={logoUrl} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Icon n="wrench" s={20} />}
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--ac)', display: 'grid', placeItems: 'center', color: '#fff', boxShadow: '0 2px 12px -2px var(--ac-line)', overflow: 'hidden', flexShrink: 0 }}>
+            {logoUrl ? <img src={logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Icon n="wrench" s={20} />}
           </div>
-          <div style={{ lineHeight: 1.2 }}>
+          <div style={{ lineHeight: 1.2, minWidth: 0 }}>
             <div style={{ fontFamily: 'Saira', fontWeight: 800, fontSize: 18 }}>{companyName}</div>
             <div className="eyebrow" style={{ fontSize: 10 }}>Sign in to continue</div>
           </div>
@@ -60,20 +59,27 @@ export default function Login({ onAuth }: { onAuth: (user: AuthUser) => void }) 
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span className="eyebrow" style={{ fontSize: 10 }}>Email</span>
-          <input style={input} type="email" autoComplete="username" value={email}
-            onChange={(e) => setEmail(e.target.value)} required autoFocus />
+          <input className="mms-login-input" type="email" autoComplete="username" inputMode="email"
+            spellCheck={false} autoCapitalize="off" maxLength={190} value={email}
+            onChange={(e) => setEmail(e.target.value)} required autoFocus disabled={busy} />
         </label>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span className="eyebrow" style={{ fontSize: 10 }}>Password</span>
           <div style={{ position: 'relative' }}>
             <input
-              style={{ ...input, paddingRight: 42 }}
+              className="mms-login-input"
+              style={{ paddingRight: 42 }}
               type={showPw ? 'text' : 'password'}
               autoComplete="current-password"
+              maxLength={200}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyUp={trackCaps}
+              onKeyDown={trackCaps}
+              onBlur={() => setCapsOn(false)}
               required
+              disabled={busy}
             />
             <button
               type="button"
@@ -89,19 +95,25 @@ export default function Login({ onAuth }: { onAuth: (user: AuthUser) => void }) 
               <Icon n={showPw ? 'eye-off' : 'eye'} s={18} />
             </button>
           </div>
+          {capsOn && (
+            <span style={{ fontSize: 11.5, color: 'var(--warn)' }}>Caps Lock is on</span>
+          )}
         </label>
 
         {err && (
-          <div style={{ background: 'var(--bad-dim)', color: 'var(--bad)', border: '1px solid var(--bad)',
-            padding: '8px 12px', borderRadius: 'var(--r-s)', fontSize: 12.5 }}>{err}</div>
+          <div role="alert" className="row gap-2" style={{ background: 'var(--bad-dim)', color: 'var(--bad)', border: '1px solid var(--bad)',
+            padding: '9px 12px', borderRadius: 'var(--r-s)', fontSize: 12.5, alignItems: 'flex-start', lineHeight: 1.4 }}>
+            <Icon n="x" s={15} />
+            <span>{err}</span>
+          </div>
         )}
 
-        <Btn variant="primary" size="lg" icon="shield" disabled={busy}>
-          {busy ? 'Signing in...' : 'Sign in'}
+        <Btn type="submit" variant="primary" size="lg" icon="shield" loading={busy}>
+          {busy ? 'Signing in…' : 'Sign in'}
         </Btn>
 
-        <div className="t-2" style={{ fontSize: 11, textAlign: 'center', marginTop: 4 }}>
-          Default admin: <code style={{ fontFamily: 'JetBrains Mono' }}>admin@mms-auto.lk</code> / <code style={{ fontFamily: 'JetBrains Mono' }}>password</code>
+        <div className="t-3" style={{ fontSize: 11, textAlign: 'center', marginTop: 2 }}>
+          Forgot your password? Ask your system administrator to reset it.
         </div>
       </form>
     </div>
