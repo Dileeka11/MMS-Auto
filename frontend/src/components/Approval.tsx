@@ -82,7 +82,7 @@ function Slot({ label, user, at }: { label: string; user?: { name: string } | nu
 
 /** Common error-handling wrapper used for approve/reject API calls.
    Pass `onError` (e.g. notify.error) to surface failures as a toast;
-   falls back to a native alert when no handler is provided. */
+   without one, the app-wide API error toast reports the failure. */
 export async function runApprovalAction<T>(
   fn: () => Promise<T>,
   onError?: (title: string, msg?: string) => void,
@@ -94,7 +94,6 @@ export async function runApprovalAction<T>(
       || ex?.response?.data?.errors?.po?.[0]
       || 'Action failed'
     if (onError) onError('Action failed', msg)
-    else alert(msg)
     return null
   }
 }

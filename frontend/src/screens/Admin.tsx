@@ -1,6 +1,6 @@
 /* NMS-Auto — Administration (API-backed) */
 import { useEffect, useState, useRef } from 'react'
-import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, inputStyle } from '../components/ui'
+import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, inputStyle, PageLoader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { Gauge } from '../components/charts'
 import { api, company as companyApi, permissionsApi, type PermissionMatrix } from '../api'
@@ -40,6 +40,7 @@ export function UsersScreen({ go: _go, user: me }: { go: Go; user?: { id: number
   const save = async () => {
     if (!form.name || !form.email) { setErr('Name and email are required.'); return }
     if (!editing && !form.password) { setErr('Password is required for new users.'); return }
+    if (form.password && form.password.length < 8) { setErr('Password must be at least 8 characters.'); return }
     setBusy(true); setErr('')
     try {
       if (editing) {
@@ -70,7 +71,7 @@ export function UsersScreen({ go: _go, user: me }: { go: Go; user?: { id: number
       <PageHead crumbs="Administration" title="User Management" icon="users" sub={`${rows.length} system users`}
         actions={<Btn variant="primary" icon="plus" onClick={openCreate}>Add User</Btn>} />
       <Card pad={0}>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[{ label: 'User' }, { label: 'Email' }, { label: 'Role', align: 'center' }, { label: 'Branch' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 120 }]}
           rows={rows}
           render={(u) => <>
@@ -107,6 +108,7 @@ export function UsersScreen({ go: _go, user: me }: { go: Go; user?: { id: number
 }
 
 export function PermScreen({ go: _go }: { go: Go }) {
+  const notify = useNotify()
   const [matrix, setMatrix] = useState<PermissionMatrix | null>(null)
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<number | null>(null)
@@ -158,7 +160,7 @@ export function PermScreen({ go: _go }: { go: Go }) {
     } finally { setSaving(false) }
   }
 
-  if (loading || !matrix) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading permissions…</div>
+  if (loading || !matrix) return <PageLoader pad={40} label="Loading permissions…" />
 
   const grid = matrix.matrix[key] || {}
 
@@ -183,7 +185,7 @@ export function PermScreen({ go: _go }: { go: Go }) {
           <span className="t-2" style={{ fontSize: 12.5, marginRight: 6 }}>User:</span>
           <Select
             value={userId ?? ''}
-            onChange={(e) => { if (dirty && !confirm('Discard unsaved changes?')) return; setUserId(Number(e.target.value)); setDirty(false); setMsg(null) }}
+            onChange={async (e) => { const id = Number(e.target.value); if (dirty && !(await notify.confirm({ title: 'Discard unsaved changes?', msg: 'Permission changes for this user have not been saved.', okText: 'Discard', danger: true }))) return; setUserId(id); setDirty(false); setMsg(null) }}
             style={{ minWidth: 260, maxWidth: 360 }}
           >
             {matrix.users.map((u) => <option key={u.id} value={u.id}>{u.name} — {u.email}{u.role === 'admin' ? ' (Admin)' : ''}</option>)}
@@ -233,6 +235,7 @@ export function PermScreen({ go: _go }: { go: Go }) {
 }
 
 export function CompanyScreen({ go: _go, setBrand, setLogoUrl }: { go: Go; setBrand?: (v: string) => void; setLogoUrl?: (v: string) => void }) {
+  const notify = useNotify()
   const [data, setData] = useState<any>({ name: 'NMS-Auto', tagline: 'Spare Parts Distribution', address: '', phone: '', email: '', taxNo: '', currency: 'LKR — Sri Lankan Rupee' })
   const [accent, setAccent] = useState(document.documentElement.dataset.accent || 'blue')
   const [saving, setSaving] = useState(false)
@@ -271,7 +274,7 @@ export function CompanyScreen({ go: _go, setBrand, setLogoUrl }: { go: Go; setBr
         localStorage.setItem('mms-company', JSON.stringify({ ...cached, logoUrl: res.logoUrl }))
       }
     } catch (err) {
-      alert('Logo upload failed')
+      notify.error('Logo upload failed', 'Use a JPG, PNG or WEBP image under 2 MB.')
     } finally {
       setUploadingLogo(false)
     }
@@ -410,7 +413,7 @@ export function RepsScreen({ go: _go }: { go: Go }) {
 
       <Card pad={0}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)' }} className="eyebrow">Sales Representatives</div>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[{ label: 'Rep' }, { label: 'Zone' }, { label: 'App Login' }, { label: 'Target', align: 'right' }, { label: 'Achieved', align: 'right' }, { label: 'Visits', align: 'right' }, { label: 'App', align: 'center' }, { label: '', align: 'right', w: 60 }]}
           rows={rows}
           render={(r) => <>

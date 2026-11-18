@@ -1,6 +1,6 @@
 /* NMS-Auto — Dashboard (API-backed) */
 import { useEffect, useState } from 'react'
-import { Card, PageHead, Btn, Badge } from '../components/ui'
+import { Card, PageHead, Btn, Badge, PageLoader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { AreaChart, Donut, Spark, ProgressRow } from '../components/charts'
 import { api, type AuthUser } from '../api'
@@ -103,7 +103,7 @@ export default function DashScreen({ go, user }: { go: Go; user?: AuthUser | nul
     api.dashboard().then((d) => { setData(d); setLoading(false) }).catch(() => setLoading(false))
   }, [])
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading dashboard…</div>
+  if (loading) return <PageLoader pad={40} label="Loading dashboard…" />
   if (!data) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--bad)' }}>Failed to load dashboard.</div>
 
   const kpis = data.kpis || {}

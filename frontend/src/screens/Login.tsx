@@ -1,18 +1,21 @@
 import { useState, type FormEvent } from 'react'
 import { Icon } from '../components/Icon'
 import { Btn } from '../components/ui'
-import { auth, type AuthUser } from '../api'
+import { apiErrorText, auth, type AuthUser } from '../api'
 
 function loadCachedCompany() {
   try { return JSON.parse(localStorage.getItem('mms-company') || '{}') } catch { return {} }
 }
 
 export default function Login({ onAuth }: { onAuth: (user: AuthUser) => void }) {
-  const [email, setEmail] = useState('admin@mms-auto.lk')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
+  // e.g. "Your session expired" after an automatic sign-out
+  const [err, setErr] = useState<string | null>(() => {
+    try { const r = sessionStorage.getItem('mms-logout-reason'); sessionStorage.removeItem('mms-logout-reason'); return r } catch { return null }
+  })
   const cached = loadCachedCompany()
   const companyName: string = cached.name || 'NMS-Auto'
   const logoUrl: string = cached.logoUrl || ''
@@ -26,10 +29,8 @@ export default function Login({ onAuth }: { onAuth: (user: AuthUser) => void }) 
       localStorage.setItem('mms-route', 'dash')
       onAuth(user)
     } catch (ex: any) {
-      const msg = ex?.response?.data?.message
-        || ex?.response?.data?.errors?.email?.[0]
-        || 'Login failed. Check credentials and try again.'
-      setErr(msg)
+      setErr(apiErrorText(ex, 'Login failed. Check credentials and try again.'))
+      setPassword('')
     } finally {
       setBusy(false)
     }

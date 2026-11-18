@@ -21,7 +21,7 @@ class UserController extends Controller
         $data = $request->validate([
             'name'     => 'required|string|max:255',
             'email'    => 'required|email|unique:users,email',
-            'password' => 'required|string|min:6',
+            'password' => 'required|string|min:8|max:200',
             'role'     => ['required', 'string', Rule::in(Permissions::ROLES)],
             'branch'   => 'nullable|string|max:64',
             'status'   => ['nullable', Rule::in(['Active', 'Inactive'])],
@@ -46,7 +46,7 @@ class UserController extends Controller
         $data = $request->validate([
             'name'     => 'sometimes|string|max:255',
             'email'    => ['sometimes', 'email', Rule::unique('users', 'email')->ignore($user->id)],
-            'password' => 'nullable|string|min:6',
+            'password' => 'nullable|string|min:8|max:200',
             'role'     => ['sometimes', 'string', Rule::in(Permissions::ROLES)],
             'branch'   => 'nullable|string|max:64',
             'status'   => ['nullable', Rule::in(['Active', 'Inactive'])],
@@ -59,6 +59,14 @@ class UserController extends Controller
         if (!empty($data['password'])) $user->password = Hash::make($data['password']);
         $user->save();
 
+        // Deactivated or re-credentialed users lose their open sessions.
+        if ($user->status === 'Inactive' || !empty($data['password']) || $user->wasChanged('role')) {
+            if ($request->user()->id !== $user->id) {
+                $user->tokens()->delete();
+            }
+        }
+        \Illuminate\Support\Facades\Cache::forget("perm:user:{$user->id}");
+
         return $user->only(['id', 'name', 'email', 'role', 'branch', 'status', 'created_at']);
     }
 
@@ -70,6 +78,7 @@ class UserController extends Controller
         if ($user->role === 'admin') {
             return response()->json(['message' => 'Administrator accounts cannot be deleted.'], 422);
         }
+        $user->tokens()->delete();
         $user->delete();
 
         return response()->noContent();

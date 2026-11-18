@@ -1,7 +1,8 @@
 /* NMS-Auto — Master Files (generic CRUD engine + configs), API-backed */
+import { useNotify } from '../components/Notify'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, statusTone, inputStyle } from '../components/ui'
+import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, statusTone, inputStyle, PageLoader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { api } from '../api'
 import DB from '../data'
@@ -41,6 +42,7 @@ export interface MasterCfg {
 }
 
 export function DataModule({ cfg, type }: { cfg: MasterCfg; go?: Go; type?: string }) {
+  const notify = useNotify()
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -73,7 +75,7 @@ export function DataModule({ cfg, type }: { cfg: MasterCfg; go?: Go; type?: stri
     } finally { setSaving(false) }
   }
   const del = async (id: any) => {
-    if (!confirm('Delete this record?')) return
+    if (!(await notify.confirm({ title: 'Delete this record?', msg: 'This cannot be undone.', danger: true }))) return
     if (apiResource) { await apiResource.remove(id); refresh() }
     else setRows((r) => r.filter((x) => x.id !== id))
   }
@@ -93,7 +95,7 @@ export function DataModule({ cfg, type }: { cfg: MasterCfg; go?: Go; type?: stri
           </div>
           <div className="row gap-2"><Btn variant="ghost" size="sm" icon="filter">Filter</Btn>{cfg.extraActions && cfg.extraActions(rows)}</div>
         </div>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[...cfg.cols, { label: '', align: 'right', w: 90 }]} rows={filtered}
           render={(r) => <>
             {cfg.cols.map((c, i) => (

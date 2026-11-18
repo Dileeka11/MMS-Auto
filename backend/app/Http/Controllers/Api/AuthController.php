@@ -55,7 +55,21 @@ class AuthController extends Controller
             ]);
         }
 
+        if (($user->status ?? 'Active') === 'Inactive') {
+            Log::channel('security')->warning('login_inactive', ['user_id' => $user->id, 'ip' => $request->ip()]);
+
+            throw ValidationException::withMessages([
+                'email' => ['This account is inactive. Contact your administrator.'],
+            ])->status(403);
+        }
+
         RateLimiter::clear($key);
+
+        // Drop expired tokens so the table doesn't grow forever.
+        $minutes = (int) config('sanctum.expiration');
+        if ($minutes > 0) {
+            $user->tokens()->where('created_at', '<', now()->subMinutes($minutes))->delete();
+        }
 
         $token = $user->createToken('mms-web')->plainTextToken;
 

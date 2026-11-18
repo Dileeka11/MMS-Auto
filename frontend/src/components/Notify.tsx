@@ -11,7 +11,8 @@ import {
 import type { CSSProperties, ReactNode } from 'react'
 import { Icon } from './Icon'
 import { Btn } from './ui'
-import { api } from '../api'
+import { api, onApiEvent } from '../api'
+import type { ApiEvent } from '../api'
 
 export type AlertKind = 'success' | 'error' | 'warning' | 'info'
 
@@ -61,13 +62,36 @@ const nextId = () => _id++
 async function loadSystemAlerts(): Promise<Omit<AppNotice, 'id' | 'at'>[]> {
   const out: Omit<AppNotice, 'id' | 'at'>[] = []
   try {
-    const d: any = await api.dashboard()
+    const d: any = await api.dashboard({ silent: true })
     const k = d?.kpis || {}
-    if (k.outOfStock > 0) out.push({ kind: 'error', title: 'Out of stock', msg: `${k.outOfStock} items at zero`, route: 'st/live', source: 'stock' })
-    if (k.lowStock > 0) out.push({ kind: 'warning', title: 'Low stock', msg: `${k.lowStock} items below reorder`, route: 'st/live', source: 'stock' })
-    if (d?.pendingReturns > 0) out.push({ kind: 'warning', title: 'Returns awaiting approval', msg: `${d.pendingReturns} pending`, route: 'dc/return', source: 'return' })
+    if (k.outOfStock > 0) out.push({ kind: 'error', title: 'Out of stock', msg: `${k.outOfStock} items at zero`, route: 'st/live', source: 'system' })
+    if (k.lowStock > 0) out.push({ kind: 'warning', title: 'Low stock', msg: `${k.lowStock} items below reorder`, route: 'st/live', source: 'system' })
+    const groups: any[] = d?.pending?.groups || []
+    if (groups.length) {
+      for (const g of groups) {
+        if (g?.needsMe > 0) out.push({ kind: 'info', title: `${g.label} need your action`, msg: `${g.needsMe} waiting`, route: g.route, source: 'system' })
+      }
+    } else if (d?.pendingReturns > 0) {
+      out.push({ kind: 'warning', title: 'Returns awaiting approval', msg: `${d.pendingReturns} pending`, route: 'dc/return', source: 'system' })
+    }
   } catch { /* ignore */ }
   return out
+}
+
+function writeTitle(method: string, url: string): string {
+  if (/\/approve(-discount)?$/.test(url)) return 'Approved'
+  if (/\/reject(-discount)?$/.test(url)) return 'Rejected'
+  if (/\/dispatch$/.test(url)) return 'Dispatched'
+  if (/\/invoice$/.test(url)) return 'Invoice created'
+  if (/\/pay$/.test(url)) return 'Payment recorded'
+  if (method === 'delete') return 'Deleted'
+  if (method === 'put' || method === 'patch') return 'Changes saved'
+  return 'Saved successfully'
+}
+
+/** Remove locally stored notifications (call on logout so the next user starts clean). */
+export function clearStoredNotices() {
+  try { localStorage.removeItem('mms-notices') } catch { /* ignore */ }
 }
 
 /* ---------- persistence ---------- */
@@ -97,18 +121,25 @@ export function NotifyProvider({ children }: { children: ReactNode }) {
   const routerRef = useRef<((r: string) => void) | undefined>(undefined)
   const seeded = useRef(false)
 
-  // refresh system alerts (low/out stock, pending returns) once per session from the live API
+  // System alerts (stock, approvals waiting on this user) from the live API:
+  // on start-up, then every few minutes while the tab is visible. An alert the
+  // user already saw keeps its read flag as long as its text is unchanged.
   useEffect(() => {
     if (seeded.current) return
     seeded.current = true
-    loadSystemAlerts().then((seeds) => {
-      if (!seeds.length) return
+    const refresh = () => !localStorage.getItem('mms-token') ? Promise.resolve() : loadSystemAlerts().then((seeds) => {
       const now = Date.now()
-      setNotices((cur) => [
-        ...seeds.map((n, i) => ({ ...n, id: nextId(), at: now - i * 1000 })),
-        ...cur.filter((n) => n.source === 'action'),
-      ])
+      setNotices((cur) => {
+        const prev = new Map(cur.filter((n) => n.source === 'system').map((n) => [n.title + '|' + n.msg, n]))
+        const sys = seeds.map((n, i) => prev.get(n.title + '|' + n.msg) || { ...n, id: nextId(), at: now - i * 1000 })
+        return [...sys, ...cur.filter((n) => n.source !== 'system' && n.source !== 'stock' && n.source !== 'return')]
+      })
     })
+    refresh()
+    const t = window.setInterval(() => { if (document.visibilityState === 'visible') refresh() }, 3 * 60_000)
+    const onAuth = () => { refresh() }
+    window.addEventListener('mms-auth', onAuth)
+    return () => { window.clearInterval(t); window.removeEventListener('mms-auth', onAuth) }
   }, [])
 
   // persist notices to localStorage on every change
@@ -117,6 +148,10 @@ export function NotifyProvider({ children }: { children: ReactNode }) {
   const removeToast = useCallback((id: number) => {
     setToasts((ts) => ts.filter((t) => t.id !== id))
   }, [])
+
+  // When a screen shows its own toast we skip the automatic one for the same request.
+  const lastScreenToast = useRef<Record<AlertKind, number>>({ success: 0, error: 0, warning: 0, info: 0 })
+  const recentAuto = useRef<Map<string, number>>(new Map())
 
   const toast = useCallback((kind: AlertKind, title: string, msg?: string, ttl = 4200) => {
     const id = nextId()
@@ -128,12 +163,37 @@ export function NotifyProvider({ children }: { children: ReactNode }) {
     setNotices((arr) => [{ ...n, id: nextId(), at: Date.now() }, ...arr])
   }, [])
 
+  /* Automatic toasts for every API call: a short "Saved / Deleted" after a
+     successful write and a readable message after any failure. Delayed a beat
+     so that when the screen shows its own message we don't double up. */
+  useEffect(() => onApiEvent((e: ApiEvent) => {
+    const at = Date.now()
+    window.setTimeout(() => {
+      const last = lastScreenToast.current
+      if (e.type === 'write') {
+        if (last.success >= at || last.info >= at || last.error >= at || last.warning >= at) return
+        const t = writeTitle(e.method, e.url)
+        const key = 'w|' + t
+        if ((recentAuto.current.get(key) || 0) > at - 1500) return
+        recentAuto.current.set(key, at)
+        toast('success', t, undefined, 2600)
+      } else {
+        if (last.error >= at || last.warning >= at) return
+        const key = 'e|' + e.title + '|' + (e.msg || '')
+        if ((recentAuto.current.get(key) || 0) > at - 4000) return
+        recentAuto.current.set(key, at)
+        toast(e.status >= 500 || e.status === 0 ? 'error' : 'warning', e.title, e.msg, 6000)
+        if (e.method !== 'get') push({ kind: 'error', title: e.title, msg: e.msg, source: 'action' })
+      }
+    }, 450)
+  }), [toast, push])
+
   const api = useMemo<NotifyCtx>(() => ({
-    toast,
-    success: (t, m) => { toast('success', t, m); push({ kind: 'success', title: t, msg: m, source: 'action' }) },
-    error: (t, m) => { toast('error', t, m, 6000); push({ kind: 'error', title: t, msg: m, source: 'action' }) },
-    warning: (t, m) => { toast('warning', t, m, 5000); push({ kind: 'warning', title: t, msg: m, source: 'action' }) },
-    info: (t, m) => { toast('info', t, m); push({ kind: 'info', title: t, msg: m, source: 'action' }) },
+    toast: (k, t, m, ttl) => { lastScreenToast.current[k] = Date.now(); toast(k, t, m, ttl) },
+    success: (t, m) => { lastScreenToast.current.success = Date.now(); toast('success', t, m); push({ kind: 'success', title: t, msg: m, source: 'action' }) },
+    error: (t, m) => { lastScreenToast.current.error = Date.now(); toast('error', t, m, 6000); push({ kind: 'error', title: t, msg: m, source: 'action' }) },
+    warning: (t, m) => { lastScreenToast.current.warning = Date.now(); toast('warning', t, m, 5000); push({ kind: 'warning', title: t, msg: m, source: 'action' }) },
+    info: (t, m) => { lastScreenToast.current.info = Date.now(); toast('info', t, m); push({ kind: 'info', title: t, msg: m, source: 'action' }) },
     confirm: (opts) => new Promise<boolean>((resolve) => setConfirms((c) => [...c, { ...opts, resolve }])),
     push,
     notices,

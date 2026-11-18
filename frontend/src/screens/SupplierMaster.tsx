@@ -1,6 +1,7 @@
 /* NMS-Auto — Supplier Master (full CRUD, API-backed) */
+import { useNotify } from '../components/Notify'
 import { useEffect, useState } from 'react'
-import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td } from '../components/ui'
+import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, PageLoader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { api } from '../api'
 import type { Supplier } from '../types'
@@ -13,6 +14,7 @@ const CURRENCIES = ['USD', 'LKR', 'EUR', 'JPY', 'GBP', 'CNY', 'INR']
 type FormState = Partial<Supplier> & Record<string, any>
 
 export function SupplierMasterScreen({ go: _go }: { go: Go }) {
+  const notify = useNotify()
   const [rows, setRows] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -46,7 +48,7 @@ export function SupplierMasterScreen({ go: _go }: { go: Go }) {
     } finally { setSaving(false) }
   }
   const remove = async (id: any) => {
-    if (!confirm('Delete this supplier?')) return
+    if (!(await notify.confirm({ title: 'Delete this supplier?', msg: 'This cannot be undone.', danger: true }))) return
     await (api as any).suppliers.remove(id); refresh()
   }
 
@@ -76,7 +78,7 @@ export function SupplierMasterScreen({ go: _go }: { go: Go }) {
               style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--tx-0)', fontSize: 13, width: '100%' }} />
           </div>
         </div>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> : (
+        {loading ? <PageLoader pad={40} /> : (
           <Table cols={[
             { label: 'Code', w: 90 }, { label: 'Supplier' }, { label: 'Contact' }, { label: 'Email' },
             { label: 'City' }, { label: 'Country' }, { label: 'Terms', align: 'center' },

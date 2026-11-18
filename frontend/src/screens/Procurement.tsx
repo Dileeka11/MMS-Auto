@@ -7,8 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Card, PageHead, Btn, Badge, Field, Input, DateInput, Select, Modal,
-  Table, Td, statusTone, inputStyle,
-} from '../components/ui'
+  Table, Td, statusTone, inputStyle, PageLoader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { StatRow } from '../components/doc'
 import { ApprovalCounter, ApprovalPanel, canApprove as canApproveR, canReject as canRejectR, runApprovalAction } from '../components/Approval'
@@ -222,7 +221,7 @@ export function POScreen({ go, user }: { go: Go; user?: { id: number; role?: str
           { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 150 },
         ]}
           rows={rows}
-          empty={loading ? 'Loading…' : 'No POs yet — click "New Purchase Order".'}
+          loading={loading} empty={'No POs yet — click "New Purchase Order".'}
           render={(r) => <>
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.code || r.id}</Td>
             <Td c="var(--tx-0)" style={{ fontWeight: 600 }}>{r.supplier}</Td>
@@ -632,7 +631,7 @@ export function CostingScreen({ go, user }: { go: Go; user?: { id: number; role?
           { label: '', align: 'right', w: 160 },
         ]}
           rows={shipments}
-          empty={loading ? 'Loading…' : 'No shipments yet — click "New Costing".'}
+          loading={loading} empty={'No shipments yet — click "New Costing".'}
           render={(s) => <>
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{s.code}</Td>
             <Td mono>{s.poCode}</Td>
@@ -1139,7 +1138,7 @@ export function GRNScreen({ go: _go, user }: { go: Go; user?: { id: number; role
           { label: '', align: 'right', w: 160 },
         ]}
           rows={rows}
-          empty={loading ? 'Loading…' : 'No GRNs yet.'}
+          loading={loading} empty={'No GRNs yet.'}
           render={(r) => <>
             <Td mono c="var(--ac-bright)" style={{ fontWeight: 600 }}>{r.id}</Td>
             <Td mono>{r.po}</Td>
@@ -1405,7 +1404,7 @@ export function TrackingScreen({ go: _go }: { go: Go }) {
       ]} />
 
       <Card pad={0}>
-        {loading && <div className="t-2" style={{ padding: 24, textAlign: 'center' }}>Loading…</div>}
+        {loading && <PageLoader pad={24} />}
         {!loading && rows.length === 0 && <div className="t-3" style={{ padding: 24, textAlign: 'center' }}>No matching POs.</div>}
         {!loading && rows.map((r) => (
           <div key={r.poCode} style={{ borderBottom: '1px solid var(--line-soft)', padding: '14px 18px' }}>

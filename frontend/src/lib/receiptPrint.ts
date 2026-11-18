@@ -54,7 +54,8 @@ export async function printReceipts(rows: any[]) {
     <table><thead><tr><th>Receipt No</th><th>Against Invoice</th><th class="r">Amount</th></tr></thead>
       <tbody>${lines}<tr class="total"><td colspan="2">Total Received</td><td class="r">${money(total)}</td></tr></tbody></table>
     <div class="words">${esc(amountInWords(total))}</div>
-    <div class="sign"><div>Received By</div><div>Checked By</div><div>Customer</div></div>
-    <script>window.onload=function(){window.focus();window.print()}</script></body></html>`)
+    <div class="sign"><div>Received By</div><div>Checked By</div><div>Customer</div></div></body></html>`)
   w.document.close()
+  w.focus()
+  setTimeout(() => { try { w.print() } catch { /* window closed */ } }, 300)
 }

@@ -15,10 +15,67 @@ const genReqId = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2) + Date.now().toString(36))
 
+/* ---------- request activity + events (drives preloaders & notifications) ----------
+   Every request bumps a pending counter that the top progress bar and table
+   skeletons subscribe to. Finished writes and failures are published as events
+   that <NotifyProvider> turns into toasts. Pass `silent: true` in the request
+   config to keep a call out of both (background polling, etc.). */
+declare module 'axios' {
+  interface AxiosRequestConfig { silent?: boolean }
+}
+
+export interface ApiActivity { total: number; reads: number }
+type ActivityFn = (a: ApiActivity) => void
+const activity: ApiActivity = { total: 0, reads: 0 }
+const activitySubs = new Set<ActivityFn>()
+export const subscribeActivity = (fn: ActivityFn) => { activitySubs.add(fn); fn({ ...activity }); return () => { activitySubs.delete(fn) } }
+export const getActivity = (): ApiActivity => ({ ...activity })
+const bump = (isRead: boolean, d: 1 | -1) => {
+  activity.total = Math.max(0, activity.total + d)
+  if (isRead) activity.reads = Math.max(0, activity.reads + d)
+  const snap = { ...activity }
+  activitySubs.forEach((fn) => fn(snap))
+}
+
+export type ApiEvent =
+  | { type: 'write'; method: string; url: string }
+  | { type: 'error'; status: number; title: string; msg?: string; method: string; url: string }
+type EventFn = (e: ApiEvent) => void
+const eventSubs = new Set<EventFn>()
+export const onApiEvent = (fn: EventFn) => { eventSubs.add(fn); return () => { eventSubs.delete(fn) } }
+const emit = (e: ApiEvent) => eventSubs.forEach((fn) => fn(e))
+
+/** First human-readable message from a Laravel error response. */
+export function apiErrorText(err: any, fallback = 'Something went wrong'): string {
+  const d = err?.response?.data
+  const first = d?.errors && (Object.values(d.errors)[0] as string[] | undefined)?.[0]
+  if (first) return first
+  if (d?.message && d.message !== 'The given data was invalid.') return d.message
+  if (err?.code === 'ECONNABORTED') return 'The server took too long to respond.'
+  if (err && !err.response && err.message === 'Network Error') return 'Cannot reach the server. Check your connection.'
+  return d?.message || fallback
+}
+
+function errorTitle(status: number, method: string): string {
+  if (!status) return 'Connection problem'
+  if (status === 403) return 'Access denied'
+  if (status === 404) return 'Not found'
+  if (status === 409) return 'Conflict'
+  if (status === 413) return 'File too large'
+  if (status === 422) return method === 'get' ? 'Invalid request' : 'Could not save'
+  if (status === 429) return 'Too many requests'
+  if (status >= 500) return 'Server error'
+  return 'Request failed'
+}
+
 http.interceptors.request.use((cfg) => {
   const t = localStorage.getItem('mms-token')
   if (t) cfg.headers.Authorization = `Bearer ${t}`
   cfg.headers['X-Request-Id'] = genReqId()
+  if (!cfg.silent) {
+    bump((cfg.method || 'get').toLowerCase() === 'get', 1)
+    ;(cfg as any)._tracked = true
+  }
   return cfg
 })
 
@@ -29,21 +86,39 @@ http.interceptors.request.use((cfg) => {
    mutation — correctness over cleverness. */
 const LIST_CACHE_TTL = 30_000
 const listCache = new Map<string, { ts: number; data: any[] }>()
+const listInflight = new Map<string, Promise<any[]>>()
 export const clearListCache = (name?: string) => { if (name) listCache.delete(name); else listCache.clear() }
+
+const untrack = (cfg: any) => {
+  if (cfg?._tracked) { cfg._tracked = false; bump((cfg.method || 'get').toLowerCase() === 'get', -1) }
+}
 
 let unauthorizedHandled = false
 http.interceptors.response.use(
   (r) => {
+    untrack(r.config)
     const m = r.config.method?.toLowerCase()
-    if (m && m !== 'get') listCache.clear()
+    if (m && m !== 'get') {
+      listCache.clear()
+      const url = r.config.url || ''
+      if (!r.config.silent && !/^\/?(login|logout|attachments)\b/.test(url)) emit({ type: 'write', method: m, url })
+    }
     return r
   },
   (err) => {
+    untrack(err?.config)
     const status = err?.response?.status
     if (status === 401 && localStorage.getItem('mms-token') && !unauthorizedHandled) {
       unauthorizedHandled = true
       localStorage.removeItem('mms-token')
+      try { sessionStorage.setItem('mms-logout-reason', 'Your session expired. Please sign in again.') } catch { /* ignore */ }
       window.location.reload()
+    }
+    const cfg = err?.config || {}
+    const url = String(cfg.url || '')
+    if (!axios.isCancel(err) && status !== 401 && !cfg.silent && !/^\/?(login|rep\/login)\b/.test(url)) {
+      const method = String(cfg.method || 'get').toLowerCase()
+      emit({ type: 'error', status: status || 0, method, url, title: errorTitle(status || 0, method), msg: apiErrorText(err) })
     }
     if (status === 429 && import.meta.env.DEV) {
       console.warn('[api] rate limited; retry after', err?.response?.headers?.['retry-after'])
@@ -78,11 +153,18 @@ export function resource<T = any>(name: string) {
     list: () => {
       const hit = listCache.get(name)
       if (hit && Date.now() - hit.ts < LIST_CACHE_TTL) return Promise.resolve(hit.data.slice() as T[])
-      return http.get(`/${name}`).then((r) => {
-        const data = camelize(r.data) as T[]
-        listCache.set(name, { ts: Date.now(), data: data as any[] })
-        return (data as any[]).slice() as T[]
-      })
+      // Share one request between callers that ask at the same moment
+      // (e.g. several dropdown hooks loading branches on the same screen).
+      let p = listInflight.get(name)
+      if (!p) {
+        p = http.get(`/${name}`).then((r) => {
+          const data = camelize(r.data) as any[]
+          listCache.set(name, { ts: Date.now(), data })
+          return data
+        }).finally(() => listInflight.delete(name))
+        listInflight.set(name, p)
+      }
+      return p.then((d) => d.slice() as T[])
     },
     get: (id: string | number) => http.get(`/${name}/${id}`).then((r) => camelize(r.data) as T),
     create: (body: Partial<T>) => http.post(`/${name}`, snakeize(body)).then((r) => camelize(r.data) as T),
@@ -122,7 +204,7 @@ export const auth = {
   login: (email: string, password: string) =>
     http.post<{ token: string; user: AuthUser }>('/login', { email, password }).then((r) => r.data),
   me: () => http.get<AuthUser>('/me').then((r) => r.data),
-  logout: () => http.post('/logout').then((r) => r.data),
+  logout: () => http.post('/logout', null, { silent: true }).then((r) => r.data),
   setToken: (t: string | null) => {
     if (t) localStorage.setItem('mms-token', t)
     else localStorage.removeItem('mms-token')
@@ -292,7 +374,7 @@ export const api = {
         http.post(`/accounting/financial-years/${id}/opening-balances`, snakeize({ balances })).then((r) => r.data),
     },
   },
-  dashboard: () => http.get('/dashboard').then((r) => camelize(r.data)),
+  dashboard: (opts: { silent?: boolean } = {}) => http.get('/dashboard', { silent: opts.silent }).then((r) => camelize(r.data)),
   approveReturn: (id: string | number) => http.post(`/sales-returns/${id}/approve`).then((r) => camelize(r.data)),
   rejectReturn: (id: string | number) => http.post(`/sales-returns/${id}/reject`).then((r) => camelize(r.data)),
 }

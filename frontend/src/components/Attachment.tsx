@@ -18,7 +18,7 @@ const errText = (e: any) => {
 
 /** Open a saved attachment; reports failures through `onError`. */
 export function openAttachment(path: string, onError?: (msg: string) => void) {
-  attachments.open(path).catch((e) => onError ? onError(errText(e)) : alert(errText(e)))
+  attachments.open(path).catch((e) => { if (onError) onError(errText(e)) /* else: shown by the app-wide API error toast */ })
 }
 
 export function AttachmentField({ label, folder, value, onChange, required, full, hint, onBusy }: {

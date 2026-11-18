@@ -138,6 +138,9 @@ export async function printInvoice(r: Invoice) {
   const body = r.vatApplied ? taxHtml(r, co, cu) : normalHtml(r, co)
   w.document.open()
   w.document.write(`<!doctype html><html><head><title>${r.vatApplied ? 'Tax Invoice' : 'Invoice'} ${esc((r.vatApplied && r.taxInvoiceNo) || r.code || r.id)}</title><meta charset="utf-8"></head>
-    <body>${body}<script>window.onload=function(){window.focus();window.print()}</script></body></html>`)
+    <body>${body}</body></html>`)
   w.document.close()
+  // Print from the opener: inline <script> in the popup would be blocked by the CSP.
+  w.focus()
+  setTimeout(() => { try { w.print() } catch { /* window closed */ } }, 300)
 }

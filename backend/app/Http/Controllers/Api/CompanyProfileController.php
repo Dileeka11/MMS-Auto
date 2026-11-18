@@ -48,7 +48,8 @@ class CompanyProfileController extends Controller
     public function uploadLogo(Request $request)
     {
         $request->validate([
-            'logo' => 'required|image|max:2048',
+            // No SVG: it is served from the public disk and can carry script.
+            'logo' => 'required|file|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
         $path = $request->file('logo')->store('logos', 'public');

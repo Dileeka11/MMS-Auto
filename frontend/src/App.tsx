@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import type { ComponentType } from 'react'
 import { Sidebar, Topbar } from './components/Shell'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { PageLoader, Spinner, TopProgress } from './components/ui'
 import DB from './data'
 import type { Go, ScreenProps } from './screens/types'
 import Login from './screens/Login'
@@ -58,10 +59,17 @@ type ScreenComp = ComponentType<ScreenProps & { setBrand?: (v: string) => void; 
 
 // Shown only for the split-second a screen chunk is downloading on first visit.
 function ScreenLoader() {
+  return <PageLoader label="Loading screen…" />
+}
+
+// Full-page splash while the saved session is being verified on start-up.
+function BootSplash() {
+  let name = 'NMS-Auto'
+  try { name = JSON.parse(localStorage.getItem('mms-company') || '{}').name || name } catch { /* ignore */ }
   return (
-    <div className="row center" style={{ padding: 80, color: 'var(--tx-3)', gap: 10 }}>
-      <span className="mms-spin" style={{ width: 18, height: 18, border: '2px solid var(--line)', borderTopColor: 'var(--ac)', borderRadius: '50%', display: 'inline-block' }} />
-      <span style={{ fontSize: 13 }}>Loading…</span>
+    <div className="col center fade-in" style={{ minHeight: '100vh', gap: 16, background: 'var(--bg-0)' }}>
+      <div style={{ fontFamily: 'Saira', fontWeight: 700, fontSize: 22, color: 'var(--tx-0)', letterSpacing: '-0.01em' }}>{name}</div>
+      <div className="row gap-2" style={{ color: 'var(--tx-3)', fontSize: 13 }}><Spinner s={16} /> Signing you in…</div>
     </div>
   )
 }
@@ -135,7 +143,10 @@ export default function App() {
       .finally(() => setAuthReady(true))
   }, [])
 
-  if (!authReady) return null
+  // Let the notification centre load this user's alerts right after sign-in.
+  useEffect(() => { if (user) window.dispatchEvent(new Event('mms-auth')) }, [user])
+
+  if (!authReady) return <BootSplash />
   if (!user) return <Login onAuth={setUser} />
 
   // Permission gate: silently downgrade to dashboard if user lacks access to the
@@ -146,6 +157,7 @@ export default function App() {
   const denied = !canAccessRoute(user, route)
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
+      <TopProgress />
       <Sidebar route={effectiveRoute} go={go} open={open} setOpen={setOpen} company={brand} logoUrl={logoUrl} user={user} />
       <div className="mms-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Topbar setOpen={setOpen} route={effectiveRoute} go={go} user={user} />

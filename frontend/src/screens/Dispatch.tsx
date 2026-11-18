@@ -1,6 +1,6 @@
 /* NMS-Auto — Dispatch Notes + Outstanding Settlement (API-backed) */
 import { useEffect, useMemo, useState } from 'react'
-import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, statusTone } from '../components/ui'
+import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, statusTone, PageLoader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { StatRow } from '../components/doc'
 import { api } from '../api'
@@ -77,7 +77,7 @@ export function DispatchScreen({ go: _go }: { go: Go }) {
   }
 
   const remove = async (o: SalesOrder) => {
-    if (!confirm(`Cancel order ${o.code}?${o.status === 'dispatched' ? ' Its reserved stock will be released.' : ''}`)) return
+    if (!(await notify.confirm({ title: `Cancel order ${o.code}?`, msg: o.status === 'dispatched' ? 'Its reserved stock will be released.' : undefined, okText: 'Cancel order', cancelText: 'Keep', danger: true }))) return
     await api.salesOrders.remove(o.id); refresh()
   }
 
@@ -102,7 +102,7 @@ export function DispatchScreen({ go: _go }: { go: Go }) {
         <Btn variant={tab === 'dispatched' ? 'primary' : 'ghost'} icon="truck" onClick={() => setTab('dispatched')}>Dispatched{dispatched.length ? ` (${dispatched.length})` : ''}</Btn>
       </div>
       <Card pad={0}>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[{ label: tab === 'pending' ? 'Order No' : 'Dispatch No' }, { label: 'Customer' }, { label: 'Rep' }, { label: 'Date' }, { label: 'Items', align: 'right' }, { label: 'Total', align: 'right' }, { label: '', align: 'right', w: 220 }]}
           rows={shown}
           render={(r) => <>
@@ -222,7 +222,7 @@ export function SettlementScreen({ go: _go }: { go: Go }) {
         { icon: 'check', label: 'Fully Settled', value: rows.filter((r) => r.status === 'Paid').length, c: 'green' },
       ]} />
       <Card pad={0}>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[{ label: 'Invoice No' }, { label: 'Customer' }, { label: 'Terms', align: 'center' }, { label: 'Date' }, { label: 'Total', align: 'right' }, { label: 'Paid', align: 'right' }, { label: 'Due', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 120 }]}
           rows={outstanding}
           render={(r) => <>

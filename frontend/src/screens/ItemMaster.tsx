@@ -1,6 +1,6 @@
 /* NMS-Auto — Item Master + Customer Master (API-backed) */
 import { useEffect, useRef, useState } from 'react'
-import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td } from '../components/ui'
+import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, PageLoader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { api } from '../api'
 import { useNotify } from '../components/Notify'
@@ -160,7 +160,7 @@ export function ItemMasterScreen({ go }: { go: Go }) {
             <div style={{ width: 120 }}><Select value={stat} onChange={(e) => setStat(e.target.value)}><option value="">All Status</option><option value="in">In Stock</option><option value="low">Low</option><option value="out">Out</option></Select></div>
           </div>
         </div>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> : (
+        {loading ? <PageLoader pad={40} /> : (
         <Table cols={[
           { label: 'Code', w: 90 }, { label: 'HS Code', w: 110 }, { label: 'Item Name' }, { label: 'Brand' }, { label: 'Category' }, { label: 'Group' },
           { label: 'Rack', align: 'center' }, { label: 'Avg Cost', align: 'right' }, { label: 'FIFO Cost', align: 'right' },
@@ -286,7 +286,7 @@ export function CustomerMasterScreen({ go: _go }: { go: Go }) {
     } finally { setSaving(false) }
   }
   const remove = async (id: any) => {
-    if (!confirm('Delete this customer?')) return
+    if (!(await notify.confirm({ title: 'Delete this customer?', msg: 'This cannot be undone.', danger: true }))) return
     await api.customers.remove(id); refresh()
   }
 
@@ -302,7 +302,7 @@ export function CustomerMasterScreen({ go: _go }: { go: Go }) {
             <Icon n="search" s={16} c="var(--tx-2)" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search customers…" style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--tx-0)', fontSize: 13, width: '100%' }} />
           </div>
         </div>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> : (
+        {loading ? <PageLoader pad={40} /> : (
         <Table cols={[{ label: 'ID', w: 80 }, { label: 'Customer' }, { label: 'City' }, { label: 'Contact' }, { label: 'Rep' }, { label: 'Credit', align: 'center' }, { label: 'Limit', align: 'right' }, { label: 'Outstanding', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 150 }]}
           rows={f}
           render={(c) => <>

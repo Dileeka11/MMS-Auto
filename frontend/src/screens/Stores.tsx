@@ -1,6 +1,6 @@
 /* NMS-Auto — Stores: Transfer, Adjustment, BIN Card, Live Stock, Price Control (API-backed) */
 import { useEffect, useMemo, useState } from 'react'
-import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, inputStyle } from '../components/ui'
+import { Card, PageHead, Btn, Badge, Field, Input, Select, Modal, Table, Td, inputStyle, PageLoader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { LineEditor } from '../components/doc'
 import { api } from '../api'
@@ -61,7 +61,7 @@ export function LiveStockScreen({ go }: { go: Go }) {
           </div>
           <div style={{ width: 130 }}><Select value={stat} onChange={(e) => setStat(e.target.value)}><option value="">All Status</option><option value="in">In Stock</option><option value="low">Low</option><option value="out">Out</option></Select></div>
         </div>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[{ label: 'Code' }, { label: 'Item' }, { label: 'Rack' }, ...branches.map((b) => ({ label: b, align: 'right' as const })), { label: 'Total', align: 'right' }, { label: 'Reorder', align: 'right' }, { label: 'Status', align: 'center' }]}
           rows={f}
           render={(i) => <>
@@ -99,7 +99,7 @@ export function TransferScreen({ go: _go }: { go: Go }) {
       <PageHead crumbs="Stores" title="Stock Transfer" icon="swap" sub="Move stock between branches"
         actions={<Btn variant="primary" icon="plus" onClick={() => setModal(true)}>New Transfer</Btn>} />
       <Card pad={0}>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[{ label: 'Transfer No' }, { label: 'From' }, { label: 'To' }, { label: 'Date' }, { label: 'Items', align: 'right' }, { label: 'Qty', align: 'right' }, { label: 'Status', align: 'center' }]}
           rows={rows}
           render={(r) => <>
@@ -146,7 +146,7 @@ export function AdjustScreen({ go: _go }: { go: Go }) {
       <PageHead crumbs="Stores" title="Stock Adjustment" icon="adjust" sub="Correct stock for counts, damage or write-offs"
         actions={<Btn variant="primary" icon="plus" onClick={() => setModal(true)}>New Adjustment</Btn>} />
       <Card pad={0}>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[{ label: 'Ref' }, { label: 'Item' }, { label: 'Type', align: 'center' }, { label: 'Qty', align: 'right' }, { label: 'Reason' }, { label: 'By' }, { label: 'Date' }]}
           rows={rows}
           render={(r) => <>
@@ -189,7 +189,7 @@ export function BinCardScreen({ go: _go }: { go: Go }) {
     return [{ date: '', ref: 'Current', type: 'Opening', in: 0, out: 0, bal: start }]
   }, [sel])
 
-  if (!sel) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div>
+  if (!sel) return <PageLoader pad={40} />
   return (
     <div>
       <PageHead crumbs="Stores" title="BIN Card" icon="list" sub="Item-wise stock movement ledger"
@@ -255,7 +255,7 @@ export function PriceScreen({ go: _go }: { go: Go }) {
           ['Code', 'Item', 'Avg Cost', 'FIFO Cost', 'Selling Price', 'Margin %'],
           rows.map((i) => [i.code, i.name, i.avgCost || 0, i.fifoCost || 0, i.price || 0, i.price ? Math.round(((i.price - (i.avgCost || 0)) / i.price) * 100) : 0]))}>Export Price List</Btn>} />
       <Card pad={0}>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[{ label: 'Code' }, { label: 'Item' }, { label: 'Avg Cost', align: 'right' }, { label: 'FIFO Cost', align: 'right' }, { label: 'Selling Price', align: 'right' }, { label: 'Margin', align: 'right' }, { label: '', align: 'right', w: 100 }]}
           rows={rows}
           render={(i) => {

@@ -64,30 +64,8 @@ Route::middleware(['auth:sanctum', 'rep', 'throttle:120,1'])->prefix('rep')->gro
     Route::post('orders', [RepController::class, 'storeOrder']);
 });
 
-// --- One-time setup (remove after first run) ---
-Route::get('setup-db', function (\Illuminate\Http\Request $request) {
-    if ($request->query('token') !== 'nms-auto-setup-2026-one-time-xyz9k4j2') {
-        abort(403, 'Forbidden');
-    }
-    try {
-        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-        $migrateOutput = \Illuminate\Support\Facades\Artisan::output();
-        \Illuminate\Support\Facades\Artisan::call('db:seed', ['--force' => true]);
-        $seedOutput = \Illuminate\Support\Facades\Artisan::output();
-        return response()->json([
-            'migrate' => $migrateOutput,
-            'seed' => $seedOutput,
-        ]);
-    } catch (\Throwable $e) {
-        return response()->json([
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ], 500);
-    }
-});
-
 // --- Protected ---
-Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
+Route::middleware(['auth:sanctum', 'active', 'throttle:120,1'])->group(function () {
     Route::get('me', [AuthController::class, 'me']);
     Route::post('logout', [AuthController::class, 'logout']);
 
@@ -101,55 +79,57 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
     Route::get('items/next-code', function () {
         return response()->json(['code' => app(\App\Http\Controllers\Api\ItemController::class)->nextCode()]);
     });
-    Route::post('items/bulk', [ItemController::class, 'bulk']);
-    Route::post('items/bulk-price', [ItemController::class, 'bulkPrice']);
-    Route::delete('items', [ItemController::class, 'clearAll']);
-    Route::apiResource('items', ItemController::class);
-    Route::apiResource('customers', CustomerController::class);
-    Route::apiResource('sales-reps', SalesRepController::class);
+    Route::post('items/bulk', [ItemController::class, 'bulk'])->middleware('perm:Item Master');
+    Route::post('items/bulk-price', [ItemController::class, 'bulkPrice'])->middleware('perm:Item Master|Price Control,Edit');
+    Route::delete('items', [ItemController::class, 'clearAll'])->middleware('admin');
+    Route::apiResource('items', ItemController::class)->middleware('perm:Item Master|Price Control');
+    Route::apiResource('customers', CustomerController::class)->middleware('perm:Customer Master');
+    Route::apiResource('sales-reps', SalesRepController::class)->middleware('perm:Sales Reps');
 
     // Config-driven masters
-    Route::get('masters/{type}', [MasterController::class, 'index']);
-    Route::post('masters/{type}', [MasterController::class, 'store']);
-    Route::put('masters/{type}/{master}', [MasterController::class, 'update']);
-    Route::delete('masters/{type}/{master}', [MasterController::class, 'destroy']);
+    Route::middleware('perm:@master')->group(function () {
+        Route::get('masters/{type}', [MasterController::class, 'index']);
+        Route::post('masters/{type}', [MasterController::class, 'store']);
+        Route::put('masters/{type}/{master}', [MasterController::class, 'update']);
+        Route::delete('masters/{type}/{master}', [MasterController::class, 'destroy']);
+    });
 
     // Procurement
-    Route::apiResource('suppliers', SupplierController::class);
-    Route::apiResource('purchase-orders', PurchaseOrderController::class);
+    Route::apiResource('suppliers', SupplierController::class)->middleware('perm:Supplier Master');
+    Route::apiResource('purchase-orders', PurchaseOrderController::class)->middleware('perm:Purchase Order');
     Route::post('purchase-orders/{purchaseOrder}/approve', [PurchaseOrderController::class, 'approve'])->middleware('admin');
     Route::post('purchase-orders/{purchaseOrder}/reject', [PurchaseOrderController::class, 'reject'])->middleware('admin');
-    Route::apiResource('shipments', ShipmentController::class)->only(['index', 'show', 'store', 'destroy']);
+    Route::apiResource('shipments', ShipmentController::class)->only(['index', 'show', 'store', 'destroy'])->middleware('perm:Costing & Shipment');
     Route::post('shipments/{shipment}/approve', [ShipmentController::class, 'approve'])->middleware('admin');
     Route::post('shipments/{shipment}/reject',  [ShipmentController::class, 'reject'])->middleware('admin');
 
-    Route::apiResource('grns', GrnController::class)->only(['index', 'store', 'destroy']);
+    Route::apiResource('grns', GrnController::class)->only(['index', 'store', 'destroy'])->middleware('perm:GRN');
     Route::post('grns/{grn}/approve', [GrnController::class, 'approve'])->middleware('admin');
     Route::post('grns/{grn}/reject',  [GrnController::class, 'reject'])->middleware('admin');
     Route::get('po-tracking', [TrackingController::class, 'index']);
 
     // Sales
-    Route::apiResource('quotations', QuotationController::class);
+    Route::apiResource('quotations', QuotationController::class)->middleware('perm:Quotation');
     Route::get('sales-orders', [SalesOrderController::class, 'index']);
-    Route::post('sales-orders/{salesOrder}/dispatch', [SalesOrderController::class, 'dispatchOrder']);
-    Route::post('sales-orders/{salesOrder}/invoice', [SalesOrderController::class, 'invoice']);
-    Route::delete('sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy']);
-    Route::apiResource('invoices', InvoiceController::class);
+    Route::post('sales-orders/{salesOrder}/dispatch', [SalesOrderController::class, 'dispatchOrder'])->middleware('perm:Dispatch Notes,Create');
+    Route::post('sales-orders/{salesOrder}/invoice', [SalesOrderController::class, 'invoice'])->middleware('perm:Sales Invoice|Dispatch Notes,Create');
+    Route::delete('sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy'])->middleware('perm:Dispatch Notes,Delete');
+    Route::apiResource('invoices', InvoiceController::class)->middleware('perm:Sales Invoice');
     Route::post('invoices/{invoice}/approve-discount', [InvoiceController::class, 'approveDiscount'])->middleware('admin');
     Route::post('invoices/{invoice}/reject-discount', [InvoiceController::class, 'rejectDiscount'])->middleware('admin');
-    Route::post('invoices/{invoice}/pay', [InvoiceController::class, 'pay']);
-    Route::apiResource('sales-returns', SalesReturnController::class)->only(['index', 'store', 'destroy']);
-    Route::post('sales-returns/{salesReturn}/approve', [SalesReturnController::class, 'approve']);
-    Route::post('sales-returns/{salesReturn}/reject', [SalesReturnController::class, 'reject']);
-    Route::apiResource('receipts', ReceiptController::class)->only(['index', 'store', 'destroy']);
-    Route::apiResource('expenses', ExpenseController::class)->only(['index', 'store', 'destroy']);
+    Route::post('invoices/{invoice}/pay', [InvoiceController::class, 'pay'])->middleware('perm:Outstanding Settlement|Payment Receipt|Sales Invoice,Create');
+    Route::apiResource('sales-returns', SalesReturnController::class)->only(['index', 'store', 'destroy'])->middleware('perm:Sales Return');
+    Route::post('sales-returns/{salesReturn}/approve', [SalesReturnController::class, 'approve'])->middleware('perm:Sales Return,Approve');
+    Route::post('sales-returns/{salesReturn}/reject', [SalesReturnController::class, 'reject'])->middleware('perm:Sales Return,Approve');
+    Route::apiResource('receipts', ReceiptController::class)->only(['index', 'store', 'destroy'])->middleware('perm:Payment Receipt|Outstanding Settlement');
+    Route::apiResource('expenses', ExpenseController::class)->only(['index', 'store', 'destroy'])->middleware('perm:Expense');
 
     // Stores
-    Route::apiResource('stock-transfers', StockTransferController::class)->only(['index', 'store', 'update', 'destroy']);
-    Route::apiResource('stock-adjustments', StockAdjustmentController::class)->only(['index', 'store', 'destroy']);
+    Route::apiResource('stock-transfers', StockTransferController::class)->only(['index', 'store', 'update', 'destroy'])->middleware('perm:Stock Transfer');
+    Route::apiResource('stock-adjustments', StockAdjustmentController::class)->only(['index', 'store', 'destroy'])->middleware('perm:Stock Adjustment');
 
     // Accounting — Chart of Accounts / General Ledger backbone
-    Route::prefix('accounting')->group(function () {
+    Route::prefix('accounting')->middleware('perm:Accounting')->group(function () {
         Route::get('stats', [AccountingStatsController::class, 'index']);
 
         // Chart nested (categories -> groups) for dropdowns, then category CRUD (writes are locked → 403).
@@ -202,8 +182,8 @@ Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
 
     // Administration
     Route::get('company-profile', [CompanyProfileController::class, 'show']);
-    Route::put('company-profile', [CompanyProfileController::class, 'update']);
-    Route::post('company-profile/logo', [CompanyProfileController::class, 'uploadLogo']);
+    Route::put('company-profile', [CompanyProfileController::class, 'update'])->middleware('perm:Company Profile,Edit');
+    Route::post('company-profile/logo', [CompanyProfileController::class, 'uploadLogo'])->middleware('perm:Company Profile,Edit');
 
     // User & permission management (admin-only)
     Route::middleware('admin')->group(function () {

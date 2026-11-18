@@ -38,6 +38,7 @@ class MasterController extends Controller
 
     public function update(Request $request, $type, Master $master)
     {
+        abort_unless($master->type === $type, 404);
         $payload = $request->all();
         $master->update([
             'code' => $payload['code'] ?? $master->code,
@@ -51,6 +52,7 @@ class MasterController extends Controller
 
     public function destroy($type, Master $master)
     {
+        abort_unless($master->type === $type, 404);
         $master->delete();
 
         return response()->noContent();

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Icon } from './Icon'
 import { Btn } from './ui'
-import { NotificationBell, useNotify } from './Notify'
+import { NotificationBell, clearStoredNotices, useNotify } from './Notify'
 import DB from '../data'
 import { auth, type AuthUser } from '../api'
 import { canAccessRoute } from '../lib/permissions'
@@ -220,6 +220,7 @@ export function Topbar({ setOpen, go, user }: { setOpen: (fn: (o: boolean) => bo
               try { await auth.logout() } catch {}
               auth.setToken(null)
               localStorage.removeItem('mms-route')
+              clearStoredNotices()
               window.location.reload()
             }}
             style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 8, padding: 8, color: 'var(--tx-1)', marginLeft: 6 }}

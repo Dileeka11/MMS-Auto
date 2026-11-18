@@ -1,6 +1,6 @@
 /* NMS-Auto — Sales: Quotation + Sales Invoice (API-backed) */
 import { useEffect, useState } from 'react'
-import { Card, PageHead, Btn, Badge, Field, Input, DateInput, Select, Modal, Table, Td, statusTone } from '../components/ui'
+import { Card, PageHead, Btn, Badge, Field, Input, DateInput, Select, Modal, Table, Td, statusTone, PageLoader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { StatRow, LineEditor } from '../components/doc'
 import { api, company as companyApi } from '../api'
@@ -51,7 +51,7 @@ export function QuoteScreen({ go, user }: ScreenProps) {
       notify.error('Quotation not saved', e?.response?.data?.message || e?.message || 'Please try again.')
     } finally { setSaving(false) }
   }
-  const remove = async (id: any) => { if (!confirm('Delete this quotation?')) return; await api.quotations.remove(id); refresh() }
+  const remove = async (id: any) => { if (!(await notify.confirm({ title: 'Delete this quotation?', msg: 'This cannot be undone.', danger: true }))) return; await api.quotations.remove(id); refresh() }
   const isNew = editing === 'new'
 
   return (
@@ -65,7 +65,7 @@ export function QuoteScreen({ go, user }: ScreenProps) {
         { icon: 'coins', label: 'Pipeline Value', value: moneyK(rows.filter((r) => r.status === 'Open').reduce((a, r) => a + (r.total || 0), 0)), c: 'ac' },
       ]} />
       <Card pad={0}>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[{ label: 'Quote No' }, { label: 'Customer' }, { label: 'Rep' }, { label: 'Date' }, { label: 'Valid Until' }, { label: 'Items', align: 'right' }, { label: 'Total', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 170 }]}
           rows={rows}
           render={(r) => <>
@@ -304,7 +304,7 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
         { icon: 'coins', label: 'Sales Value', value: moneyK(shown.reduce((a, r) => a + (r.total || 0), 0)), c: 'green' },
       ]} />
       <Card pad={0}>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[{ label: 'Invoice No' }, { label: 'Customer' }, { label: 'Rep' }, { label: 'Date' }, { label: 'Terms', align: 'center' }, { label: 'Costing', align: 'center' }, { label: 'Total', align: 'right' }, { label: 'Due', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 60 }]}
           rows={shown}
           render={(r) => <>
@@ -328,8 +328,8 @@ export function InvoiceScreen({ go: _go }: { go: Go }) {
               {(r.due || 0) > 0 && r.discountStatus !== 'pending' && <button className="mms-act" title="Add payment" onClick={() => openPay(r)}><Icon n="coins" s={15} /></button>}
               {r.discountStatus === 'pending' && (
                 <>
-                  <button className="mms-act" title="Approve Discount" onClick={() => { if (confirm('Approve this discount?')) api.invoices.approveDiscount(r.id).then(refresh) }}><Icon n="check" s={15} c="var(--ok)" /></button>
-                  <button className="mms-act" title="Reject Discount" onClick={() => { if (confirm('Reject this discount?')) api.invoices.rejectDiscount(r.id).then(refresh) }}><Icon n="x" s={15} c="var(--bad)" /></button>
+                  <button className="mms-act" title="Approve Discount" onClick={async () => { if (await notify.confirm({ title: 'Approve this discount?', okText: 'Approve' })) api.invoices.approveDiscount(r.id).then(refresh).catch(() => {}) }}><Icon n="check" s={15} c="var(--ok)" /></button>
+                  <button className="mms-act" title="Reject Discount" onClick={async () => { if (await notify.confirm({ title: 'Reject this discount?', okText: 'Reject', danger: true })) api.invoices.rejectDiscount(r.id).then(refresh).catch(() => {}) }}><Icon n="x" s={15} c="var(--bad)" /></button>
                 </>
               )}
               <button className="mms-act" title="Print invoice" onClick={() => printInvoice(r)}><Icon n="print" s={15} /></button>

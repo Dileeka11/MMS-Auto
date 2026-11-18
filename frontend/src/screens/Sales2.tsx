@@ -1,6 +1,6 @@
 /* NMS-Auto — Sales Return + Payment Receipt + Expense (API-backed) */
 import { useEffect, useState } from 'react'
-import { Card, PageHead, Btn, Badge, Field, Input, DateInput, Select, Modal, Table, Td, statusTone, inputStyle } from '../components/ui'
+import { Card, PageHead, Btn, Badge, Field, Input, DateInput, Select, Modal, Table, Td, statusTone, inputStyle, PageLoader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { StatRow } from '../components/doc'
 import { api, clearListCache } from '../api'
@@ -93,7 +93,7 @@ export function ReturnScreen({ go: _go, user }: ScreenProps) {
 
       <Card pad={0}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)' }} className="eyebrow">All Returns</div>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[{ label: 'Return No' }, { label: 'Invoice' }, { label: 'Customer' }, { label: 'Reason' }, { label: 'Raised By' }, { label: 'Amount', align: 'right' }, { label: 'Status', align: 'center' }, { label: '', align: 'right', w: 60 }]}
           rows={rows}
           render={(r) => <>
@@ -360,6 +360,7 @@ export function ReceiptScreen({ user }: ScreenProps) {
 }
 
 export function ExpenseScreen({ go: _go }: { go: Go }) {
+  const notify = useNotify()
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false); const [form, setForm] = useState<any>({})
@@ -376,17 +377,17 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
   }, [])
 
   const save = async () => {
-    if (!form.type) { alert('Select an expense type'); return }
+    if (!form.type) { notify.warning('Select an expense type'); return }
     setSaving(true)
     try {
       await api.expenses.create({ type: form.type, date: form.date || new Date().toISOString().slice(0, 10), amount: +form.amount || 0, branch: form.branch || null, note: form.note || '', attachment: form.attachment || null, paymentAccountId: form.paidFrom ? Number(form.paidFrom) : null } as any)
       setModal(false); setForm({}); refresh()
     } catch (e: any) {
       const d = e?.response?.data
-      alert((d?.errors && (Object.values(d.errors)[0] as string[])?.[0]) || d?.message || 'Expense not saved')
+      notify.error('Expense not saved', (d?.errors && (Object.values(d.errors)[0] as string[])?.[0]) || d?.message || undefined)
     } finally { setSaving(false) }
   }
-  const remove = async (id: any) => { if (!confirm('Delete?')) return; await api.expenses.remove(id); refresh() }
+  const remove = async (id: any) => { if (!(await notify.confirm({ title: 'Delete this expense?', msg: 'This cannot be undone.', danger: true }))) return; await api.expenses.remove(id); refresh() }
 
   return (
     <div>
@@ -399,7 +400,7 @@ export function ExpenseScreen({ go: _go }: { go: Go }) {
         { icon: 'chart', label: 'Avg / Entry', value: rows.length ? moneyK(Math.round(rows.reduce((a, r) => a + (r.amount || 0), 0) / rows.length)) : 'Rs 0', c: 'warn' },
       ]} />
       <Card pad={0}>
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div> :
+        {loading ? <PageLoader pad={40} /> :
         <Table cols={[{ label: 'Ref' }, { label: 'Type' }, { label: 'Branch' }, { label: 'Date' }, { label: 'Note' }, { label: 'Amount', align: 'right' }, { label: '', align: 'right', w: 90 }]}
           rows={rows}
           render={(r) => <>

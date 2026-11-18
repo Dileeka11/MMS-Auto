@@ -3,6 +3,51 @@ import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
+import { subscribeActivity, getActivity } from '../api'
+
+/* ---------- preloaders ---------- */
+/** True while any (non-silent) API request — or only GETs — is in flight. */
+export function useApiBusy(readsOnly = false): boolean {
+  const [busy, setBusy] = useState(() => { const a = getActivity(); return (readsOnly ? a.reads : a.total) > 0 })
+  useEffect(() => subscribeActivity((a) => setBusy((readsOnly ? a.reads : a.total) > 0)), [readsOnly])
+  return busy
+}
+
+export function Spinner({ s = 16, c, style }: { s?: number; c?: string; style?: CSSProperties }) {
+  return (
+    <span className="mms-spin" role="status" aria-label="Loading" style={{
+      width: s, height: s, border: `2px solid ${c ? 'currentColor' : 'var(--line)'}`, borderTopColor: c ? 'transparent' : 'var(--ac)',
+      borderRadius: '50%', display: 'inline-block', flexShrink: 0, color: c, opacity: c ? 0.9 : 1, ...style,
+    }} />
+  )
+}
+
+/** Centered spinner + label for a screen or card that is loading. */
+export function PageLoader({ label = 'Loading…', pad = 80 }: { label?: string; pad?: number }) {
+  return (
+    <div className="row center fade-in" style={{ padding: pad, color: 'var(--tx-3)', gap: 10 }}>
+      <Spinner s={18} />
+      <span style={{ fontSize: 13 }}>{label}</span>
+    </div>
+  )
+}
+
+export function Skeleton({ w = '100%', h = 12, r = 6, style }: { w?: number | string; h?: number; r?: number; style?: CSSProperties }) {
+  return <span className="mms-skel" style={{ width: w, height: h, borderRadius: r, ...style }} />
+}
+
+/** Thin indeterminate bar on top of the page while any request is running. */
+export function TopProgress() {
+  const busy = useApiBusy()
+  // Wait a moment before showing so instant (cached) requests don't flash it.
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    if (!busy) { setShow(false); return }
+    const t = window.setTimeout(() => setShow(true), 150)
+    return () => window.clearTimeout(t)
+  }, [busy])
+  return <div className={'mms-topbar-progress' + (show ? ' on' : '')} aria-hidden />
+}
 
 /* ---------- primitives ---------- */
 type Variant = 'primary' | 'solid' | 'ghost' | 'danger' | 'ok' | 'plain'
@@ -12,20 +57,36 @@ interface BtnProps {
   size?: 'sm' | 'md' | 'lg'
   icon?: string
   iconR?: string
-  onClick?: () => void
+  /** May return a promise: the button then shows a spinner and blocks repeat clicks until it settles. */
+  onClick?: () => unknown
   active?: boolean
   disabled?: boolean
+  /** Force the loading state (e.g. a form's own `saving` flag). */
+  loading?: boolean
   style?: CSSProperties
   title?: string
+  type?: 'button' | 'submit' | 'reset'
 }
-export function Btn({ children, variant = 'ghost', size = 'md', icon, iconR, onClick, active, disabled, style, title }: BtnProps) {
+export function Btn({ children, variant = 'ghost', size = 'md', icon, iconR, onClick, active, disabled, loading, style, title, type }: BtnProps) {
+  const [pending, setPending] = useState(false)
+  const alive = useRef(true)
+  useEffect(() => () => { alive.current = false }, [])
+  const busy = !!loading || pending
+  const handle = onClick && (() => {
+    if (busy) return
+    const r = onClick() as any
+    if (r && typeof r.then === 'function') {
+      setPending(true)
+      r.then(() => {}, () => {}).finally(() => { if (alive.current) setPending(false) })
+    }
+  })
   const base: CSSProperties = {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
     fontFamily: 'IBM Plex Sans', fontWeight: 600,
     borderRadius: 'var(--r-s)', border: '1px solid transparent',
     padding: size === 'sm' ? '5px 10px' : size === 'lg' ? '11px 18px' : '8px 14px',
     fontSize: size === 'sm' ? 12.5 : 13.5, lineHeight: 1, transition: 'all .15s var(--ease)',
-    opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? 'none' : 'auto', whiteSpace: 'nowrap', ...style,
+    opacity: disabled ? 0.5 : busy ? 0.8 : 1, pointerEvents: disabled || busy ? 'none' : 'auto', whiteSpace: 'nowrap', ...style,
   }
   const V: Record<Variant, CSSProperties> = {
     primary: { background: 'var(--ac)', color: '#fff', boxShadow: '0 2px 10px -2px var(--ac-line)' },
@@ -36,8 +97,8 @@ export function Btn({ children, variant = 'ghost', size = 'md', icon, iconR, onC
     plain: { background: 'transparent', color: 'var(--tx-2)', border: '1px solid transparent' },
   }
   return (
-    <button title={title} className="mms-btn" style={{ ...base, ...V[variant] }} onClick={onClick} disabled={disabled}>
-      {icon && <Icon n={icon} s={size === 'sm' ? 14 : 16} />}
+    <button title={title} type={type} className="mms-btn" style={{ ...base, ...V[variant] }} onClick={handle} disabled={disabled || busy} aria-busy={busy || undefined}>
+      {busy ? <Spinner s={size === 'sm' ? 12 : 14} c="currentColor" /> : icon && <Icon n={icon} s={size === 'sm' ? 14 : 16} />}
       {children}
       {iconR && <Icon n={iconR} s={size === 'sm' ? 14 : 16} />}
     </button>
@@ -219,7 +280,10 @@ export function Modal({ open, onClose, title, sub, children, width = 560, footer
 
 /* ---------- Table ---------- */
 export interface Col { label: ReactNode; align?: 'left' | 'right' | 'center'; w?: number | string }
-export function Table<T = any>({ cols, rows, render, empty = 'No records', onRow }: { cols: Col[]; rows: T[]; render: (r: T, i: number) => ReactNode; empty?: string; onRow?: (r: T) => void }) {
+export function Table<T = any>({ cols, rows, render, empty = 'No records', onRow, loading }: { cols: Col[]; rows: T[]; render: (r: T, i: number) => ReactNode; empty?: string; onRow?: (r: T) => void; loading?: boolean }) {
+  // With no explicit `loading`, an empty table shows skeleton rows while data is being fetched.
+  const reading = useApiBusy(true)
+  const skeleton = rows.length === 0 && (loading ?? reading)
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -231,7 +295,16 @@ export function Table<T = any>({ cols, rows, render, empty = 'No records', onRow
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && (
+          {skeleton && Array.from({ length: 5 }, (_, ri) => (
+            <tr key={'sk' + ri} aria-hidden>
+              {cols.map((c, ci) => (
+                <td key={ci} style={{ padding: '13px 14px', borderBottom: '1px solid var(--line-soft)', textAlign: c.align || 'left' }}>
+                  <Skeleton w={ci === 0 ? '70%' : c.align === 'right' ? '55%' : '80%'} style={{ opacity: 1 - ri * 0.15 }} />
+                </td>
+              ))}
+            </tr>
+          ))}
+          {rows.length === 0 && !skeleton && (
             <tr><td colSpan={cols.length} style={{ padding: '40px', textAlign: 'center', color: 'var(--tx-3)' }}>{empty}</td></tr>
           )}
           {rows.map((r, ri) => (

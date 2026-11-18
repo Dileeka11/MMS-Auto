@@ -3,7 +3,7 @@
    Journal Entries (+ manual entry), General Ledger, Trial Balance. */
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Card, PageHead, Btn, Badge, Field, Input, Select, DateInput, Modal, Table, Td } from '../components/ui'
+import { Card, PageHead, Btn, Badge, Field, Input, Select, DateInput, Modal, Table, Td, PageLoader } from '../components/ui'
 import { Icon } from '../components/Icon'
 import { useNotify } from '../components/Notify'
 import { api } from '../api'
@@ -28,7 +28,7 @@ function errMsg(e: any, fallback: string): string {
   return first || d?.message || fallback
 }
 
-const Loading = () => <div style={{ padding: 40, textAlign: 'center', color: 'var(--tx-2)' }}>Loading…</div>
+const Loading = () => <PageLoader pad={40} />
 const Empty = ({ children }: { children: ReactNode }) => (
   <div style={{ padding: '18px 20px', fontSize: 13, color: 'var(--tx-3)' }}>{children}</div>
 )
@@ -801,7 +801,7 @@ export function GeneralLedgerScreen(_: ScreenProps) {
           </Field>
           <Field label="From"><DateInput value={from} onChange={setFrom} /></Field>
           <Field label="To"><DateInput value={to} onChange={setTo} /></Field>
-          <Btn variant="primary" icon="search" onClick={run} disabled={loading}>{loading ? 'Loading…' : 'View'}</Btn>
+          <Btn variant="primary" icon="search" onClick={run} disabled={loading} loading={loading}>View</Btn>
         </div>
       </Card>
 
@@ -880,7 +880,7 @@ export function TrialBalanceScreen(_: ScreenProps) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
           <Field label="From"><DateInput value={from} onChange={setFrom} /></Field>
           <Field label="To"><DateInput value={to} onChange={setTo} /></Field>
-          <Btn variant="primary" icon="bolt" onClick={run} disabled={loading}>{loading ? 'Loading…' : 'Run'}</Btn>
+          <Btn variant="primary" icon="bolt" onClick={run} disabled={loading} loading={loading}>Run</Btn>
         </div>
       </Card>
 
@@ -1395,7 +1395,7 @@ export function ProfitLossScreen(_: ScreenProps) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
           <Field label="From"><DateInput value={from} onChange={setFrom} /></Field>
           <Field label="To"><DateInput value={to} onChange={setTo} /></Field>
-          <Btn variant="primary" icon="bolt" onClick={() => run()} disabled={loading}>{loading ? 'Loading…' : 'Run'}</Btn>
+          <Btn variant="primary" icon="bolt" onClick={() => run()} disabled={loading} loading={loading}>Run</Btn>
         </div>
       </Card>
 
@@ -1436,7 +1436,7 @@ export function BalanceSheetScreen(_: ScreenProps) {
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'end' }}>
           <Field label="As at"><DateInput value={asOf} onChange={setAsOf} /></Field>
-          <Btn variant="primary" icon="bolt" onClick={run} disabled={loading}>{loading ? 'Loading…' : 'Run'}</Btn>
+          <Btn variant="primary" icon="bolt" onClick={run} disabled={loading} loading={loading}>Run</Btn>
         </div>
       </Card>
 
@@ -1651,7 +1651,7 @@ export function CashBookScreen({ user }: ScreenProps) {
           </Field>
           <Field label="From"><DateInput value={from} onChange={setFrom} /></Field>
           <Field label="To"><DateInput value={to} onChange={setTo} /></Field>
-          <Btn variant="primary" icon="search" onClick={() => run()} disabled={loading || !accountId}>{loading ? 'Loading…' : 'View'}</Btn>
+          <Btn variant="primary" icon="search" onClick={() => run()} disabled={loading || !accountId} loading={loading}>View</Btn>
         </div>
       </Card>
 
